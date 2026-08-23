@@ -8,4 +8,15 @@ pub enum CliError {
 }
 
 #[derive(Error, Debug)]
-pub enum BuildError {}
+pub enum BuildError {
+    #[error("Failed to create temporary directory `sisyphus_root`")]
+    RootDirError(#[from] io::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum RecipeError {
+    #[error("Failed to deserialize recipe")]
+    ParseError(#[from] serde_saphyr::DeserializeError),
+    #[error("Failed to read recipe file")]
+    ReadError(#[from] io::Error),
+}
