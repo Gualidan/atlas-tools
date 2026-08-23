@@ -34,3 +34,15 @@ pub enum ConfigError {
     #[error("Failed to parse config")]
     ParseError(#[from] serde_saphyr::DeserializeError),
 }
+
+#[derive(Error, Debug)]
+pub enum FetchError {
+    #[error("Git not found")]
+    GitNotFound(#[from] which::Error),
+
+    #[error("I/O error")]
+    CloneError(#[from] std::io::Error),
+
+    #[error("Failed to perform HTTP fetch")]
+    HttpError(#[from] reqwest::Error),
+}
