@@ -3,14 +3,19 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CliError {
-    #[error("not found")]
-    InvalidArgument(#[from] io::Error),
+    #[error("Recipe not found")]
+    RecipeNotFound(#[from] io::Error),
+
+    #[error("Failed to run build")]
+    BuildFailed(#[from] BuildError),
 }
 
 #[derive(Error, Debug)]
 pub enum BuildError {
     #[error("Failed to create temporary directory `sisyphus_root`")]
     RootDirError(#[from] io::Error),
+    #[error("Failed to parse recipe")]
+    RecipeError(#[from] RecipeError),
 }
 
 #[derive(Error, Debug)]
@@ -19,4 +24,13 @@ pub enum RecipeError {
     ParseError(#[from] serde_saphyr::DeserializeError),
     #[error("Failed to read recipe file")]
     ReadError(#[from] io::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("Failed to resolve directory")]
+    DirError(#[from] io::Error),
+
+    #[error("Failed to parse config")]
+    ParseError(#[from] serde_saphyr::DeserializeError),
 }
