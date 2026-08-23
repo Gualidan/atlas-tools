@@ -1,11 +1,9 @@
+use crate::types::{error::RecipeError, package::Package};
+use serde_saphyr::from_str;
 use std::{fs, path::PathBuf};
 
-use serde_saphyr::from_str;
-
-use crate::types::{error::RecipeError, package::Package};
-
 pub struct Recipe<'a> {
-    path: &'a PathBuf,
+    pub path: &'a PathBuf,
 }
 
 impl<'a> Recipe<'a> {
