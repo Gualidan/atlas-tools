@@ -1,4 +1,4 @@
-use crate::types::error::CliError;
+use crate::{pipeline::build::run_build, types::error::CliError};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -32,6 +32,10 @@ struct BuildArgs {
     /// Skip build phase (for testing download/extract only)
     #[arg(short, long)]
     skip_build: bool,
+
+    /// Path to the configuration file
+    #[arg(short, long)]
+    config: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -56,12 +60,10 @@ pub fn run() -> Result<(), CliError> {
                 println!("Skipping build.");
                 return Ok(());
             }
-
-        
-
-            
+            run_build(&args.recipe_path, &args.config)?;
+            Ok(())
         }
-        Commands::Keygen(args) => {}
-        Commands::ChecksumGen(args) => {}
+        Commands::Keygen(args) => Ok(()),
+        Commands::ChecksumGen(args) => Ok(()),
     }
 }
