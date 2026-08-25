@@ -14,7 +14,7 @@ pub fn run_build(recipe: &PathBuf, config: &Option<PathBuf>) -> Result<(), Build
     let fetched = fetch(pkg)?;
 
     // Phase 2: Extract
-    extract(fetched)?;
+    let (destination, source_root) = extract(fetched)?;
 
     Ok(())
 }
