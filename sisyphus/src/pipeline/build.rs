@@ -1,4 +1,5 @@
 use crate::{
+    extract::extract::extract,
     fetch::fetch::fetch,
     types::{config::Config, error::BuildError, recipe::Recipe},
 };
@@ -9,6 +10,11 @@ pub fn run_build(recipe: &PathBuf, config: &Option<PathBuf>) -> Result<(), Build
 
     let config = Config::from_file_or_default(config);
 
-    fetch(pkg)?;
+    // Phase 1: Fetch
+    let fetched = fetch(pkg)?;
+
+    // Phase 2: Extract
+    extract(fetched)?;
+
     Ok(())
 }
