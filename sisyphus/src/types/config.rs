@@ -8,6 +8,7 @@ use crate::types::error::ConfigError;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub recipe_repo: PathBuf,
+    pub sky_repo: PathBuf,
     pub private_key: PathBuf,
     pub public_key: PathBuf,
 }
@@ -15,10 +16,12 @@ pub struct Config {
 impl Config {
     pub fn build(
         keypair: Vec<PathBuf>,
-        recipe_repo: Option<PathBuf>,
+        recipe_repo: PathBuf,
+        sky_repo: Option<PathBuf>,
     ) -> Result<Config, ConfigError> {
         Ok(Config {
-            recipe_repo: recipe_repo.unwrap_or(data_dir().ok_or(ConfigError::DirError(
+            recipe_repo: recipe_repo,
+            sky_repo: sky_repo.unwrap_or(data_dir().ok_or(ConfigError::DirError(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Data directory not found"),
             ))?),
             private_key: keypair[0].clone(),
