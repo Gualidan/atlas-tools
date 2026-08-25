@@ -1,4 +1,5 @@
 mod cli;
+mod extract;
 mod fetch;
 mod pipeline;
 mod types;
