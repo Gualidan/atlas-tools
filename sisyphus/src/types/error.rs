@@ -16,6 +16,8 @@ pub enum BuildError {
     RootDirError(#[from] io::Error),
     #[error("Failed to parse recipe")]
     RecipeError(#[from] RecipeError),
+    #[error("Failed to fetch package")]
+    FetchError(#[from] FetchError),
 }
 
 #[derive(Error, Debug)]
@@ -45,4 +47,13 @@ pub enum FetchError {
 
     #[error("Failed to perform HTTP fetch")]
     HttpError(#[from] reqwest::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ExtractError {
+    #[error("Failed to open archive")]
+    OpenError(#[from] io::Error),
+
+    #[error("Failed to extract archive")]
+    ExtractError(#[from] compress_tools::Error),
 }
