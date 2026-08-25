@@ -44,7 +44,7 @@ pub enum FetchError {
     #[error("Git not found")]
     GitNotFound(#[from] which::Error),
 
-    #[error("I/O error")]
+    #[error("I/O error during git clone")]
     CloneError(#[from] std::io::Error),
 
     #[error("Failed to perform HTTP fetch")]
@@ -53,7 +53,7 @@ pub enum FetchError {
 
 #[derive(Error, Debug)]
 pub enum ExtractError {
-    #[error("Failed to open archive")]
+    #[error("I/O error during extraction")]
     OpenError(#[from] io::Error),
 
     #[error("Failed to extract archive")]
