@@ -7,11 +7,11 @@ pub enum CliError {
     RecipeNotFound(#[from] io::Error),
 
     #[error("Failed to run build")]
-    BuildFailed(#[from] BuildError),
+    BuildFailed(#[from] BuildPipelineError),
 }
 
 #[derive(Error, Debug)]
-pub enum BuildError {
+pub enum BuildPipelineError {
     #[error("Failed to create temporary directory `sisyphus_root`")]
     RootDirError(#[from] io::Error),
     #[error("Failed to parse recipe")]
@@ -58,4 +58,10 @@ pub enum ExtractError {
 
     #[error("Failed to extract archive")]
     ExtractError(#[from] compress_tools::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum BuildError {
+    #[error("I/O error during build")]
+    ResolveError(#[from] io::Error),
 }
