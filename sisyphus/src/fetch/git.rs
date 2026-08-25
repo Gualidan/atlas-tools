@@ -2,13 +2,12 @@ use crate::types::{
     error::FetchError,
     fetcher::{FetchedSource, Fetcher},
 };
-use std::process::Command;
-use tempfile::TempDir;
+use std::{path::PathBuf, process::Command};
 use which::which;
 
 pub struct GitFetcher {
     pub url: String,
-    pub destination: TempDir,
+    pub destination: PathBuf,
 }
 
 impl Fetcher for GitFetcher {
@@ -18,7 +17,7 @@ impl Fetcher for GitFetcher {
         let output = Command::new("git")
             .arg("clone")
             .arg(&self.url)
-            .arg(&self.destination.path())
+            .arg(&self.destination)
             .output()?;
 
         if !output.status.success() {

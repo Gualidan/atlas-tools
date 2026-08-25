@@ -1,14 +1,12 @@
-use tempfile::TempDir;
-
 use crate::types::{
     error::FetchError,
     fetcher::{FetchedSource, Fetcher},
 };
-use std::fs::File;
+use std::{fs::File, path::PathBuf};
 
 pub struct HttpFetcher {
     pub url: String,
-    pub destination: TempDir,
+    pub destination: PathBuf,
 }
 
 impl Fetcher for HttpFetcher {
@@ -22,7 +20,7 @@ impl Fetcher for HttpFetcher {
             .and_then(|segments| segments.last())
             .and_then(|name| if name.is_empty() { None } else { Some(name) })
             .unwrap_or("tmp.bin");
-        let fname = self.destination.path().join(fname);
+        let fname = self.destination.join(fname);
 
         let mut dest = File::create(&fname)?;
         let content = response.bytes()?;
