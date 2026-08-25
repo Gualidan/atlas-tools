@@ -1,17 +1,18 @@
+use tempfile::TempDir;
+
 use crate::types::{
     error::FetchError,
     fetcher::{FetchedSource, Fetcher},
 };
 use std::fs::File;
-use tempfile::TempDir;
 
-pub struct HttpFetcher<'a> {
+pub struct HttpFetcher {
     pub url: String,
-    pub destination: &'a TempDir,
+    pub destination: TempDir,
 }
 
-impl<'a> Fetcher<'a> for HttpFetcher<'a> {
-    fn fetch(&self) -> Result<FetchedSource<'a>, FetchError> {
+impl Fetcher for HttpFetcher {
+    fn fetch(self) -> Result<FetchedSource, FetchError> {
         let response = reqwest::blocking::get(&self.url)?;
         let response = response.error_for_status()?;
 

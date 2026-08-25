@@ -6,13 +6,13 @@ use std::process::Command;
 use tempfile::TempDir;
 use which::which;
 
-pub struct GitFetcher<'a> {
+pub struct GitFetcher {
     pub url: String,
-    pub destination: &'a TempDir,
+    pub destination: TempDir,
 }
 
-impl<'a> Fetcher<'a> for GitFetcher<'a> {
-    fn fetch(&self) -> Result<FetchedSource<'a>, FetchError> {
+impl Fetcher for GitFetcher {
+    fn fetch(self) -> Result<FetchedSource, FetchError> {
         which("git")?;
 
         let output = Command::new("git")
@@ -28,6 +28,6 @@ impl<'a> Fetcher<'a> for GitFetcher<'a> {
             )));
         }
 
-        Ok(FetchedSource::Dir(&self.destination))
+        Ok(FetchedSource::Dir(self.destination))
     }
 }

@@ -1,10 +1,14 @@
+use tempfile::TempDir;
+
 use crate::types::error::FetchError;
 
-pub enum FetchedSource<'a> {
-    Archive(std::path::PathBuf),
-    Dir(&'a tempfile::TempDir),
+use std::path::PathBuf;
+
+pub enum FetchedSource {
+    Archive(PathBuf),
+    Dir(TempDir),
 }
 
-pub trait Fetcher<'a> {
-    fn fetch(&self) -> Result<FetchedSource<'a>, FetchError>;
+pub trait Fetcher {
+    fn fetch(self) -> Result<FetchedSource, FetchError>;
 }
