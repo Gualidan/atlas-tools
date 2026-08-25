@@ -18,6 +18,8 @@ pub enum BuildError {
     RecipeError(#[from] RecipeError),
     #[error("Failed to fetch package")]
     FetchError(#[from] FetchError),
+    #[error("Failed to extract archive")]
+    ExtractError(#[from] ExtractError),
 }
 
 #[derive(Error, Debug)]
