@@ -1,4 +1,4 @@
-use crate::types::{config::Config, error::BuildError, package::Package};
+use crate::types::{error::BuildError, package::Package, runtime_config::RuntimeConfig};
 use std::collections::HashSet;
 use walkdir::WalkDir;
 
@@ -17,7 +17,7 @@ impl Dependencies {
         })
     }
 
-    pub fn resolve(&mut self, config: Config) -> Result<(), BuildError> {
+    pub fn resolve(&mut self, config: RuntimeConfig) -> Result<(), BuildError> {
         'dependencies: for dep in &self.dependencies {
             if self.built.contains(dep) {
                 continue;

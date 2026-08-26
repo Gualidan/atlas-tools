@@ -6,30 +6,25 @@ use std::{fs, path::PathBuf};
 use crate::types::error::ConfigError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct RuntimeConfig {
     pub recipe_repo: PathBuf,
     pub sky_repo: PathBuf,
-    pub private_key: PathBuf,
-    pub public_key: PathBuf,
 }
 
-impl Config {
+impl RuntimeConfig {
     pub fn build(
-        keypair: Vec<PathBuf>,
         recipe_repo: PathBuf,
         sky_repo: Option<PathBuf>,
-    ) -> Result<Config, ConfigError> {
-        Ok(Config {
+    ) -> Result<RuntimeConfig, ConfigError> {
+        Ok(RuntimeConfig {
             recipe_repo: recipe_repo,
             sky_repo: sky_repo.unwrap_or(data_dir().ok_or(ConfigError::DirError(
                 std::io::Error::new(std::io::ErrorKind::NotFound, "Data directory not found"),
             ))?),
-            private_key: keypair[0].clone(),
-            public_key: keypair[1].clone(),
         })
     }
 
-    pub fn from_file_or_default(config_path: &Option<PathBuf>) -> Result<Config, ConfigError> {
+    pub fn from_file(config_path: &Option<PathBuf>) -> Result<RuntimeConfig, ConfigError> {
         Ok(from_str(&fs::read_to_string(
             &config_path
                 .as_ref()

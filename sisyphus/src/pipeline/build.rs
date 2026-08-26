@@ -1,14 +1,14 @@
 use crate::{
     extract::extract::extract,
     fetch::fetch::fetch,
-    types::{config::Config, error::BuildPipelineError, recipe::Recipe},
+    types::{error::BuildPipelineError, recipe::Recipe, runtime_config::RuntimeConfig},
 };
 use std::path::PathBuf;
 
 pub fn run_build(recipe: &PathBuf, config: &Option<PathBuf>) -> Result<(), BuildPipelineError> {
     let pkg = Recipe { path: recipe }.parse()?;
 
-    let config = Config::from_file_or_default(config);
+    let config = RuntimeConfig::from_file(config)?;
 
     // Phase 1: Fetch
     let fetched = fetch(pkg)?;

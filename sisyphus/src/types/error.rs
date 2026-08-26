@@ -20,6 +20,8 @@ pub enum BuildPipelineError {
     FetchError(#[from] FetchError),
     #[error("Failed to extract archive")]
     ExtractError(#[from] ExtractError),
+    #[error("Failed to parse config")]
+    ConfigError(#[from] ConfigError),
 }
 
 #[derive(Error, Debug)]
