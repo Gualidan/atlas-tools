@@ -40,8 +40,6 @@ impl Dependencies {
                     continue 'dependencies;
                 }
             }
-
-            self.to_be_built.insert(dep.clone());
         }
         Ok(())
     }
