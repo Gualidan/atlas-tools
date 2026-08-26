@@ -64,4 +64,8 @@ pub enum ExtractError {
 pub enum BuildError {
     #[error("I/O error during build")]
     ResolveError(#[from] io::Error),
+    #[error("Circular dependency detected")]
+    CircularDependency(String),
+    #[error("Failed to list directory contents")]
+    ListError(#[from] walkdir::Error),
 }

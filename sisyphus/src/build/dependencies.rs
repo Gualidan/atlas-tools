@@ -1,30 +1,48 @@
-use std::{collections::HashSet, fs};
-
 use crate::types::{config::Config, error::BuildError, package::Package};
+use std::collections::HashSet;
+use walkdir::WalkDir;
 
-pub fn resolve(package: Package, config: Config) -> Result<HashSet<String>, BuildError> {
-    let mut built = HashSet::new();
-    let mut to_be_built: HashSet<String> = HashSet::new();
-    for dep in package.dependencies {
-        let built_entries: Vec<_> = fs::read_dir(&config.sky_repo)?
-            .filter_map(|e| e.ok())
-            .collect();
-        for entry in built_entries {
-            if entry.file_name().to_string_lossy() == dep {
-                built.insert(dep.clone());
-                continue;
-            }
-        }
-        let entries: Vec<_> = fs::read_dir(&config.recipe_repo)?
-            .filter_map(|e| e.ok())
-            .collect();
+pub struct Dependencies {
+    pub dependencies: Vec<String>,
+    pub built: HashSet<String>,
+    pub to_be_built: HashSet<String>,
+}
 
-        for entry in entries {
-            if entry.file_name().to_string_lossy() == dep {
-                to_be_built.insert(dep.clone());
-                continue;
-            }
+impl Dependencies {
+    pub fn prepare(package: Package) -> Self {
+        Self {
+            dependencies: package.dependencies,
+            built: HashSet::new(),
+            to_be_built: HashSet::new(),
         }
     }
-    Ok(to_be_built)
+
+    pub fn resolve(&mut self, config: Config) -> Result<(), BuildError> {
+        'dependencies: for dep in &self.dependencies {
+            if self.built.contains(dep) {
+                continue;
+            }
+
+            for entry in WalkDir::new(&config.sky_repo) {
+                if entry?.file_name().to_string_lossy() == *dep {
+                    self.built.insert(dep.clone());
+                    continue 'dependencies;
+                }
+            }
+
+            for entry in WalkDir::new(&config.recipe_repo)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_dir())
+            {
+                if entry.file_name().to_string_lossy() == *dep {
+                    self.to_be_built.insert(dep.clone());
+                    continue 'dependencies;
+                }
+            }
+
+            self.to_be_built.insert(dep.clone());
+        }
+        Ok(())
+    }
 }
