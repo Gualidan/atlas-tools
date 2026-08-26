@@ -9,12 +9,12 @@ pub struct Dependencies {
 }
 
 impl Dependencies {
-    pub fn prepare(package: Package) -> Self {
-        Self {
+    pub fn prepare(package: Package) -> Result<Self, BuildError> {
+        Ok(Self {
             dependencies: package.dependencies,
             built: HashSet::new(),
             to_be_built: HashSet::new(),
-        }
+        })
     }
 
     pub fn resolve(&mut self, config: Config) -> Result<(), BuildError> {

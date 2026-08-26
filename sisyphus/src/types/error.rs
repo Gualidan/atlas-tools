@@ -68,4 +68,6 @@ pub enum BuildError {
     CircularDependency(String),
     #[error("Failed to list directory contents")]
     ListError(#[from] walkdir::Error),
+    #[error("Failed to resolve dependencies")]
+    ResolveDependenciesError(),
 }
