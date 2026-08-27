@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, process::ExitStatus};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -41,6 +41,9 @@ pub enum ConfigError {
 
     #[error("Failed to parse config")]
     ParseError(#[from] serde_saphyr::DeserializeError),
+
+    #[error("Failed to serialize config")]
+    SerializeError(#[from] serde_saphyr::SerializeError),
 }
 
 #[derive(Error, Debug)]
@@ -82,4 +85,20 @@ impl From<BuildPipelineError> for BuildError {
     fn from(err: BuildPipelineError) -> Self {
         BuildError::RunError(Box::new(err))
     }
+}
+
+#[derive(Error, Debug)]
+pub enum KeygenError {
+    #[error("OpenSSL not found")]
+    OpenSslNotFound(#[from] which::Error),
+    #[error("I/O error during key generation")]
+    IoError(#[from] io::Error),
+    #[error("Failed to get information (Username, Hostname)")]
+    InfoError(#[from] whoami::Error),
+    #[error("Failed to get system time")]
+    TimeError(#[from] std::time::SystemTimeError),
+    #[error("Key already exists")]
+    KeyExistsError,
+    #[error("Failed to generate key")]
+    OpenSslError(ExitStatus),
 }
