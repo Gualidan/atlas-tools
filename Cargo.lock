@@ -1399,6 +1399,7 @@ dependencies = [
  "dirs",
  "libc",
  "reqwest",
+ "ring",
  "serde",
  "serde-saphyr",
  "tempfile",
