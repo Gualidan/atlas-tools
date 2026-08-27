@@ -1,4 +1,5 @@
 mod build;
+mod checksum;
 mod cli;
 mod extract;
 mod fetch;

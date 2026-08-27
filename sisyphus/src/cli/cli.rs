@@ -1,5 +1,5 @@
 use crate::{
-    pipeline::{build::run_build, keygen::run_keygen},
+    pipeline::{build::run_build, checksum::run_checksum, keygen::run_keygen},
     types::error::CliError,
 };
 use clap::{Args, Parser, Subcommand};
@@ -70,6 +70,9 @@ pub fn run() -> Result<(), CliError> {
             run_keygen(&args.keypair_path)?;
             Ok(())
         }
-        Commands::ChecksumGen(args) => Ok(()),
+        Commands::ChecksumGen(args) => {
+            run_checksum(&args.recipe_path)?;
+            Ok(())
+        }
     }
 }

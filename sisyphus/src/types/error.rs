@@ -9,8 +9,11 @@ pub enum CliError {
     #[error("Failed to run build")]
     BuildFailed(#[from] BuildPipelineError),
 
-    #[error("Failed to generate checksum")]
-    ChecksumError(#[from] KeygenError),
+    #[error("Failed to generate keypair")]
+    KeygenError(#[from] KeygenError),
+
+    #[error("Failed to run checksum")]
+    ChecksumGenError(#[from] ChecksumError),
 }
 
 #[derive(Error, Debug)]
@@ -106,4 +109,14 @@ pub enum KeygenError {
     OpenSslError(ExitStatus),
     #[error("Failed to write config")]
     ConfigError(#[from] ConfigError),
+}
+
+#[derive(Error, Debug)]
+pub enum ChecksumError {
+    #[error("Failed to parse recipe")]
+    ParseError(#[from] RecipeError),
+    #[error("Failed to fetch package")]
+    FetchError(#[from] FetchError),
+    #[error("Failed to read file")]
+    ReadError(#[from] io::Error),
 }
