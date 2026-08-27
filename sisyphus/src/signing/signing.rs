@@ -4,11 +4,11 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use which::which;
 
-pub fn keygen(keypath: Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
+pub fn keygen(keypath: &Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
     which("openssl")?;
     unsafe { umask(0o077) };
     let path = match keypath {
-        Some(p) => std::path::PathBuf::from(&p),
+        Some(p) => std::path::PathBuf::from(p),
         None => {
             let keys_dir = dirs::config_dir()
                 .ok_or(KeygenError::IoError(std::io::Error::new(
