@@ -1,5 +1,9 @@
-use crate::types::{error::BuildError, package::Package, runtime_config::RuntimeConfig};
+use crate::{
+    pipeline::build::run_build,
+    types::{error::BuildError, package::Package, recipe::Recipe, runtime_config::RuntimeConfig},
+};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 pub struct Dependencies {
@@ -17,7 +21,7 @@ impl Dependencies {
         })
     }
 
-    pub fn resolve(&mut self, config: RuntimeConfig) -> Result<(), BuildError> {
+    pub fn resolve(&mut self, config: &RuntimeConfig) -> Result<(), BuildError> {
         'dependencies: for dep in &self.dependencies {
             if self.built.contains(dep) {
                 continue;
@@ -43,4 +47,19 @@ impl Dependencies {
         }
         Ok(())
     }
+}
+
+pub fn build(config: RuntimeConfig, package: Package) -> Result<(), BuildError> {
+    let mut deps = Dependencies::prepare(package)?;
+    deps.resolve(&config)?;
+    for dep in deps.to_be_built {
+        let recipe = Recipe {
+            path: &PathBuf::from(&config.recipe_repo)
+                .join(dep)
+                .join("sky")
+                .with_extension("yaml"),
+        };
+        let _ = run_build(recipe.path, Some(config.clone()));
+    }
+    Ok(())
 }

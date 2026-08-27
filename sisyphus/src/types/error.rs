@@ -22,6 +22,8 @@ pub enum BuildPipelineError {
     ExtractError(#[from] ExtractError),
     #[error("Failed to parse config")]
     ConfigError(#[from] ConfigError),
+    #[error("Failed to build resolve dependencies")]
+    DependencyError(#[from] BuildError),
 }
 
 #[derive(Error, Debug)]
