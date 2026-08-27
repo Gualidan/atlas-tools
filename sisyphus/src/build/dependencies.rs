@@ -27,13 +27,15 @@ impl Dependencies {
                 continue;
             }
 
-            for entry in WalkDir::new(&config.sky_repo) {
-                if entry?.file_name().to_string_lossy() == *dep {
+            for entry in WalkDir::new(&config.sky_repo)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                if entry.file_name().to_string_lossy() == *dep {
                     self.built.insert(dep.clone());
                     continue 'dependencies;
                 }
             }
-
             for entry in WalkDir::new(&config.recipe_repo)
                 .into_iter()
                 .filter_map(|e| e.ok())
@@ -44,7 +46,11 @@ impl Dependencies {
                     continue 'dependencies;
                 }
             }
+            if !self.built.contains(dep) && !self.to_be_built.contains(dep) {
+                return Err(BuildError::ResolveDependenciesError());
+            }
         }
+
         Ok(())
     }
 }
@@ -59,7 +65,7 @@ pub fn build(config: RuntimeConfig, package: Package) -> Result<(), BuildError> 
                 .join("sky")
                 .with_extension("yaml"),
         };
-        let _ = run_build(recipe.path, Some(config.clone()));
+        run_build(recipe.path, Some(config.clone()))?;
     }
     Ok(())
 }

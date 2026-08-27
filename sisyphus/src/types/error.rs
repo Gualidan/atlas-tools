@@ -74,4 +74,12 @@ pub enum BuildError {
     ListError(#[from] walkdir::Error),
     #[error("Failed to resolve dependencies")]
     ResolveDependenciesError(),
+    #[error("Failed to run build")]
+    RunError(Box<BuildPipelineError>),
+}
+
+impl From<BuildPipelineError> for BuildError {
+    fn from(err: BuildPipelineError) -> Self {
+        BuildError::RunError(Box::new(err))
+    }
 }
