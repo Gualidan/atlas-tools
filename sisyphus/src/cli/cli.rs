@@ -1,4 +1,4 @@
-use crate::{pipeline::build::run_build, types::error::CliError};
+use crate::{pipeline::build::run_build, signing::signing::keygen, types::error::CliError};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -63,7 +63,10 @@ pub fn run() -> Result<(), CliError> {
             run_build(&args.recipe_path, None)?;
             Ok(())
         }
-        Commands::Keygen(args) => Ok(()),
+        Commands::Keygen(args) => {
+            keygen(&args.keypair_path)?;
+            Ok(())
+        }
         Commands::ChecksumGen(args) => Ok(()),
     }
 }

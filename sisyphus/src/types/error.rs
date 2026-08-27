@@ -8,6 +8,9 @@ pub enum CliError {
 
     #[error("Failed to run build")]
     BuildFailed(#[from] BuildPipelineError),
+
+    #[error("Failed to generate checksum")]
+    ChecksumError(#[from] KeygenError),
 }
 
 #[derive(Error, Debug)]
@@ -101,4 +104,6 @@ pub enum KeygenError {
     KeyExistsError,
     #[error("Failed to generate key")]
     OpenSslError(ExitStatus),
+    #[error("Failed to write config")]
+    ConfigError(#[from] ConfigError),
 }
