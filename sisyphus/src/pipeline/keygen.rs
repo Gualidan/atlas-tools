@@ -4,13 +4,13 @@ use crate::{
 };
 use std::path::PathBuf;
 
-pub fn run_keygen(path: Option<PathBuf>) -> Result<(), KeygenError> {
+pub fn run_keygen(path: &Option<PathBuf>) -> Result<(), KeygenError> {
     let keypair_path = if let Some(path) = path {
-        keygen(&Some(path))?
+        keygen(&Some(path.clone()))?
     } else {
         keygen(&None)?
     };
-    SisyphusConfig::new(keypair_path);
+    SisyphusConfig::new(keypair_path)?;
 
     Ok(())
 }
