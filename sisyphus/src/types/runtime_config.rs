@@ -20,6 +20,11 @@ impl RuntimeConfig {
                     std::io::ErrorKind::NotFound,
                     "Recipe directory not found",
                 )))?
+                .parent()
+                .ok_or(ConfigError::DirError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Recipe directory not found",
+                )))?
                 .to_path_buf(),
             sky_repo: data_dir()
                 .ok_or(ConfigError::DirError(std::io::Error::new(
