@@ -3,6 +3,7 @@ mod cli;
 mod extract;
 mod fetch;
 mod pipeline;
+mod signing;
 mod types;
 
 use crate::cli::cli::run;
