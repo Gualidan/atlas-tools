@@ -10,6 +10,7 @@ pub fn run_build(
     recipe: &PathBuf,
     runtime_config: Option<RuntimeConfig>,
 ) -> Result<(), BuildPipelineError> {
+    println!("Recipe: {}", recipe.display());
     let package = Recipe { path: &recipe }.parse()?;
     let runtime_config = runtime_config.unwrap_or(RuntimeConfig::build(recipe)?);
 
@@ -18,6 +19,8 @@ pub fn run_build(
 
     // Phase 2: Extract
     let (destination, source_root) = extract(fetched)?;
+
+    println!("Extracted to: {}", destination.path().display());
 
     // Phase 3: Dependency resolution / Build
     build(runtime_config, package)?;
