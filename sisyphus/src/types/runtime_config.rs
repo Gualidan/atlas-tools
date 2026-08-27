@@ -1,7 +1,6 @@
-use dirs::{config_dir, data_dir};
+use dirs::data_dir;
 use serde::{Deserialize, Serialize};
-use serde_saphyr::from_str;
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use crate::types::error::ConfigError;
 
