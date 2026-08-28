@@ -10,6 +10,7 @@ pub struct Dependencies {
     pub dependencies: Vec<String>,
     pub built: HashSet<String>,
     pub to_be_built: HashSet<String>,
+    pub in_progress: HashSet<String>,
 }
 
 impl Dependencies {
@@ -18,6 +19,7 @@ impl Dependencies {
             dependencies: package.dependencies,
             built: HashSet::new(),
             to_be_built: HashSet::new(),
+            in_progress: HashSet::from([package.name]),
         })
     }
 
@@ -25,6 +27,9 @@ impl Dependencies {
         'dependencies: for dep in &self.dependencies {
             if self.built.contains(dep) {
                 continue;
+            }
+            if self.in_progress.contains(dep) {
+                return Err(BuildError::CircularDependency(dep.clone()));
             }
 
             for entry in WalkDir::new(&config.sky_repo)
