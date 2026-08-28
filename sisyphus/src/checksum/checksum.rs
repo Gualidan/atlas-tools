@@ -14,7 +14,7 @@ pub enum ChecksumResult {
 
 pub fn checksum_gen(package: &Package) -> Result<ChecksumResult, ChecksumError> {
     #[allow(unused_variables)]
-    let (fetched, temp_dir) = fetch(package)?;
+    let (fetched, temp_dir) = fetch(package, false)?;
 
     // Generate checksum and print it to the user
     match fetched {

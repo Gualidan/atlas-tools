@@ -14,7 +14,7 @@ pub fn run_build(
     let runtime_config = runtime_config.unwrap_or(RuntimeConfig::build(recipe)?);
 
     // Phase 1: Fetch
-    let (fetched, download_dir) = fetch(&package)?;
+    let (fetched, download_dir) = fetch(&package, true)?;
 
     // Phase 2: Extract
     let (destination, source_root) = extract(fetched)?;

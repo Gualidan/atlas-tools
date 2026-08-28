@@ -1,4 +1,5 @@
 use crate::{
+    checksum::verify::verify,
     fetch::{git::GitFetcher, http::HttpFetcher},
     types::{
         error::FetchError,
@@ -8,7 +9,10 @@ use crate::{
 };
 use tempfile::{Builder, TempDir};
 
-pub fn fetch(package: &Package) -> Result<(FetchedSource, TempDir), FetchError> {
+pub fn fetch(
+    package: &Package,
+    verify_checksum: bool,
+) -> Result<(FetchedSource, TempDir), FetchError> {
     let download_dir = Builder::new().prefix("sisyphus_download_").tempdir()?;
     let download_path = download_dir.path().to_path_buf();
 
@@ -18,11 +22,21 @@ pub fn fetch(package: &Package) -> Result<(FetchedSource, TempDir), FetchError> 
             destination: download_path.clone(),
         }
         .fetch()?,
-        _ => HttpFetcher {
-            url: package.url.clone(),
-            destination: download_path.clone(),
+        _ => {
+            let fetcher = HttpFetcher {
+                url: package.url.clone(),
+                destination: download_path.clone(),
+            }
+            .fetch()?;
+            if verify_checksum {
+                match fetcher {
+                    FetchedSource::Archive(ref path) => verify(&path, package)?,
+                    FetchedSource::Dir(_) => {}
+                }
+            }
+
+            fetcher
         }
-        .fetch()?,
     };
 
     Ok((fetched, download_dir))

@@ -7,5 +7,5 @@ pub struct Package {
     pub dependencies: Vec<String>,
     pub url: String,
     pub download_method: String,
-    pub checksum: Option<String>,
+    pub checksum: String,
 }

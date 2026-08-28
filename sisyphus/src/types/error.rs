@@ -62,6 +62,15 @@ pub enum FetchError {
 
     #[error("Failed to perform HTTP fetch")]
     HttpError(#[from] reqwest::Error),
+
+    #[error("Failed to verify checksum")]
+    ChecksumError(#[from] Box<ChecksumError>),
+}
+
+impl From<ChecksumError> for FetchError {
+    fn from(err: ChecksumError) -> Self {
+        FetchError::ChecksumError(Box::new(err))
+    }
 }
 
 #[derive(Error, Debug)]
@@ -119,4 +128,6 @@ pub enum ChecksumError {
     FetchError(#[from] FetchError),
     #[error("Failed to read file")]
     ReadError(#[from] io::Error),
+    #[error("Checksum mismatch")]
+    ChecksumMismatchError,
 }
