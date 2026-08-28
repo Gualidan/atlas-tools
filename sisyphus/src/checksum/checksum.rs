@@ -1,33 +1,37 @@
-use ring::digest::Digest;
-
 use crate::checksum::hash::hash;
 use crate::fetch::fetch::fetch;
 use crate::types::error::ChecksumError;
 use crate::types::fetcher::FetchedSource;
 use crate::types::package::Package;
+use ring::digest::Digest;
 use std::fs::File;
+use std::path::PathBuf;
 
-pub fn checksum_gen(package: &Package) -> Result<Digest, ChecksumError> {
-    let (fetched, _) = fetch(package)?;
-    let mut hashed: Digest;
+pub enum ChecksumResult {
+    Hashed(Digest),
+    Dir(PathBuf),
+}
+
+pub fn checksum_gen(package: &Package) -> Result<ChecksumResult, ChecksumError> {
+    #[allow(unused_variables)]
+    let (fetched, temp_dir) = fetch(package)?;
 
     // Generate checksum and print it to the user
     match fetched {
         FetchedSource::Archive(path) => {
             let file = File::open(path)?;
             let hasher = hash(&file)?;
-            hashed = hasher;
+
             println!(
                 "Checksum: {}, paste this into your recipe",
-                hashed
+                hasher
                     .as_ref()
                     .iter()
                     .map(|b| format!("{:02x}", b))
                     .collect::<String>()
             );
+            Ok(ChecksumResult::Hashed(hasher))
         }
-        FetchedSource::Dir(dir) => {}
+        FetchedSource::Dir(dir) => Ok(ChecksumResult::Dir(dir)),
     }
-
-    Ok(hashed)
 }
