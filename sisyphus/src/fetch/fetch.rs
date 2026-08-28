@@ -16,15 +16,21 @@ pub fn fetch(
     let download_dir = Builder::new().prefix("sisyphus_download_").tempdir()?;
     let download_path = download_dir.path().to_path_buf();
 
-    let fetched = match package.download_method.as_str() {
+    let fetched = match package
+        .sources
+        .url
+        .as_str()
+        .get(package.sources.url.as_str().len().saturating_sub(3)..)
+        .unwrap_or("")
+    {
         "git" => GitFetcher {
-            url: package.url.clone(),
+            url: package.sources.url.clone(),
             destination: download_path.clone(),
         }
         .fetch()?,
         _ => {
             let fetcher = HttpFetcher {
-                url: package.url.clone(),
+                url: package.sources.url.clone(),
                 destination: download_path.clone(),
             }
             .fetch()?;

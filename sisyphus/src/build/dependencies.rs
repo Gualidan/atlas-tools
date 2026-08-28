@@ -16,7 +16,7 @@ pub struct Dependencies {
 impl Dependencies {
     pub fn prepare(package: Package) -> Result<Self, BuildError> {
         Ok(Self {
-            dependencies: package.dependencies,
+            dependencies: package.deps,
             built: HashSet::new(),
             to_be_built: HashSet::new(),
             in_progress: HashSet::from([package.name]),
@@ -52,7 +52,10 @@ impl Dependencies {
                 }
             }
             if !self.built.contains(dep) && !self.to_be_built.contains(dep) {
-                return Err(BuildError::ResolveDependenciesError());
+                return Err(BuildError::ResolveDependenciesError(format!(
+                    "Dependency not found: {}",
+                    dep
+                )));
             }
         }
 

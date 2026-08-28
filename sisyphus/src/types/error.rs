@@ -3,68 +3,73 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CliError {
-    #[error("Recipe not found: {0}")]
+    #[error("recipe not found: {0}")]
     RecipeNotFound(#[from] io::Error),
 
-    #[error("Failed to run build: {0}")]
+    #[error("failed to run build, caused by: {0}")]
     BuildFailed(#[from] BuildPipelineError),
 
-    #[error("Failed to generate keypair: {0}")]
+    #[error("failed to generate keypair, caused by: {0}")]
     KeygenError(#[from] KeygenError),
 
-    #[error("Failed to run checksum: {0}")]
+    #[error("failed to run checksum, caused by: {0}")]
     ChecksumGenError(#[from] ChecksumError),
 }
 
 #[derive(Error, Debug)]
 pub enum BuildPipelineError {
-    #[error("Failed to create temporary directory `sisyphus_root`: {0}")]
+    #[error("failed to create temporary directory `sisyphus_root`, caused by: {0}")]
     RootDirError(#[from] io::Error),
-    #[error("Failed to parse recipe: {0}")]
+    #[error("failed to parse recipe, caused by: {0}")]
     RecipeError(#[from] RecipeError),
-    #[error("Failed to fetch package: {0}")]
+    #[error("failed to fetch package, caused by: {0}")]
     FetchError(#[from] FetchError),
-    #[error("Failed to extract archive: {0}")]
+    #[error("failed to extract archive, caused by: {0}")]
     ExtractError(#[from] ExtractError),
-    #[error("Failed to parse config: {0}")]
+    #[error("failed to parse config, caused by: {0}")]
     ConfigError(#[from] ConfigError),
-    #[error("Failed to build resolve dependencies: {0}")]
+    #[error("failed to build resolve dependencies, caused by: {0}")]
     DependencyError(#[from] BuildError),
 }
 
 #[derive(Error, Debug)]
 pub enum RecipeError {
-    #[error("Failed to deserialize recipe: {0}")]
+    #[error("failed to deserialize recipe, caused by: {0}")]
     ParseError(#[from] serde_saphyr::DeserializeError),
-    #[error("Failed to read recipe file: {0}")]
+    #[error("failed to read recipe file, caused by: {0}")]
     ReadError(#[from] io::Error),
+    #[error("failed to validate recipe, caused by: {0}")]
+    ValidationError(String),
 }
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("Failed to resolve directory: {0}")]
+    #[error("failed to resolve directory, caused by: {0}")]
     DirError(#[from] io::Error),
 
-    #[error("Failed to parse config: {0}")]
+    #[error("failed to parse config, caused by: {0}")]
     ParseError(#[from] serde_saphyr::DeserializeError),
 
-    #[error("Failed to serialize config: {0}")]
+    #[error("failed to serialize config, caused by: {0}")]
     SerializeError(#[from] serde_saphyr::SerializeError),
 }
 
 #[derive(Error, Debug)]
 pub enum FetchError {
-    #[error("Git not found: {0}")]
+    #[error("Git not found, caused by: {0}")]
     GitNotFound(#[from] which::Error),
 
-    #[error("I/O error during git clone: {0}")]
+    #[error("I/O error during git clone, caused by: {0}")]
     CloneError(#[from] std::io::Error),
 
-    #[error("Failed to perform HTTP fetch: {0}")]
+    #[error("failed to perform HTTP fetch, caused by: {0}")]
     HttpError(#[from] reqwest::Error),
 
-    #[error("Failed to verify checksum: {0}")]
+    #[error("failed to verify checksum, caused by: {0}")]
     ChecksumError(#[from] Box<ChecksumError>),
+
+    #[error("failed to convert to utf8, caused by: {0}")]
+    Utf8Error(#[from] std::string::FromUtf8Error),
 }
 
 impl From<ChecksumError> for FetchError {
@@ -75,24 +80,24 @@ impl From<ChecksumError> for FetchError {
 
 #[derive(Error, Debug)]
 pub enum ExtractError {
-    #[error("I/O error during extraction: {0}")]
+    #[error("I/O error during extraction, caused by: {0}")]
     OpenError(#[from] io::Error),
 
-    #[error("Failed to extract archive: {0}")]
+    #[error("failed to extract archive, caused by: {0}")]
     ExtractError(#[from] compress_tools::Error),
 }
 
 #[derive(Error, Debug)]
 pub enum BuildError {
-    #[error("I/O error during build: {0}")]
+    #[error("I/O error during build, caused by: {0}")]
     ResolveError(#[from] io::Error),
-    #[error("Circular dependency detected: {0}")]
+    #[error("Circular dependency detected, caused by: {0}")]
     CircularDependency(String),
-    #[error("Failed to list directory contents: {0}")]
+    #[error("Failed to list directory contents, caused by: {0}")]
     ListError(#[from] walkdir::Error),
-    #[error("Failed to resolve dependencies")]
-    ResolveDependenciesError(),
-    #[error("Failed to run build: {0}")]
+    #[error("Failed to resolve dependencies, caused by: {0}")]
+    ResolveDependenciesError(String),
+    #[error("failed to run build, caused by: {0}")]
     RunError(#[source] Box<BuildPipelineError>),
 }
 
@@ -104,30 +109,30 @@ impl From<BuildPipelineError> for BuildError {
 
 #[derive(Error, Debug)]
 pub enum KeygenError {
-    #[error("OpenSSL not found: {0}")]
+    #[error("OpenSSL not found, caused by: {0}")]
     OpenSslNotFound(#[from] which::Error),
-    #[error("I/O error during key generation: {0}")]
+    #[error("I/O error during key generation, caused by: {0}")]
     IoError(#[from] io::Error),
-    #[error("Failed to get information (Username, Hostname): {0}")]
+    #[error("failed to get information (Username, Hostname): {0}")]
     InfoError(#[from] whoami::Error),
-    #[error("Failed to get system time: {0}")]
+    #[error("failed to get system time: {0}")]
     TimeError(#[from] std::time::SystemTimeError),
-    #[error("Key already exists")]
+    #[error("key already exists")]
     KeyExistsError,
-    #[error("Failed to generate key: {0}")]
+    #[error("failed to generate key: {0}")]
     OpenSslError(ExitStatus),
-    #[error("Failed to write config: {0}")]
+    #[error("failed to write config: {0}")]
     ConfigError(#[from] ConfigError),
 }
 
 #[derive(Error, Debug)]
 pub enum ChecksumError {
-    #[error("Failed to parse recipe: {0}")]
+    #[error("failed to parse recipe, caused by: {0}")]
     ParseError(#[from] RecipeError),
-    #[error("Failed to fetch package: {0}")]
+    #[error("failed to fetch package, caused by: {0}")]
     FetchError(#[from] FetchError),
-    #[error("Failed to read file: {0}")]
+    #[error("failed to read file, caused by: {0}")]
     ReadError(#[from] io::Error),
-    #[error("Checksum mismatch")]
-    ChecksumMismatchError,
+    #[error("checksum mismatch, caused by: {0}")]
+    ChecksumMismatchError(String),
 }

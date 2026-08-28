@@ -9,6 +9,7 @@ pub struct Recipe<'a> {
 impl<'a> Recipe<'a> {
     pub fn parse(self) -> Result<Package, RecipeError> {
         let package: Package = from_str(&fs::read_to_string(&self.path)?)?;
+        package.validate()?;
         Ok(package)
     }
 }

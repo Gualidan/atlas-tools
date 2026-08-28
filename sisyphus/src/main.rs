@@ -8,9 +8,14 @@ mod signing;
 mod types;
 
 use crate::cli::cli::run;
-use crate::types::error::CliError;
+use std::process::ExitCode;
 
-fn main() -> Result<(), CliError> {
-    run()?;
-    Ok(())
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
