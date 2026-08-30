@@ -1,5 +1,5 @@
 use crate::{
-    build::dependencies::build,
+    build::build::build,
     extract::extract::extract,
     fetch::fetch::fetch,
     types::{error::BuildPipelineError, recipe::Recipe, runtime_config::RuntimeConfig},
@@ -20,7 +20,7 @@ pub fn run_build(
     let (destination, source_root) = extract(fetched)?;
 
     // Phase 3: Dependency resolution / Build
-    build(runtime_config, package)?;
+    build(package, runtime_config)?;
 
     Ok(())
 }

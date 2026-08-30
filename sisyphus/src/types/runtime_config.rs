@@ -1,4 +1,4 @@
-use dirs::data_dir;
+use dirs::{cache_dir, data_dir};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -8,6 +8,7 @@ use crate::types::error::ConfigError;
 pub struct RuntimeConfig {
     pub recipe_repo: PathBuf,
     pub sky_repo: PathBuf,
+    pub srcdir: PathBuf,
 }
 
 impl RuntimeConfig {
@@ -32,6 +33,12 @@ impl RuntimeConfig {
                 )))?
                 .join("sisyphus")
                 .join("repo"),
+            srcdir: cache_dir()
+                .ok_or(ConfigError::DirError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Cache directory not found",
+                )))?
+                .join("sisyphus"),
         })
     }
 }

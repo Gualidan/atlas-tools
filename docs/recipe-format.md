@@ -87,9 +87,12 @@ version with explicit source types and immutable Git revisions.
 `sha256` is the lowercase hexadecimal SHA-256 digest of the downloaded bytes.
 It must be exactly 64 characters. Sisyphus verifies it before extraction.
 
-Sources are downloaded outside the build sandbox, stored under `$srcdir`, and
-made available read-only to phase scripts. A later version may add a `name`
-field to control the local source filename and support patches cleanly.
+Sources are downloaded and checksum-verified outside the build sandbox into an
+immutable fetch cache. Sisyphus extracts or copies them into the writable
+`$srcdir` working tree before phase scripts run. This preserves the verified
+source cache while allowing `prepare` to apply patches or generate files. A
+later version may add a `name` field to control the local source filename and
+support patches cleanly.
 
 ## Dependencies
 
@@ -121,7 +124,7 @@ The following variables are provided:
 
 | Variable | Meaning |
 | --- | --- |
-| `srcdir` | Read-only directory containing fetched and extracted sources. |
+| `srcdir` | Writable working tree containing extracted verified sources. |
 | `builddir` | Writable directory for generated build files. |
 | `pkgdir` | Empty writable staging root for package payload files. |
 | `name` | Recipe package name. |
