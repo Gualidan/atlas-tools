@@ -20,7 +20,7 @@ pub fn run_build(
     let (destination, source_root) = extract(fetched)?;
 
     // Phase 3: Dependency resolution / Build
-    build(package, runtime_config)?;
+    build(&package, runtime_config)?;
 
     Ok(())
 }
