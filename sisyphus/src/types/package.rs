@@ -4,10 +4,12 @@ use crate::types::error::RecipeError;
 
 #[derive(Deserialize, Debug)]
 pub struct Package {
+    pub schema: i32,
     pub name: String,
     pub version: String,
+    pub release: i32,
     pub architecture: Architectures,
-    pub sources: Sources,
+    pub sources: Source,
     #[serde(default)]
     pub makedeps: Vec<String>,
     #[serde(default)]
@@ -21,7 +23,7 @@ pub struct Package {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Sources {
+pub struct Source {
     pub url: String,
     pub sha256: String,
 }
@@ -35,6 +37,11 @@ pub enum Architectures {
 
 impl Package {
     pub fn validate(&self) -> Result<(), RecipeError> {
+        if self.schema == 0 || self.schema > 1 {
+            return Err(RecipeError::ValidationError(
+                "Only schema version 1 is supported".to_string(),
+            ));
+        }
         if self.name.is_empty() {
             return Err(RecipeError::ValidationError(
                 "Name field is empty".to_string(),
@@ -43,6 +50,11 @@ impl Package {
         if self.version.is_empty() {
             return Err(RecipeError::ValidationError(
                 "Version field is empty".to_string(),
+            ));
+        }
+        if self.release < 0 {
+            return Err(RecipeError::ValidationError(
+                "Release field must be a positive integer".to_string(),
             ));
         }
         if self.sources.url.is_empty() {
