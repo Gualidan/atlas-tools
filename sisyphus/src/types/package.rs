@@ -9,7 +9,7 @@ pub struct Package {
     pub version: String,
     pub release: i32,
     pub architecture: Architectures,
-    pub sources: Source,
+    pub source: Source,
     #[serde(default)]
     pub makedeps: Vec<String>,
     #[serde(default)]
@@ -57,12 +57,12 @@ impl Package {
                 "Release field must be a positive integer".to_string(),
             ));
         }
-        if self.sources.url.is_empty() {
+        if self.source.url.is_empty() {
             return Err(RecipeError::ValidationError(
                 "URL field is empty".to_string(),
             ));
         }
-        if self.sources.sha256.is_empty() {
+        if self.source.sha256.is_empty() {
             return Err(RecipeError::ValidationError(
                 "Checksum field is empty".to_string(),
             ));
