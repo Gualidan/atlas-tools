@@ -1,5 +1,5 @@
 ### Atlas Tools
-Atlas Tools is the repo home to the Atlas package manager and it's build system Sisyphus.
+Atlas Tools is the repository home to the Atlas package manager and it's build system Sisyphus.
 
 
 >[!WARNING]
