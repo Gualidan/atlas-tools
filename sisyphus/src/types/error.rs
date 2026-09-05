@@ -136,3 +136,6 @@ pub enum ChecksumError {
     #[error("checksum mismatch, caused by: {0}")]
     ChecksumMismatchError(String),
 }
+
+#[derive(Error, Debug)]
+pub enum SandboxError {}
