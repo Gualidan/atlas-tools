@@ -16,14 +16,14 @@ pub fn fetch(
     let download_dir = Builder::new().prefix("sisyphus_download_").tempdir()?;
     let download_path = download_dir.path().to_path_buf();
 
-    let fetcher = if package.sources.url.ends_with("git") {
+    let fetcher = if package.source.url.ends_with("git") {
         Box::new(GitFetcher {
-            url: package.sources.url.clone(),
+            url: package.source.url.clone(),
             destination: download_path.clone(),
         }) as Box<dyn Fetcher>
     } else {
         Box::new(HttpFetcher {
-            url: package.sources.url.clone(),
+            url: package.source.url.clone(),
             destination: download_path.clone(),
         }) as Box<dyn Fetcher>
     };
