@@ -185,7 +185,7 @@ impl Resolver {
     }
 
     /// Skeleton for the local artifact-store lookup.
-    fn find_reusable_artifact(&self, _name: &str) -> Result<Option<ReusableArtifact>, BuildError> {
+    fn find_reusable_artifact(&self, name: &str) -> Result<Option<ReusableArtifact>, BuildError> {
         let artifact_store: &Path = &self.config.sky_repo;
 
         // TODO: Define the local artifact index/layout, then:
@@ -198,6 +198,9 @@ impl Resolver {
         // its recipe, which is safer than treating an arbitrary directory as
         // an installed package.
         //
+        if artifact_store.join(name).with_extension("sky").exists() {
+            // TODO(Milestone 4): read metadata.yaml here
+        }
         Ok(None)
     }
 
