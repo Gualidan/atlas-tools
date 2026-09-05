@@ -197,11 +197,7 @@ impl Resolver {
         // Returning `None` currently means every dependency is planned from
         // its recipe, which is safer than treating an arbitrary directory as
         // an installed package.
-        // 
-        for entry in WalkDir::new(artifact_store.join()) {
-            let entry = entry?;
-            
-        }
+        //
         Ok(None)
     }
 
