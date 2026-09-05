@@ -11,7 +11,7 @@ pub struct GitFetcher {
 }
 
 impl Fetcher for GitFetcher {
-    fn fetch(self) -> Result<FetchedSource, FetchError> {
+    fn fetch(self: Box<Self>) -> Result<FetchedSource, FetchError> {
         which("git")?;
 
         let output = Command::new("git")
