@@ -10,7 +10,7 @@ pub struct HttpFetcher {
 }
 
 impl Fetcher for HttpFetcher {
-    fn fetch(self) -> Result<FetchedSource, FetchError> {
+    fn fetch(self: Box<Self>) -> Result<FetchedSource, FetchError> {
         let response = reqwest::blocking::get(&self.url)?;
         let response = response.error_for_status()?;
 
