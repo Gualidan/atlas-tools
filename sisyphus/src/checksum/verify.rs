@@ -7,7 +7,7 @@ use crate::types::package::Package;
 
 pub fn verify(file: &PathBuf, package: &Package) -> Result<(), ChecksumError> {
     let computed = hash(File::open(file)?)?;
-    let expected = package.sources.sha256.clone();
+    let expected = package.source.sha256.clone();
 
     let computed = computed
         .as_ref()
