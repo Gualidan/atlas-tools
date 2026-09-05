@@ -59,7 +59,7 @@ package: |
 | `version` | yes | string | Upstream package version. It must be non-empty and must not contain `/`, whitespace, or control characters. |
 | `release` | yes | positive integer | Atlas packaging revision for this upstream version. |
 | `architecture` | yes | string | Target CPU architecture. Version 1 accepts only `x86_64`. |
-| `sources` | yes | non-empty list | Sources fetched before the sandbox starts. |
+| `source` | yes | list of strings | Sources fetched before the sandbox starts. |
 | `makedeps` | no | list of strings | Packages needed only to build or test this package. Defaults to `[]`. |
 | `deps` | no | list of strings | Runtime package dependencies embedded in the resulting `.sky` metadata. Defaults to `[]`. |
 | `prepare` | no | multiline string | Preparation script. Omitted means no preparation phase. |
