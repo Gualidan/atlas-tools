@@ -42,14 +42,32 @@ impl Package {
                 "Only schema version 1 is supported".to_string(),
             ));
         }
-        if self.name.is_empty() {
+
+        if self.name.is_empty()
+            || !self.name.chars().next().unwrap().is_ascii_lowercase()
+                && !self.name.chars().next().unwrap().is_ascii_digit()
+            || !self.name.chars().skip(1).all(|c| {
+                c.is_ascii_lowercase()
+                    || c.is_digit(10)
+                    || c == '+'
+                    || c == '.'
+                    || c == '_'
+                    || c == '-'
+            })
+        {
             return Err(RecipeError::ValidationError(
-                "Name field is empty".to_string(),
+                "Name field is invalid refer to the package naming documentation".to_string(),
             ));
         }
-        if self.version.is_empty() {
+        if self.version.is_empty()
+            || self
+                .version
+                .chars()
+                .any(|s| s.is_control() || s.is_whitespace() || s == '/')
+        {
             return Err(RecipeError::ValidationError(
-                "Version field is empty".to_string(),
+                "Version field is invalid: whitespaces, control characters, and slashes are not allowed"
+                    .to_string(),
             ));
         }
         if self.release < 0 {
