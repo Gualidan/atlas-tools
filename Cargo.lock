@@ -1457,7 +1457,6 @@ dependencies = [
  "serde-saphyr",
  "tempfile",
  "thiserror",
- "walkdir",
  "which",
  "whoami",
 ]

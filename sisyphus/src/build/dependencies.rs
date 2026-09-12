@@ -5,8 +5,6 @@
 //! deterministic, cycle-free build plan. The executor will later consume that
 //! plan, build missing packages, and assemble a Bubblewrap build root.
 
-use walkdir::WalkDir;
-
 use crate::types::{
     error::BuildError, package::Package, recipe::Recipe, runtime_config::RuntimeConfig,
 };

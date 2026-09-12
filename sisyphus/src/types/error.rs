@@ -93,8 +93,6 @@ pub enum BuildError {
     ResolveError(#[from] io::Error),
     #[error("Circular dependency detected, caused by: {0}")]
     CircularDependency(String),
-    #[error("Failed to list directory contents, caused by: {0}")]
-    ListError(#[from] walkdir::Error),
     #[error("Failed to resolve dependencies, caused by: {0}")]
     ResolveDependenciesError(String),
     #[error("failed to run build, caused by: {0}")]
