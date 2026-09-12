@@ -35,6 +35,14 @@ pub enum Architectures {
     AARCH64,
 }
 
+impl AsRef<std::ffi::OsStr> for Architectures {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        match self {
+            Architectures::X86_64 => "x86_64".as_ref(),
+            Architectures::AARCH64 => "aarch64".as_ref(),
+        }
+    }
+}
 impl Package {
     pub fn validate(&self) -> Result<(), RecipeError> {
         if self.schema == 0 || self.schema > 1 {
