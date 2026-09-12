@@ -17,10 +17,10 @@ pub fn run_build(
     let (fetched, _download_dir) = fetch(&package, true)?;
 
     // Phase 2: Extract
-    let (destination, source_root) = extract(fetched)?;
+    let (_destination, source_root) = extract(fetched)?;
 
     // Phase 3: Dependency resolution / Build
-    build(&package, runtime_config)?;
+    build(&package, runtime_config, &source_root)?;
 
     Ok(())
 }

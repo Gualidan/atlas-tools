@@ -4,13 +4,13 @@ use crate::types::{package::Architectures, sandbox::Sandbox};
 use std::{path::PathBuf, process::Command};
 
 pub struct Bubblewrap {
-    name: String,
-    version: String,
-    release: String,
-    arch: Architectures,
-    srcdir: PathBuf,
-    builddir: PathBuf,
-    pkgdir: PathBuf,
+    pub name: String,
+    pub version: String,
+    pub release: String,
+    pub arch: Architectures,
+    pub srcdir: PathBuf,
+    pub builddir: PathBuf,
+    pub pkgdir: PathBuf,
 }
 
 impl Sandbox for Bubblewrap {
@@ -48,8 +48,7 @@ impl Sandbox for Bubblewrap {
             .arg("pkgdir")
             .arg(&self.pkgdir)
             .arg("--unshare-net")
-            .arg("bash -euo pipefail -c ")
-            .arg(&phase)
+            .args(&["bash", "-euo", "pipefail", "-c", &phase])
             .output()?;
         if !cmd.status.success() {
             return Err(super::error::SandboxError::IoError(std::io::Error::new(

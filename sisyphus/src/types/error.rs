@@ -97,6 +97,8 @@ pub enum BuildError {
     ResolveDependenciesError(String),
     #[error("failed to run build, caused by: {0}")]
     RunError(#[source] Box<BuildPipelineError>),
+    #[error("failed to run a phase, caused by: {0}")]
+    PhaseError(#[from] SandboxError),
 }
 
 impl From<BuildPipelineError> for BuildError {

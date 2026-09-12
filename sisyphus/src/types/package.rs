@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use crate::types::error::RecipeError;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Package {
     pub schema: i32,
     pub name: String,
@@ -22,13 +22,13 @@ pub struct Package {
     pub package: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Source {
     pub url: String,
     pub sha256: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Architectures {
     X86_64,
