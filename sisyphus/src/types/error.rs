@@ -138,4 +138,9 @@ pub enum ChecksumError {
 }
 
 #[derive(Error, Debug)]
-pub enum SandboxError {}
+pub enum SandboxError {
+    #[error("bwrap not found, caused by: {0}")]
+    BwrapNotFound(#[from] which::Error),
+    #[error("I/O error during sandbox execution, caused by: {0}")]
+    IoError(#[from] io::Error),
+}
