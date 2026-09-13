@@ -93,6 +93,16 @@ impl Package {
                 "Checksum field is empty".to_string(),
             ));
         }
+        if self.deps.contains(&self.name) {
+            return Err(RecipeError::ValidationError(
+                "Package is not allowed to list itself as a dependency".to_string(),
+            ));
+        }
+        if self.makedeps.contains(&self.name) {
+            return Err(RecipeError::ValidationError(
+                "Package is not allowed to list itself as a make dependency".to_string(),
+            ));
+        }
         if self.build.is_empty() {
             return Err(RecipeError::ValidationError(
                 "Build phase field is empty".to_string(),
