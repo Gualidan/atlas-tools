@@ -1,4 +1,8 @@
-use std::{io, path::StripPrefixError, process::ExitStatus};
+use std::{
+    io,
+    path::{PathBuf, StripPrefixError},
+    process::ExitStatus,
+};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -152,7 +156,7 @@ pub enum PackageError {
     #[error("I/O Error during packaging")]
     IoError(#[from] io::Error),
     #[error("File has an unexpected file type, caused by: {0}")]
-    FileTypeError(String),
+    FileTypeError(String, PathBuf),
     #[error("failed to strip prefix, caused by: {0}")]
     StripPrefixErr(#[from] StripPrefixError),
 }

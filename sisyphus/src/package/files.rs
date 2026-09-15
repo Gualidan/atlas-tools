@@ -13,7 +13,7 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<(), PackageError> {
             ft if ft.is_file() => &entry.strip_prefix(&pkgdir)?.to_path_buf(),
             ft if ft.is_dir() => &entry.strip_prefix(&pkgdir)?.to_path_buf(),
             ft if ft.is_symlink() => &entry.strip_prefix(&pkgdir)?.to_path_buf(),
-            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string()))
+            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string(), entry.to_path_buf()))
         };
     }
     Ok(())
