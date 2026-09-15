@@ -1,4 +1,4 @@
-use std::{io, process::ExitStatus};
+use std::{io, path::StripPrefixError, process::ExitStatus};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -143,4 +143,16 @@ pub enum SandboxError {
     BwrapNotFound(#[from] which::Error),
     #[error("I/O error during sandbox execution, caused by: {0}")]
     IoError(#[from] io::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum PackageError {
+    #[error("failed to walk directory, caused by: {0}")]
+    WalkdirError(#[from] walkdir::Error),
+    #[error("I/O Error during packaging")]
+    IoError(#[from] io::Error),
+    #[error("File has an unexpected file type, caused by: {0}")]
+    FileTypeError(String),
+    #[error("failed to strip prefix, caused by: {0}")]
+    StripPrefixErr(#[from] StripPrefixError),
 }

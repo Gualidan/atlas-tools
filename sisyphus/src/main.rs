@@ -3,6 +3,7 @@ mod checksum;
 mod cli;
 mod extract;
 mod fetch;
+mod package;
 mod pipeline;
 mod signing;
 mod types;
