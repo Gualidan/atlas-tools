@@ -4,9 +4,12 @@ use walkdir::WalkDir;
 
 use crate::types::error::PackageError;
 
-pub fn manifest_gen(pkgdir: PathBuf) -> Result<(), PackageError> {
+pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
     for entry in WalkDir::new(&pkgdir) {
         let entry = entry?;
+        if entry.path() == pkgdir {
+            continue;
+        }
         let file_type = symlink_metadata(&entry.path())?.file_type();
         let entry = entry.path();
         let (path, file_type) = match file_type {
@@ -16,5 +19,5 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<(), PackageError> {
             _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string(), entry.to_path_buf()))
         };
     }
-    Ok(())
+    Ok("".to_string())
 }
