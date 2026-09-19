@@ -159,4 +159,6 @@ pub enum PackageError {
     FileTypeError(String, PathBuf),
     #[error("failed to strip prefix, caused by: {0}")]
     StripPrefixErr(#[from] StripPrefixError),
+    #[error("failed to hash file, caused by: {0}")]
+    HashError(#[from] ChecksumError),
 }
