@@ -1,6 +1,6 @@
 use std::{
     fs::{File, read_link, symlink_metadata},
-    os::unix::fs::MetadataExt,
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::PathBuf,
 };
 
@@ -56,11 +56,17 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
                     target_or_hash: read_link(entry)?.to_string_lossy().to_string(),
                     path: entry.strip_prefix(&pkgdir)?.to_path_buf(),
                 };
-                (manifest_line, entry.strip_prefix(&pkgdir)?.to_path_buf())
+                manifest_line
             }
             _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string(), entry.to_path_buf()))
         };
         metadata.push(manifest_line);
     }
+    metadata.sort_by(|a, b| {
+        a.path
+            .as_os_str()
+            .as_bytes()
+            .cmp(b.path.as_os_str().as_bytes())
+    });
     Ok("".to_string())
 }
