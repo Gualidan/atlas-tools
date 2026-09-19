@@ -79,6 +79,3 @@ Contributions are welcome! Please follow these guidelines:
 ## License
 
 This project is licensed under the GNU General Public License v3.0 - see the LICENSE file for details.
-
->[!TIP]
->If you were wondering yes the multiple contributors named gualidan aïdan and gualidan.tngl.sh are all me my git identity is a mess 🫠
