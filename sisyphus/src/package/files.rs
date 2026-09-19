@@ -27,7 +27,7 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
 
         let mode = symlink_metadata(&entry)?.mode();
 
-        let (manifest_line, path) = match file_type {
+        let manifest_line = match file_type {
             ft if ft.is_file() => {
                 let file = File::open(&entry)?;
 
@@ -37,7 +37,7 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
                     target_or_hash: hex::encode(hash(file)?),
                     path: entry.strip_prefix(&pkgdir)?.to_path_buf(),
                 };
-                (manifest_line, entry.strip_prefix(&pkgdir)?.to_path_buf())
+                manifest_line
             },
             ft if ft.is_dir() => {
 
@@ -47,7 +47,7 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
                     target_or_hash: "-".to_string(),
                     path: entry.strip_prefix(&pkgdir)?.to_path_buf(),
                 };
-                (manifest_line, entry.strip_prefix(&pkgdir)?.to_path_buf())
+                manifest_line
             },
             ft if ft.is_symlink() => {
                 let manifest_line = ManifestLine {
