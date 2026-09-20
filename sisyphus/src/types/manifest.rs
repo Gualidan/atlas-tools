@@ -11,10 +11,11 @@ pub struct ManifestLine {
 
 impl ManifestLine {
     pub fn format(self) -> Result<String, PackageError> {
+        let mode = self.mode & 0o7777;
         Ok(format!(
-            "{}\t{:o}\t{}\t{}\n",
+            "{}\t{:04o}\t{}\t{}\n",
             self.file_type.to_string(),
-            self.mode,
+            mode,
             self.target_or_hash,
             self.path.display()
         ))
@@ -30,9 +31,9 @@ pub enum FileType {
 impl ToString for FileType {
     fn to_string(&self) -> String {
         match self {
-            FileType::File => "file".to_string(),
-            FileType::Dir => "directory".to_string(),
-            FileType::Symlink => "symlink".to_string(),
+            FileType::File => "f".to_string(),
+            FileType::Dir => "d".to_string(),
+            FileType::Symlink => "l".to_string(),
         }
     }
 }
