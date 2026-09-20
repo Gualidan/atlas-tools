@@ -68,5 +68,11 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
             .as_bytes()
             .cmp(b.path.as_os_str().as_bytes())
     });
-    Ok("".to_string())
+
+    let mut manifest = String::new();
+    for line in metadata {
+        manifest.push_str(&line.format()?);
+    }
+
+    Ok(manifest)
 }
