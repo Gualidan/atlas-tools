@@ -3,19 +3,19 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct Metadata {
-    format: String,
-    name: String,
-    version: String,
-    release: u32,
-    architecture: Architectures,
-    deps: Vec<String>,
-    sources: Vec<Source>,
-    build: Build,
+    pub format: u32,
+    pub name: String,
+    pub version: String,
+    pub release: u32,
+    pub architecture: Architectures,
+    pub deps: Vec<String>,
+    pub source: Source,
+    pub build: Build,
 }
 
 #[derive(Serialize)]
-struct Build {
-    recipe_sha256: String,
-    built_at: String,
-    builder: String,
+pub struct Build {
+    pub recipe_sha256: String,
+    pub built_at: String,
+    pub builder: String,
 }

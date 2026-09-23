@@ -4,10 +4,10 @@ use crate::types::error::RecipeError;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Package {
-    pub schema: i32,
+    pub schema: u32,
     pub name: String,
     pub version: String,
-    pub release: i32,
+    pub release: u32,
     pub architecture: Architectures,
     pub source: Source,
     #[serde(default)]
@@ -76,11 +76,6 @@ impl Package {
             return Err(RecipeError::ValidationError(
                 "Version field is invalid: whitespaces, control characters, and slashes are not allowed"
                     .to_string(),
-            ));
-        }
-        if self.release < 0 {
-            return Err(RecipeError::ValidationError(
-                "Release field must be a positive integer".to_string(),
             ));
         }
         if self.source.url.is_empty() {
