@@ -161,4 +161,6 @@ pub enum PackageError {
     StripPrefixErr(#[from] StripPrefixError),
     #[error("failed to hash file, caused by: {0}")]
     HashError(#[from] ChecksumError),
+    #[error("failed to serialize metadata, caused by: {0}")]
+    SerializeError(#[from] serde_saphyr::SerializeError),
 }

@@ -1,1 +1,2 @@
-mod files;
+pub mod files;
+pub mod metadata;
