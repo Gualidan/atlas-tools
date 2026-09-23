@@ -49,9 +49,9 @@ architecture: x86_64
 deps:
   - glibc
 
-sources:
-  - url: https://ftp.gnu.org/gnu/hello/hello-2.12.1.tar.gz
-    sha256: "<source SHA-256>"
+source:
+  url: https://ftp.gnu.org/gnu/hello/hello-2.12.1.tar.gz
+  sha256: "<source SHA-256>"
 
 build:
   recipe_sha256: "<SHA-256 of the input sky.yaml bytes>"
@@ -60,8 +60,8 @@ build:
 ```
 
 `format` must be `1`. `name`, `version`, `release`, `architecture`, and `deps`
-follow the rules in the recipe specification. `sources` records the verified
-sources used for provenance. `build.recipe_sha256` is the lowercase SHA-256 of
+follow the rules in the recipe specification. `source` records the verified
+source used for provenance. `build.recipe_sha256` is the lowercase SHA-256 of
 the original recipe bytes; it lets users identify exactly which recipe produced
 the package.
 
