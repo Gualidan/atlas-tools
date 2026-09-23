@@ -14,7 +14,7 @@ use crate::{
 pub fn metadata_gen(recipe: &PathBuf, package: Package) -> Result<String, PackageError> {
     let reader = File::open(recipe)?;
     let metadata = Metadata {
-        format: package.schema,
+        format: 1,
         name: package.name,
         version: package.version,
         release: package.release,
