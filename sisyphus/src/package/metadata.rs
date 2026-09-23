@@ -18,7 +18,7 @@ pub fn metadata_gen(recipe: &PathBuf, package: Package) -> Result<String, Packag
         name: package.name,
         version: package.version,
         release: package.release,
-        architecture: crate::types::package::Architectures::X86_64,
+        architecture: package.architecture,
         deps: package.deps,
         source: package.source,
         build: Build {
