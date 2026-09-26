@@ -1,6 +1,6 @@
 use std::{
     fs::{File, read_link, symlink_metadata},
-    io::{Cursor, Seek},
+    io::Cursor,
     os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::PathBuf,
 };
@@ -46,9 +46,10 @@ pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
                 };
 
                 let mut header = Header::new_gnu();
-                header.set_username(format!("{}", entry.file_name().display()).as_str())?;
+                header.set_username("root")?;
                 header.set_uid(0);
                 header.set_gid(0);
+                header.set_mode(mode & 0o7777);
                 header.set_size(path.metadata()?.len());
 
                 archive.append_data(&mut header, relative_path, &mut file)?;
@@ -56,9 +57,11 @@ pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
             },
             ft if ft.is_dir() => {
                 let mut header = Header::new_gnu();
-                header.set_username(format!("{}", entry.file_name().display()).as_str())?;
+                header.set_username("root")?;
+                header.set_entry_type(tar::EntryType::Directory);
                 header.set_uid(0);
                 header.set_gid(0);
+                header.set_mode(mode & 0o7777);
                 header.set_size(0);
                 let data: &[u8] = &[];
 
@@ -76,11 +79,12 @@ pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
                 let target = read_link(path)?;
 
                 let mut header = Header::new_gnu();
-                header.set_username(format!("{}", entry.file_name().display()).as_str())?;
+                header.set_username("root")?;
                 header.set_entry_type(tar::EntryType::Symlink);
                 header.set_link_name(&target)?;
                 header.set_size(0);
                 header.set_uid(0);
+                header.set_mode(mode & 0o7777);
                 header.set_gid(0);
                 let data: &[u8] = &[];
 
