@@ -163,4 +163,6 @@ pub enum PackageError {
     HashError(#[from] ChecksumError),
     #[error("failed to serialize metadata, caused by: {0}")]
     SerializeError(#[from] serde_saphyr::SerializeError),
+    #[error("failed to parse mode, caused by: {0}")]
+    ParseModeError(#[from] std::num::ParseIntError),
 }
