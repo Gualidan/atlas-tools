@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
+pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
     let mut metadata: Vec<ManifestLine> = vec![];
 
     let writer = Cursor::new(Vec::new());
