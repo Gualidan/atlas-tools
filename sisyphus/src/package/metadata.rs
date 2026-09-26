@@ -13,6 +13,7 @@ use crate::{
 
 pub fn metadata_gen(recipe: &PathBuf, package: Package) -> Result<String, PackageError> {
     let reader = File::open(recipe)?;
+
     let metadata = Metadata {
         format: 1,
         name: package.name,
