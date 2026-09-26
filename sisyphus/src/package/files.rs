@@ -1,9 +1,11 @@
 use std::{
     fs::{File, read_link, symlink_metadata},
+    io::{Cursor, Seek},
     os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::PathBuf,
 };
 
+use tar::Header;
 use walkdir::WalkDir;
 
 use crate::{
@@ -16,6 +18,10 @@ use crate::{
 
 pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
     let mut metadata: Vec<ManifestLine> = vec![];
+
+    let writer = Cursor::new(Vec::new());
+    let mut archive = tar::Builder::new(zstd::Encoder::new(writer, 3)?);
+
     for entry in WalkDir::new(&pkgdir) {
         let entry = entry?;
         if entry.path() == pkgdir {
@@ -23,42 +29,72 @@ pub fn manifest_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
         }
 
         let file_type = symlink_metadata(&entry.path())?.file_type();
-        let entry = entry.path();
+        let path = entry.path();
 
-        let mode = symlink_metadata(&entry)?.mode();
+        let mode = symlink_metadata(&path)?.mode();
+        let relative_path = path.strip_prefix(&pkgdir)?.to_path_buf();
 
         let manifest_line = match file_type {
             ft if ft.is_file() => {
-                let file = File::open(&entry)?;
+                let mut file = File::open(&path)?;
 
                 let manifest_line = ManifestLine {
                     file_type: FileType::File,
                     mode,
-                    target_or_hash: hex::encode(hash(file)?),
-                    path: entry.strip_prefix(&pkgdir)?.to_path_buf(),
+                    target_or_hash: hex::encode(hash(&File::open(&path)?)?),
+                    path: relative_path.clone(),
                 };
+
+                let mut header = Header::new_gnu();
+                header.set_username(format!("{}", entry.file_name().display()).as_str())?;
+                header.set_uid(0);
+                header.set_gid(0);
+                header.set_size(path.metadata()?.len());
+
+                archive.append_data(&mut header, relative_path, &mut file)?;
                 manifest_line
             },
             ft if ft.is_dir() => {
+                let mut header = Header::new_gnu();
+                header.set_username(format!("{}", entry.file_name().display()).as_str())?;
+                header.set_uid(0);
+                header.set_gid(0);
+                header.set_size(0);
+                let data: &[u8] = &[];
+
+                archive.append_data(&mut header, &relative_path, data)?;
 
                 let manifest_line = ManifestLine {
                     file_type: FileType::Dir,
                     mode,
                     target_or_hash: "-".to_string(),
-                    path: entry.strip_prefix(&pkgdir)?.to_path_buf(),
+                    path: relative_path,
                 };
                 manifest_line
             },
             ft if ft.is_symlink() => {
+                let target = read_link(path)?;
+
+                let mut header = Header::new_gnu();
+                header.set_username(format!("{}", entry.file_name().display()).as_str())?;
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_link_name(&target)?;
+                header.set_size(0);
+                header.set_uid(0);
+                header.set_gid(0);
+                let data: &[u8] = &[];
+
+                archive.append_data(&mut header, &relative_path, data)?;
+
                 let manifest_line = ManifestLine {
                     file_type: FileType::Symlink,
                     mode,
-                    target_or_hash: read_link(entry)?.to_string_lossy().to_string(),
-                    path: entry.strip_prefix(&pkgdir)?.to_path_buf(),
+                    target_or_hash: read_link(path)?.to_string_lossy().to_string(),
+                    path: relative_path,
                 };
                 manifest_line
             }
-            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string(), entry.to_path_buf()))
+            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string(), path.to_path_buf()))
         };
         metadata.push(manifest_line);
     }
