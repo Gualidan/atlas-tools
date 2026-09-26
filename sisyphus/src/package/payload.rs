@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
+pub fn payload_gen(pkgdir: PathBuf) -> Result<(String, Vec<u8>), PackageError> {
     let mut metadata: Vec<ManifestLine> = vec![];
 
     let writer = Cursor::new(Vec::new());
@@ -102,6 +102,7 @@ pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
         };
         metadata.push(manifest_line);
     }
+    let archive = archive.into_inner()?.finish()?.into_inner();
     metadata.sort_by(|a, b| {
         a.path
             .as_os_str()
@@ -114,5 +115,5 @@ pub fn payload_gen(pkgdir: PathBuf) -> Result<String, PackageError> {
         manifest.push_str(&line.format()?);
     }
 
-    Ok(manifest)
+    Ok((manifest, archive))
 }
