@@ -22,7 +22,9 @@ pub fn run_keygen(path: &Option<PathBuf>) -> Result<(), KeygenError> {
         keypair_path.1.display(),
     );
 
-    File::create(config_dir.join("sisyphus.yaml"))?.write_all(yaml_input.as_bytes())?;
+    std::fs::create_dir_all(&config_dir)?;
+
+    File::create(config_dir.join("config.yaml"))?.write_all(yaml_input.as_bytes())?;
 
     Ok(())
 }
