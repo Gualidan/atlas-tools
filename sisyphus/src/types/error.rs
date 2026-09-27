@@ -133,6 +133,16 @@ pub enum KeygenError {
 }
 
 #[derive(Error, Debug)]
+pub enum SigningError {
+    #[error("I/O error during signing, caused by: {0}")]
+    ReadError(#[from] io::Error),
+    #[error("failed to parse private key: {0}")]
+    ParseError(#[from] error::KeyRejected),
+    #[error("failed to hash data: {0}")]
+    MetadataHashError(#[from] ChecksumError),
+}
+
+#[derive(Error, Debug)]
 pub enum ChecksumError {
     #[error("failed to parse recipe, caused by: {0}")]
     ParseError(#[from] RecipeError),
