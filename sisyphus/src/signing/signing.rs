@@ -1,4 +1,5 @@
-use crate::types::error::KeygenError;
+use crate::checksum::hash::hash;
+use crate::types::error::{KeygenError, SigningError};
 use libc::umask;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -48,4 +49,30 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
     std::fs::write(&path, priv_key)?;
 
     Ok(vec![path, pub_key_path])
+}
+
+pub fn sign(
+    priv_key_path: &PathBuf,
+    metadata: String,
+    manifest: String,
+    payload: Vec<u8>,
+) -> Result<Vec<u8>, SigningError> {
+    let priv_key = std::fs::read(priv_key_path)?;
+    let pkcs8 = Ed25519KeyPair::from_pkcs8(&priv_key)?;
+
+    let metadata_hash = hash(metadata.as_bytes())?;
+    let payload_hash = hash(payload.as_slice())?;
+    let manifest_hash = hash(manifest.as_bytes())?;
+
+    let byte_buffer = metadata_hash
+        .as_ref()
+        .iter()
+        .chain(payload_hash.as_ref())
+        .chain(manifest_hash.as_ref())
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let signature = pkcs8.sign(&byte_buffer);
+
+    Ok(signature.as_ref().to_vec())
 }
