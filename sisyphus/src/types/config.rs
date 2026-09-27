@@ -21,7 +21,9 @@ pub fn load_settings() -> Result<Settings, ConfigError> {
 
     std::fs::create_dir_all(&config_dir)?;
 
-    let builder = Config::builder().add_source(File::with_name("config").required(true));
+    std::env::set_current_dir(config_dir)?;
+
+    let builder = Config::builder().add_source(File::with_name("config.yaml").required(true));
 
     let config = builder.build()?;
     Ok(config.try_deserialize()?)
