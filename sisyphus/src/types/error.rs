@@ -1,3 +1,4 @@
+use ring::error;
 use std::{
     io,
     path::{PathBuf, StripPrefixError},
@@ -113,8 +114,6 @@ impl From<BuildPipelineError> for BuildError {
 
 #[derive(Error, Debug)]
 pub enum KeygenError {
-    #[error("OpenSSL not found, caused by: {0}")]
-    OpenSslNotFound(#[from] which::Error),
     #[error("I/O error during key generation, caused by: {0}")]
     IoError(#[from] io::Error),
     #[error("failed to get information (Username, Hostname): {0}")]
@@ -124,9 +123,13 @@ pub enum KeygenError {
     #[error("key already exists")]
     KeyExistsError,
     #[error("failed to generate key: {0}")]
-    OpenSslError(ExitStatus),
+    KeyGenError(ExitStatus),
     #[error("failed to write config: {0}")]
     ConfigError(#[from] ConfigError),
+    #[error("failed to generate ed25519 keypair: {0}")]
+    KeyPairError(#[from] error::Unspecified),
+    #[error("failed to derive keypair: {0}")]
+    WriteError(#[from] error::KeyRejected),
 }
 
 #[derive(Error, Debug)]
