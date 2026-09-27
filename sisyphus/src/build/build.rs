@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tempfile::Builder;
+use tempfile::{Builder, TempDir};
 
 use crate::build::dependencies::resolve;
 use crate::types::bubblewrap::Bubblewrap;
@@ -9,14 +9,18 @@ use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
 use crate::types::sandbox::Sandbox;
 
-pub fn build(package: &Package, config: RuntimeConfig, srcdir: &PathBuf) -> Result<(), BuildError> {
+pub fn build(
+    package: &Package,
+    config: RuntimeConfig,
+    srcdir: &PathBuf,
+) -> Result<TempDir, BuildError> {
     resolve(config, package)?;
 
     let builddir = Builder::new().prefix("sisyphus_builddir").tempdir()?;
     let pkgdir = Builder::new().prefix("sisyphus_pkgdir").tempdir()?;
 
     let builddir = builddir.path().to_path_buf();
-    let pkgdir = pkgdir.path().to_path_buf();
+    let pkgdir_path = pkgdir.path().to_path_buf();
     let bwp = Bubblewrap {
         name: package.name.clone(),
         version: package.version.clone(),
@@ -24,7 +28,7 @@ pub fn build(package: &Package, config: RuntimeConfig, srcdir: &PathBuf) -> Resu
         arch: package.architecture,
         srcdir: srcdir.clone(),
         builddir: builddir,
-        pkgdir: pkgdir,
+        pkgdir: pkgdir_path,
     };
 
     if let Some(prepare) = &package.prepare {
@@ -36,5 +40,5 @@ pub fn build(package: &Package, config: RuntimeConfig, srcdir: &PathBuf) -> Resu
     }
     bwp.run_phase(package.package.clone())?;
 
-    Ok(())
+    Ok(pkgdir)
 }
