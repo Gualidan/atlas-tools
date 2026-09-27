@@ -1,4 +1,5 @@
 pub mod bubblewrap;
+pub mod config;
 pub mod error;
 pub mod fetcher;
 pub mod manifest;

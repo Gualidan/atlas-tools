@@ -1,4 +1,5 @@
 use ring::error;
+use serde_saphyr::SerializeError;
 use std::{
     io,
     path::{PathBuf, StripPrefixError},
@@ -35,6 +36,10 @@ pub enum BuildPipelineError {
     ConfigError(#[from] ConfigError),
     #[error("failed to build resolve dependencies, caused by: {0}")]
     DependencyError(#[from] BuildError),
+    #[error("failed to package, caused by: {0}")]
+    RunError(#[from] PackageError),
+    #[error("failed to get runtime config, caused by: {0}")]
+    RuntimeConfigError(#[from] RuntimeConfigError),
 }
 
 #[derive(Error, Debug)]
@@ -48,7 +53,7 @@ pub enum RecipeError {
 }
 
 #[derive(Error, Debug)]
-pub enum ConfigError {
+pub enum RuntimeConfigError {
     #[error("failed to resolve directory, caused by: {0}")]
     DirError(#[from] io::Error),
 
@@ -124,6 +129,8 @@ pub enum KeygenError {
     KeyExistsError,
     #[error("failed to generate key: {0}")]
     KeyGenError(ExitStatus),
+    #[error("failed to write config: {0}")]
+    Config(#[from] ConfigError),
     #[error("failed to generate ed25519 keypair: {0}")]
     KeyPairError(#[from] error::Unspecified),
     #[error("failed to derive keypair: {0}")]
@@ -178,4 +185,16 @@ pub enum PackageError {
     SerializeError(#[from] serde_saphyr::SerializeError),
     #[error("failed to parse mode, caused by: {0}")]
     ParseModeError(#[from] std::num::ParseIntError),
+    #[error("failed to sign artifacts, caused by: {0}")]
+    SignError(#[from] SigningError),
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("I/O error during config loading, caused by: {0}")]
+    IoError(#[from] io::Error),
+    #[error("failed to serialize config, caused by: {0}")]
+    DirError(#[from] SerializeError),
+    #[error("error during config creation, caused by: {0}")]
+    ParseError(#[from] config::ConfigError),
 }
