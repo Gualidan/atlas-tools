@@ -17,16 +17,12 @@ pub fn run_keygen(path: &Option<PathBuf>) -> Result<(), KeygenError> {
     };
 
     let yaml_input = format!(
-        r#"
-        priv_key_path: {}
-        pub_key_path: {}
-        "#,
+        "priv_key_path: {}\npub_key_path: {}\n",
         keypair_path.0.display(),
-        keypair_path.1.display()
+        keypair_path.1.display(),
     );
 
-    File::create(config_dir.join("sisyphus").with_extension("yaml"))?
-        .write_all(serde_saphyr::from_str(yaml_input.as_str())?)?;
+    File::create(config_dir.join("sisyphus.yaml"))?.write_all(yaml_input.as_bytes())?;
 
     Ok(())
 }
