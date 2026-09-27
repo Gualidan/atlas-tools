@@ -10,7 +10,7 @@ pub fn run_keygen(path: &Option<PathBuf>) -> Result<(), KeygenError> {
     } else {
         keygen(&None)?
     };
-    SisyphusConfig::new(keypair_path)?;
+    SisyphusConfig::new(vec![keypair_path.0, keypair_path.1])?;
 
     Ok(())
 }

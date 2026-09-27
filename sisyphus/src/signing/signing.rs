@@ -5,7 +5,7 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-pub fn keygen(keypath: &Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
+pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf), KeygenError> {
     let path = match keypath {
         Some(p) => std::path::PathBuf::from(p),
         None => {
@@ -47,7 +47,7 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
     unsafe { umask(0o077) };
     std::fs::write(&path, priv_key)?;
 
-    Ok(vec![path, pub_key_path])
+    Ok((path, pub_key_path))
 }
 
 pub fn sign(priv_key_path: &PathBuf, data: &[u8]) -> Result<Vec<u8>, SigningError> {
