@@ -13,6 +13,7 @@ pub struct RuntimeConfig {
 
 impl RuntimeConfig {
     pub fn build(recipe: &PathBuf) -> Result<RuntimeConfig, RuntimeConfigError> {
+        let recipe = recipe.canonicalize()?;
         Ok(RuntimeConfig {
             recipe_repo: recipe
                 .parent()
