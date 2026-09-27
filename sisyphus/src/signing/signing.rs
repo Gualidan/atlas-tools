@@ -32,7 +32,6 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
         return Err(KeygenError::KeyExistsError);
     }
     if let Some(parent) = path.parent() {
-        unsafe { umask(0o077) };
         std::fs::create_dir_all(parent)?;
     }
 
@@ -45,6 +44,7 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<Vec<PathBuf>, KeygenError> {
 
     std::fs::write(&pub_key_path, pub_key)?;
 
+    unsafe { umask(0o077) };
     std::fs::write(&path, priv_key)?;
 
     Ok(vec![path, pub_key_path])
