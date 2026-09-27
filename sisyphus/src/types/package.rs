@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use crate::types::error::RecipeError;
@@ -33,6 +35,12 @@ pub struct Source {
 pub enum Architectures {
     X86_64,
     AARCH64,
+}
+
+impl Display for Architectures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref().to_string_lossy())
+    }
 }
 
 impl AsRef<std::ffi::OsStr> for Architectures {

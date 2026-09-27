@@ -11,17 +11,17 @@ use crate::{
     },
 };
 
-pub fn metadata_gen(recipe: &PathBuf, package: Package) -> Result<String, PackageError> {
+pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<String, PackageError> {
     let reader = File::open(recipe)?;
 
     let metadata = Metadata {
         format: 1,
-        name: package.name,
-        version: package.version,
-        release: package.release,
-        architecture: package.architecture,
-        deps: package.deps,
-        source: package.source,
+        name: package.name.clone(),
+        version: package.version.clone(),
+        release: package.release.clone(),
+        architecture: package.architecture.clone(),
+        deps: package.deps.clone(),
+        source: package.source.clone(),
         build: Build {
             recipe_sha256: hex::encode(hash(reader)?),
             built_at: Utc::now().to_rfc3339(),
