@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[command(
     name = "sisyphus",
     author = "Gualidan",
-    version = "0.1.0",
+    version = env!("CARGO_PKG_VERSION"),
     about = "Package build system for the Atlas package manager"
 )]
 struct Cli {

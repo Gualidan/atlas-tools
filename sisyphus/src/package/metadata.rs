@@ -25,7 +25,7 @@ pub fn metadata_gen(recipe: &PathBuf, package: Package) -> Result<String, Packag
         build: Build {
             recipe_sha256: hex::encode(hash(reader)?),
             built_at: Utc::now().to_rfc3339(),
-            builder: String::from("sisyphus 0.1.0"),
+            builder: format!("sisyphus {}", env!("CARGO_PKG_VERSION")),
         },
     };
     let metadata_string = serde_saphyr::to_string(&metadata)?;
