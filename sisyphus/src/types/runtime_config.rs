@@ -16,12 +16,8 @@ impl RuntimeConfig {
         let recipe = recipe.canonicalize()?;
         Ok(RuntimeConfig {
             recipe_repo: recipe
-                .parent()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Recipe directory not found",
-                )))?
-                .parent()
+                .ancestors()
+                .nth(2)
                 .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     "Recipe directory not found",
