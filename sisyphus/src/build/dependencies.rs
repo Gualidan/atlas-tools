@@ -164,14 +164,9 @@ impl Resolver {
     }
 
     /// Return the canonical v1 recipe path. Do not scan arbitrary directories:
-    /// the repository contract is exactly `core/<name>/sky.yaml`.
+    /// the repository contract is exactly `<name>/sky.yaml`.
     fn recipe_path(&self, name: &str) -> Result<PathBuf, BuildError> {
-        let recipe_path = self
-            .config
-            .recipe_repo
-            .join("core")
-            .join(name)
-            .join("sky.yaml");
+        let recipe_path = self.config.recipe_repo.join(name).join("sky.yaml");
         if recipe_path.is_file() {
             Ok(recipe_path)
         } else {
