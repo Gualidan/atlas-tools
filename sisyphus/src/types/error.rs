@@ -127,8 +127,6 @@ pub enum KeygenError {
     TimeError(#[from] std::time::SystemTimeError),
     #[error("key already exists")]
     KeyExistsError,
-    #[error("failed to generate key: {0}")]
-    KeyGenError(ExitStatus),
     #[error("failed to write config: {0}")]
     Config(#[from] ConfigError),
     #[error("failed to generate ed25519 keypair: {0}")]
