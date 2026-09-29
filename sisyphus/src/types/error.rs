@@ -167,6 +167,8 @@ pub enum SandboxError {
     BwrapNotFound(#[from] which::Error),
     #[error("I/O error during sandbox execution, caused by: {0}")]
     IoError(#[from] io::Error),
+    #[error("bwrap exited with non-zero status: {0}")]
+    BwrapExitError(ExitStatus),
 }
 
 #[derive(Error, Debug)]

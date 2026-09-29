@@ -16,7 +16,22 @@ pub struct Bubblewrap {
 impl Sandbox for Bubblewrap {
     fn run_phase(&self, phase: String) -> Result<(), super::error::SandboxError> {
         which("bwrap")?;
-        let cmd = Command::new("bwrap")
+        let mut cmd = Command::new("bwrap")
+            .arg("--ro-bind")
+            .arg("/usr")
+            .arg("/usr")
+            .arg("--symlink")
+            .arg("/bin")
+            .arg("/usr/bin")
+            .arg("--symlink")
+            .arg("/lib")
+            .arg("/usr/lib")
+            .arg("--symlink")
+            .arg("/lib64")
+            .arg("/usr/lib64")
+            .arg("--symlink")
+            .arg("/sbin")
+            .arg("/usr/sbin")
             .arg("--bind")
             .arg(&self.srcdir)
             .arg("/srcdir")
@@ -40,21 +55,21 @@ impl Sandbox for Bubblewrap {
             .arg(&self.arch)
             .arg("--setenv")
             .arg("srcdir")
-            .arg(&self.srcdir)
+            .arg("/srcdir")
             .arg("--setenv")
             .arg("builddir")
-            .arg(&self.builddir)
+            .arg("/builddir")
             .arg("--setenv")
             .arg("pkgdir")
-            .arg(&self.pkgdir)
+            .arg("/pkgdir")
             .arg("--unshare-net")
             .args(&["bash", "-euo", "pipefail", "-c", &phase])
-            .output()?;
-        if !cmd.status.success() {
-            return Err(super::error::SandboxError::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "non-zero exit status",
-            )));
+            .spawn()?;
+
+        let status = cmd.wait()?;
+
+        if !status.success() {
+            return Err(super::error::SandboxError::BwrapExitError(status));
         }
 
         Ok(())
