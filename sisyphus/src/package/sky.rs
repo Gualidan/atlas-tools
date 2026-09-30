@@ -16,13 +16,10 @@ pub fn sky_gen(
     if !output_path.exists() {
         std::fs::create_dir_all(&output_path)?;
     }
-    let output_path = output_path.join(
-        PathBuf::from(format!(
-            "{}-{}-{}-{}",
-            package.name, package.version, package.release, package.architecture
-        ))
-        .with_extension("sky"),
-    );
+    let output_path = output_path.join(PathBuf::from(format!(
+        "{}-{}-{}-{}.sky",
+        package.name, package.version, package.release, package.architecture
+    )));
 
     let sky_file = File::create(&output_path)?;
 
