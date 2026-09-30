@@ -68,15 +68,15 @@ enum VisitState {
 /// This context must be reused for all nested dependencies. Creating a fresh
 /// resolver for every dependency loses the active path and misses indirect
 /// cycles such as `a -> b -> c -> a`.
-struct Resolver {
-    config: RuntimeConfig,
+struct Resolver<'a> {
+    config: &'a RuntimeConfig,
     states: HashMap<String, VisitState>,
     active_path: Vec<String>,
     plan: BuildPlan,
 }
 
-impl Resolver {
-    fn new(config: RuntimeConfig, root_package: &Package) -> Self {
+impl<'a> Resolver<'a> {
+    fn new(config: &'a RuntimeConfig, root_package: &Package) -> Self {
         Self {
             config,
             states: HashMap::new(),
@@ -224,6 +224,6 @@ fn stable_names(names: &[String]) -> Vec<String> {
 /// The caller must execute this plan separately. In particular, do not call
 /// `run_build` from this module: the complete graph must be known before the
 /// first package build starts.
-pub fn resolve(config: RuntimeConfig, root_package: &Package) -> Result<BuildPlan, BuildError> {
+pub fn resolve(config: &RuntimeConfig, root_package: &Package) -> Result<BuildPlan, BuildError> {
     Resolver::new(config, root_package).resolve_root(root_package)
 }

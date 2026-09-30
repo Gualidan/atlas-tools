@@ -109,6 +109,8 @@ pub enum BuildError {
     RunError(#[source] Box<BuildPipelineError>),
     #[error("failed to run a phase, caused by: {0}")]
     PhaseError(#[from] SandboxError),
+    #[error("failed to parse recipe, caused by: {0}")]
+    RecipeError(#[from] RecipeError),
 }
 
 impl From<BuildPipelineError> for BuildError {

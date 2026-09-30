@@ -63,7 +63,7 @@ pub fn run() -> Result<(), CliError> {
                 println!("Skipping build.");
                 return Ok(());
             }
-            run_build(&args.recipe_path, None, None)?;
+            run_build(&args.recipe_path, None, false)?;
             Ok(())
         }
         Commands::Keygen(args) => {

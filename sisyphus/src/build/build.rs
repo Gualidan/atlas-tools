@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use tempfile::{Builder, TempDir};
 
-use crate::build::dependencies::resolve;
+use crate::build::dependencies::BuildPlan;
+use crate::pipeline::build::run_build;
 use crate::types::bubblewrap::Bubblewrap;
 use crate::types::error::BuildError;
 use crate::types::package::Package;
@@ -10,12 +11,22 @@ use crate::types::runtime_config::RuntimeConfig;
 use crate::types::sandbox::Sandbox;
 
 pub fn build(
+    runtime_config: &RuntimeConfig,
     package: &Package,
-    config: RuntimeConfig,
     srcdir: &PathBuf,
+    build_plan: &Option<BuildPlan>,
 ) -> Result<TempDir, BuildError> {
-    resolve(config, package)?;
+    if let Some(plan) = build_plan {
+        for dep in &plan.packages_to_build {
+            run_build(&dep.recipe_path, Some(runtime_config), true)?;
+        }
+    }
 
+    let pkgdir = build_package(package, srcdir)?;
+    Ok(pkgdir)
+}
+
+pub fn build_package(package: &Package, srcdir: &PathBuf) -> Result<TempDir, BuildError> {
     let builddir = Builder::new().prefix("sisyphus_builddir").tempdir()?;
     let pkgdir = Builder::new().prefix("sisyphus_pkgdir").tempdir()?;
 
