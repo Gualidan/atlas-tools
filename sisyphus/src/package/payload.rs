@@ -98,7 +98,7 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>), PackageError> 
                 };
                 manifest_line
             }
-            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink".to_string(), path.to_path_buf()))
+            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink)".to_string(), path.to_path_buf()))
         };
         metadata.push(manifest_line);
     }
