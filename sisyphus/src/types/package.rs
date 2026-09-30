@@ -18,7 +18,8 @@ pub struct Package {
     pub deps: Vec<String>,
     #[serde(default)]
     pub prepare: Option<String>,
-    pub build: String,
+    #[serde(default)]
+    pub build: Option<String>,
     #[serde(default)]
     pub check: Option<String>,
     pub package: String,
@@ -104,11 +105,6 @@ impl Package {
         if self.makedeps.contains(&self.name) {
             return Err(RecipeError::ValidationError(
                 "Package is not allowed to list itself as a make dependency".to_string(),
-            ));
-        }
-        if self.build.is_empty() {
-            return Err(RecipeError::ValidationError(
-                "Build phase field is empty".to_string(),
             ));
         }
         if self.package.is_empty() {

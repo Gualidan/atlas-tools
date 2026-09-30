@@ -63,7 +63,7 @@ package: |
 | `makedeps` | no | list of strings | Packages needed only to build or test this package. Defaults to `[]`. |
 | `deps` | no | list of strings | Runtime package dependencies embedded in the resulting `.sky` metadata. Defaults to `[]`. |
 | `prepare` | no | multiline string | Preparation script. Omitted means no preparation phase. |
-| `build` | yes | multiline string | Compilation script. |
+| `build` | no | multiline string | Compilation script. Omitted means no build phase. |
 | `check` | no | multiline string | Test script. Omitted means no test phase. |
 | `package` | yes | multiline string | Script that stages files into `$pkgdir`. |
 

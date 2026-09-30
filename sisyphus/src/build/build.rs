@@ -34,7 +34,9 @@ pub fn build(
     if let Some(prepare) = &package.prepare {
         bwp.run_phase(prepare.clone())?;
     }
-    bwp.run_phase(package.build.clone())?;
+    if let Some(build) = &package.build {
+        bwp.run_phase(build.clone())?;
+    }
     if let Some(check) = &package.check {
         bwp.run_phase(check.clone())?;
     }
