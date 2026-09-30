@@ -21,7 +21,7 @@ struct Cli {
 enum Commands {
     /// Build a package
     Build(BuildArgs),
-    /// Generate RSA keypair
+    /// Generate ED25519 keypair
     Keygen(KeygenArgs),
     /// Generate a checksum for the source file and update the YAML
     ChecksumGen(ChecksumArgs),
@@ -43,7 +43,7 @@ struct BuildArgs {
 
 #[derive(Args)]
 struct KeygenArgs {
-    /// Path to save the RSA keypair
+    /// Path to save the ED25519 keypair
     #[arg(short, long)]
     keypair_path: Option<PathBuf>,
 }
