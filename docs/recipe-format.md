@@ -117,14 +117,14 @@ bash -euo pipefail -c <phase-script>
 ```
 
 The scripts execute in a fresh Bubblewrap sandbox. The sandbox has no network
-access after Sisyphus has fetched and verified the declared sources. It does
+access after Sisyphus has fetched and verified the declared source. It does
 not expose the builder's home directory or the live host filesystem.
 
 The following variables are provided:
 
 | Variable | Meaning |
 | --- | --- |
-| `srcdir` | Writable working tree containing extracted verified sources. |
+| `srcdir` | Writable working tree containing extracted verified source. |
 | `builddir` | Writable directory for generated build files. |
 | `pkgdir` | Empty writable staging root for package payload files. |
 | `name` | Recipe package name. |
@@ -156,6 +156,6 @@ that identity as its filename with a `.sky` suffix.
 ## Version 1 boundaries
 
 Version 1 intentionally does not define split packages, optional dependencies,
-version constraints, Git sources, patches, build options, cross-compilation,
+version constraints, patches, build options, cross-compilation,
 or non-x86_64 targets. Such features require a schema-version increment or a
 backwards-compatible extension with explicit validation rules.
