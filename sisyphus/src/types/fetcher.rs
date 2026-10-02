@@ -1,6 +1,7 @@
 use crate::types::error::FetchError;
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub enum FetchedSource {
     Archive(PathBuf),
     Dir(PathBuf),
