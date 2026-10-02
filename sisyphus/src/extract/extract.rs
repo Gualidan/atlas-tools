@@ -3,7 +3,6 @@ use crate::{
     types::{error::ExtractError, fetcher::FetchedSource},
 };
 use compress_tools::{Ownership, uncompress_archive};
-use copy_dir::copy_dir;
 use std::fs::File;
 use std::path::PathBuf;
 use tempfile::{Builder, TempDir};
@@ -18,8 +17,7 @@ pub fn extract(fetched: FetchedSource) -> Result<(TempDir, PathBuf), ExtractErro
             let source_root = find_source_root(&destination.path().to_path_buf())?;
             Ok((destination, source_root))
         }
-        FetchedSource::Dir(dir) => {
-            copy_dir(dir, destination.path())?;
+        FetchedSource::Dir(_dir) => {
             let source_root = find_source_root(&destination.path().to_path_buf())?;
             Ok((destination, source_root))
         }
