@@ -28,7 +28,7 @@ pub struct Package {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Source {
     pub url: String,
-    pub sha256: String,
+    pub sha256: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy)]
@@ -52,6 +52,7 @@ impl AsRef<std::ffi::OsStr> for Architectures {
         }
     }
 }
+
 impl Package {
     pub fn validate(&self) -> Result<(), RecipeError> {
         if self.schema == 0 || self.schema > 1 {
@@ -90,11 +91,6 @@ impl Package {
         if self.source.url.is_empty() {
             return Err(RecipeError::ValidationError(
                 "URL field is empty".to_string(),
-            ));
-        }
-        if self.source.sha256.is_empty() {
-            return Err(RecipeError::ValidationError(
-                "Checksum field is empty".to_string(),
             ));
         }
         if self.deps.contains(&self.name) {

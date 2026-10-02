@@ -14,6 +14,7 @@ pub fn verify(file: &PathBuf, package: &Package) -> Result<(), ChecksumError> {
         .iter()
         .map(|b| format!("{:02x}", b))
         .collect::<String>();
+    let expected = expected.unwrap();
     if computed != expected {
         return Err(ChecksumError::ChecksumMismatchError(format!(
             "Expected: {expected}, got: {computed}"

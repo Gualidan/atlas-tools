@@ -32,6 +32,9 @@ pub fn checksum_gen(package: &Package) -> Result<ChecksumResult, ChecksumError> 
             );
             Ok(ChecksumResult::Hashed(hasher))
         }
-        FetchedSource::Dir(dir) => Ok(ChecksumResult::Dir(dir)),
+        FetchedSource::Dir(dir) => {
+            println!("Git source detected, skipping checksum generation");
+            Ok(ChecksumResult::Dir(dir))
+        }
     }
 }

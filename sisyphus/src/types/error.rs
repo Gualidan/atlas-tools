@@ -80,6 +80,9 @@ pub enum FetchError {
 
     #[error("failed to convert to utf8, caused by: {0}")]
     Utf8Error(#[from] std::string::FromUtf8Error),
+
+    #[error("failed to parse URL, caused by: {0}")]
+    UrlError(#[from] url::ParseError),
 }
 
 impl From<ChecksumError> for FetchError {

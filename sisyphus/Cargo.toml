@@ -22,3 +22,4 @@ chrono = "0.4.45"
 tar = "0.4.46"
 zstd = "0.14.0"
 ring = { version = "0.17.14", features = ["std"] }
+url = "2.5.8"

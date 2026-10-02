@@ -8,6 +8,7 @@ use crate::{
     },
 };
 use tempfile::{Builder, TempDir};
+use url::Url;
 
 pub fn fetch(
     package: &Package,
@@ -15,6 +16,7 @@ pub fn fetch(
 ) -> Result<(FetchedSource, TempDir), FetchError> {
     let download_dir = Builder::new().prefix("sisyphus_download_").tempdir()?;
     let download_path = download_dir.path().to_path_buf();
+    let parsed_url = Url::parse(&package.source.url)?;
 
     let fetcher = if package.source.url.ends_with("git") {
         Box::new(GitFetcher {
@@ -28,7 +30,7 @@ pub fn fetch(
         }) as Box<dyn Fetcher>
     };
     let fetched = fetcher.fetch()?;
-    if verify_checksum {
+    if verify_checksum && !parsed_url.path().trim_end_matches("/").ends_with(".git") {
         match fetched {
             FetchedSource::Archive(ref path) => verify(&path, package)?,
             FetchedSource::Dir(_) => {}
