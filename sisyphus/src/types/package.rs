@@ -31,7 +31,7 @@ pub struct Source {
     pub sha256: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Architectures {
     X86_64,
