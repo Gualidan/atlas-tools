@@ -22,7 +22,6 @@ pub fn run_build(
 
     // Phase 1: Fetch
     let (fetched, _download_dir) = fetch(&package, true)?;
-    println!("{fetched:?}");
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched)?;
