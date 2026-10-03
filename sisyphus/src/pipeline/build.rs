@@ -29,7 +29,7 @@ pub fn run_build(
 
     // Phase 3: Dependency resolution / Build
     let build_plan = if !nested {
-        Some(resolve(runtime_config, &package)?)
+        Some(resolve(runtime_config, &package, &config)?)
     } else {
         None
     };

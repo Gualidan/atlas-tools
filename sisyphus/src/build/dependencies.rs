@@ -5,11 +5,25 @@
 //! deterministic, cycle-free build plan. The executor will later consume that
 //! plan, build missing packages, and assemble a Bubblewrap build root.
 
-use crate::types::{
-    error::BuildError, package::Package, recipe::Recipe, runtime_config::RuntimeConfig,
+use crate::{
+    checksum::hash::hash,
+    types::{
+        config::Settings,
+        error::BuildError,
+        metadata::Metadata,
+        package::{Architectures, Package},
+        recipe::Recipe,
+        runtime_config::RuntimeConfig,
+    },
 };
+use ring::signature::{ED25519, UnparsedPublicKey};
+use tar::Archive as TarArchive;
+use zstd::stream::Decoder;
+
 use std::{
     collections::HashMap,
+    fs::{self, File},
+    io::{Cursor, Read},
     path::{Path, PathBuf},
 };
 
@@ -31,7 +45,11 @@ pub struct RecipeBuild {
 #[derive(Debug, Clone)]
 pub struct ReusableArtifact {
     pub name: String,
+    pub version: String,
+    pub release: u32,
+    pub architecture: Architectures,
     pub artifact_path: PathBuf,
+    pub deps: Vec<String>,
 }
 
 /// The complete result of dependency resolution.
@@ -92,9 +110,13 @@ impl<'a> Resolver<'a> {
 
     /// Resolve every package needed before the root recipe may enter its
     /// sandbox. Only `makedeps` start this traversal.
-    fn resolve_root(mut self, root_package: &Package) -> Result<BuildPlan, BuildError> {
+    fn resolve_root(
+        mut self,
+        root_package: &Package,
+        settings: &Settings,
+    ) -> Result<BuildPlan, BuildError> {
         for dependency in stable_names(&root_package.makedeps) {
-            self.resolve_dependency(&dependency)?;
+            self.resolve_dependency(&dependency, settings)?;
         }
         Ok(self.plan)
     }
@@ -104,7 +126,7 @@ impl<'a> Resolver<'a> {
     /// The post-order insertion near the end is what produces a valid
     /// dependency-first build order without relying on HashMap/HashSet
     /// iteration order.
-    fn resolve_dependency(&mut self, name: &str) -> Result<(), BuildError> {
+    fn resolve_dependency(&mut self, name: &str, settings: &Settings) -> Result<(), BuildError> {
         match self
             .states
             .get(name)
@@ -112,7 +134,9 @@ impl<'a> Resolver<'a> {
             .unwrap_or(VisitState::Unvisited)
         {
             VisitState::Resolved => return Ok(()),
-            VisitState::Visiting => return Err(BuildError::CircularDependency(self.cycle(name))),
+            VisitState::Visiting => {
+                return Err(BuildError::CircularDependency(self.cycle(name)));
+            }
             VisitState::Unvisited => {}
         }
 
@@ -125,21 +149,22 @@ impl<'a> Resolver<'a> {
         // When reuse is implemented, load the artifact's runtime `deps` and
         // resolve that closure before adding it to `reusable_artifacts` and
         // `build_root_packages`.
-        if let Some(artifact) = self.find_reusable_artifact(name)? {
+        let dep_recipe_path = self.recipe_path(name)?;
+        let dep_package = Recipe {
+            path: &dep_recipe_path,
+        }
+        .parse()?;
+        if let Some(artifact) = self.find_reusable_artifact(&dep_package, settings)? {
             self.plan.build_root_packages.push(name.to_owned());
-            self.plan.reusable_artifacts.push(artifact);
+            self.plan.reusable_artifacts.push(artifact.clone());
+            for dep in &artifact.deps {
+                self.resolve_dependency(dep, settings)?;
+            }
         } else {
-            let recipe_path = self.recipe_path(name)?;
-            let recipe = Recipe { path: &recipe_path }.parse().map_err(|error| {
-                BuildError::ResolveDependenciesError(format!(
-                    "failed to parse recipe for dependency `{name}`: {error}"
-                ))
-            })?;
-
             // A missing artifact must itself be built. First resolve its
             // makedeps, because they are needed to construct *its* build root.
-            for dependency in stable_names(&recipe.makedeps) {
-                self.resolve_dependency(&dependency)?;
+            for dependency in stable_names(&dep_package.makedeps) {
+                self.resolve_dependency(&dependency, settings)?;
             }
 
             // The artifact eventually produced for this dependency needs its
@@ -147,13 +172,13 @@ impl<'a> Resolver<'a> {
             // root (for example, gcc needs glibc). Resolve them too. The
             // executor will later decide which artifacts to extract into each
             // individual build root.
-            for dependency in stable_names(&recipe.deps) {
-                self.resolve_dependency(&dependency)?;
+            for dependency in stable_names(&dep_package.deps) {
+                self.resolve_dependency(&dependency, settings)?;
             }
 
             self.plan.packages_to_build.push(RecipeBuild {
                 name: name.to_owned(),
-                recipe_path,
+                recipe_path: dep_recipe_path,
             });
             self.plan.build_root_packages.push(name.to_owned());
         }
@@ -178,23 +203,107 @@ impl<'a> Resolver<'a> {
     }
 
     /// Skeleton for the local artifact-store lookup.
-    fn find_reusable_artifact(&self, name: &str) -> Result<Option<ReusableArtifact>, BuildError> {
+    fn find_reusable_artifact(
+        &self,
+        package: &Package,
+        settings: &Settings,
+    ) -> Result<Option<ReusableArtifact>, BuildError> {
         let artifact_store: &Path = &self.config.sky_repo;
+        let file_name = artifact_store.join(format!(
+            "{}-{}-{}-{}.sky",
+            package.name, package.version, package.release, package.architecture
+        ));
 
-        // TODO: Define the local artifact index/layout, then:
-        // 1. locate the candidate `.sky` artifact by exact package identity;
-        // 2. read and validate its `metadata.yaml`;
-        // 3. verify its Ed25519 signature against trusted keys;
-        // 4. return `Some(ReusableArtifact { .. })` only when all checks pass.
-        //
-        // Returning `None` currently means every dependency is planned from
-        // its recipe, which is safer than treating an arbitrary directory as
-        // an installed package.
-        //
-        if artifact_store.join(name).with_extension("sky").exists() {
-            // TODO(Milestone 4): read metadata.yaml here
+        if !file_name.exists() {
+            return Ok(None);
         }
-        Ok(None)
+
+        let tar_gz = File::open(&file_name)?;
+        let tar = Decoder::new(tar_gz)?;
+        let mut archive = TarArchive::new(tar);
+
+        let mut metadata_bytes: Vec<u8> = Vec::new();
+        let mut payload_bytes: Vec<u8> = Vec::new();
+        let mut files_bytes: Vec<u8> = Vec::new();
+        let mut signature_bytes: Vec<u8> = Vec::new();
+
+        let entries = archive.entries()?;
+        for entry in entries {
+            let mut entry = entry?;
+
+            let path = entry.path()?;
+
+            match path.file_name().and_then(|n| n.to_str()) {
+                Some("metadata.yaml") => {
+                    let mut buffer = Vec::new();
+                    entry.read_to_end(&mut buffer)?;
+                    metadata_bytes = buffer;
+                }
+                Some("payload.tar.zst") => {
+                    let mut buffer = Vec::new();
+                    entry.read_to_end(&mut buffer)?;
+                    payload_bytes = buffer;
+                }
+                Some("files") => {
+                    let mut buffer = Vec::new();
+                    entry.read_to_end(&mut buffer)?;
+                    files_bytes = buffer;
+                }
+                Some("signature.ed25519") => {
+                    let mut buffer = Vec::new();
+                    entry.read_to_end(&mut buffer)?;
+                    signature_bytes = buffer;
+                }
+                _ => {}
+            }
+        }
+
+        let metadata_hash = hash(Cursor::new(&metadata_bytes))?;
+        let payload_hash = hash(Cursor::new(&payload_bytes))?;
+        let files_hash = hash(Cursor::new(&files_bytes))?;
+
+        let data = [
+            metadata_hash.as_ref(),
+            payload_hash.as_ref(),
+            files_hash.as_ref(),
+        ]
+        .concat();
+
+        let pub_key_file: Vec<u8> = fs::read(&settings.pub_key_path)?;
+
+        if pub_key_file.len() != 32 {
+            return Err(BuildError::InvalidPublicKey);
+        }
+        let pub_key = UnparsedPublicKey::new(&ED25519, &pub_key_file);
+        pub_key.verify(data.as_slice(), &signature_bytes)?;
+
+        // Verify metadata.yaml
+        let metadata: Metadata = serde_saphyr::from_slice(&metadata_bytes)?;
+
+        if metadata.name != package.name {
+            return Ok(None);
+        }
+
+        if metadata.version != package.version {
+            return Ok(None);
+        }
+
+        if metadata.release != package.release {
+            return Ok(None);
+        }
+
+        if metadata.architecture != package.architecture {
+            return Ok(None);
+        }
+
+        Ok(Some(ReusableArtifact {
+            name: metadata.name.clone(),
+            version: metadata.version.clone(),
+            release: metadata.release,
+            architecture: metadata.architecture,
+            artifact_path: file_name,
+            deps: metadata.deps,
+        }))
     }
 
     fn cycle(&self, repeated_name: &str) -> String {
@@ -224,6 +333,10 @@ fn stable_names(names: &[String]) -> Vec<String> {
 /// The caller must execute this plan separately. In particular, do not call
 /// `run_build` from this module: the complete graph must be known before the
 /// first package build starts.
-pub fn resolve(config: &RuntimeConfig, root_package: &Package) -> Result<BuildPlan, BuildError> {
-    Resolver::new(config, root_package).resolve_root(root_package)
+pub fn resolve(
+    config: &RuntimeConfig,
+    root_package: &Package,
+    settings: &Settings,
+) -> Result<BuildPlan, BuildError> {
+    Resolver::new(config, root_package).resolve_root(root_package, settings)
 }
