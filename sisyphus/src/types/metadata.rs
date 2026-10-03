@@ -1,7 +1,7 @@
 use crate::types::package::{Architectures, Source};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Metadata {
     pub format: u32,
     pub name: String,
@@ -13,7 +13,7 @@ pub struct Metadata {
     pub build: Build,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Build {
     pub recipe_sha256: String,
     pub built_at: String,
