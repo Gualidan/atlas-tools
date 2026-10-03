@@ -209,10 +209,12 @@ impl<'a> Resolver<'a> {
         settings: &Settings,
     ) -> Result<Option<ReusableArtifact>, BuildError> {
         let artifact_store: &Path = &self.config.sky_repo;
-        let file_name = artifact_store.join(format!(
-            "{}-{}-{}-{}.sky",
-            package.name, package.version, package.release, package.architecture
-        ));
+        let file_name = artifact_store
+            .join(format!("{}", package.architecture))
+            .join(format!(
+                "{}-{}-{}-{}.sky",
+                package.name, package.version, package.release, package.architecture
+            ));
 
         if !file_name.exists() {
             return Ok(None);
