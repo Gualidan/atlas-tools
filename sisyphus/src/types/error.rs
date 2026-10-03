@@ -114,6 +114,14 @@ pub enum BuildError {
     PhaseError(#[from] SandboxError),
     #[error("failed to parse recipe, caused by: {0}")]
     RecipeError(#[from] RecipeError),
+    #[error("failed to hash file, caused by: {0}")]
+    HashError(#[from] ChecksumError),
+    #[error("failed to verify signature, caused by: {0}")]
+    SignatureError(#[from] ring::error::Unspecified),
+    #[error("failed to deserialize metadata, caused by: {0}")]
+    DeserializeError(#[from] serde_saphyr::DeserializeError),
+    #[error("invalid public key")]
+    InvalidPublicKey,
 }
 
 impl From<BuildPipelineError> for BuildError {
