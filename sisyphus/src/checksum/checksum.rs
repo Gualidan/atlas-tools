@@ -1,8 +1,9 @@
-use crate::checksum::hash::hash;
 use crate::fetch::fetch::fetch;
-use crate::types::error::ChecksumError;
+
 use crate::types::fetcher::FetchedSource;
-use crate::types::package::Package;
+use common::functions::hash::hash;
+use common::types::error::ChecksumError;
+use common::types::package::Package;
 use ring::digest::Digest;
 use std::fs::File;
 use std::path::PathBuf;

@@ -1,12 +1,11 @@
+use common::types::settings::load_settings;
+
 use crate::{
     build::{build::build, dependencies::resolve},
     extract::extract::extract,
     fetch::fetch::fetch,
     package::package::package_gen,
-    types::{
-        config::load_settings, error::BuildPipelineError, recipe::Recipe,
-        runtime_config::RuntimeConfig,
-    },
+    types::{error::BuildPipelineError, recipe::Recipe, runtime_config::RuntimeConfig},
 };
 use std::path::PathBuf;
 

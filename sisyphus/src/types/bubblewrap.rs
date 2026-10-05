@@ -1,6 +1,7 @@
 use which::which;
 
-use crate::types::{package::Architectures, sandbox::Sandbox};
+use crate::types::sandbox::Sandbox;
+use common::types::package::Architectures;
 use std::{path::PathBuf, process::Command};
 
 pub struct Bubblewrap {

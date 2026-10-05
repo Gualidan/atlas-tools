@@ -1,4 +1,4 @@
-use crate::types::{error::RecipeError, package::Package};
+use common::types::{error::RecipeError, package::Package};
 use serde_saphyr::from_str;
 use std::{fs, path::PathBuf};
 

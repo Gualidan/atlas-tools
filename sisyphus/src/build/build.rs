@@ -6,9 +6,9 @@ use crate::build::dependencies::BuildPlan;
 use crate::pipeline::build::run_build;
 use crate::types::bubblewrap::Bubblewrap;
 use crate::types::error::BuildError;
-use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
 use crate::types::sandbox::Sandbox;
+use common::types::package::Package;
 
 pub fn build(
     runtime_config: &RuntimeConfig,

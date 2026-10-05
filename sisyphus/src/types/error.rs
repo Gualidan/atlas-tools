@@ -1,5 +1,5 @@
+use common::types::error::{ChecksumError, ConfigError, FetchError, VerifyError};
 use ring::error;
-use serde_saphyr::SerializeError;
 use std::{
     io,
     path::{PathBuf, StripPrefixError},
@@ -27,7 +27,7 @@ pub enum BuildPipelineError {
     #[error("failed to create temporary directory `sisyphus_root`, caused by: {0}")]
     RootDirError(#[from] io::Error),
     #[error("failed to parse recipe, caused by: {0}")]
-    RecipeError(#[from] RecipeError),
+    RecipeError(#[from] common::types::error::RecipeError),
     #[error("failed to fetch package, caused by: {0}")]
     FetchError(#[from] FetchError),
     #[error("failed to extract archive, caused by: {0}")]
@@ -43,16 +43,6 @@ pub enum BuildPipelineError {
 }
 
 #[derive(Error, Debug)]
-pub enum RecipeError {
-    #[error("failed to deserialize recipe, caused by: {0}")]
-    ParseError(#[from] serde_saphyr::DeserializeError),
-    #[error("failed to read recipe file, caused by: {0}")]
-    ReadError(#[from] io::Error),
-    #[error("failed to validate recipe, caused by: {0}")]
-    ValidationError(String),
-}
-
-#[derive(Error, Debug)]
 pub enum RuntimeConfigError {
     #[error("failed to resolve directory, caused by: {0}")]
     DirError(#[from] io::Error),
@@ -62,33 +52,6 @@ pub enum RuntimeConfigError {
 
     #[error("failed to serialize config, caused by: {0}")]
     SerializeError(#[from] serde_saphyr::SerializeError),
-}
-
-#[derive(Error, Debug)]
-pub enum FetchError {
-    #[error("Git not found, caused by: {0}")]
-    GitNotFound(#[from] which::Error),
-
-    #[error("I/O error during git clone, caused by: {0}")]
-    CloneError(#[from] std::io::Error),
-
-    #[error("failed to perform HTTP fetch, caused by: {0}")]
-    HttpError(#[from] reqwest::Error),
-
-    #[error("failed to verify checksum, caused by: {0}")]
-    ChecksumError(#[from] Box<ChecksumError>),
-
-    #[error("failed to convert to utf8, caused by: {0}")]
-    Utf8Error(#[from] std::string::FromUtf8Error),
-
-    #[error("failed to parse URL, caused by: {0}")]
-    UrlError(#[from] url::ParseError),
-}
-
-impl From<ChecksumError> for FetchError {
-    fn from(err: ChecksumError) -> Self {
-        FetchError::ChecksumError(Box::new(err))
-    }
 }
 
 #[derive(Error, Debug)]
@@ -113,7 +76,7 @@ pub enum BuildError {
     #[error("failed to run a phase, caused by: {0}")]
     PhaseError(#[from] SandboxError),
     #[error("failed to parse recipe, caused by: {0}")]
-    RecipeError(#[from] RecipeError),
+    RecipeError(#[from] common::types::error::RecipeError),
     #[error("failed to hash file, caused by: {0}")]
     HashError(#[from] ChecksumError),
     #[error("failed to verify signature, caused by: {0}")]
@@ -122,6 +85,8 @@ pub enum BuildError {
     DeserializeError(#[from] serde_saphyr::DeserializeError),
     #[error("invalid public key")]
     InvalidPublicKey,
+    #[error("failed to verify sky file, caused by: {0}")]
+    SkyVerifyError(#[from] VerifyError),
 }
 
 impl From<BuildPipelineError> for BuildError {
@@ -161,18 +126,6 @@ pub enum SigningError {
 }
 
 #[derive(Error, Debug)]
-pub enum ChecksumError {
-    #[error("failed to parse recipe, caused by: {0}")]
-    ParseError(#[from] RecipeError),
-    #[error("failed to fetch package, caused by: {0}")]
-    FetchError(#[from] FetchError),
-    #[error("failed to read file, caused by: {0}")]
-    ReadError(#[from] io::Error),
-    #[error("checksum mismatch, caused by: {0}")]
-    ChecksumMismatchError(String),
-}
-
-#[derive(Error, Debug)]
 pub enum SandboxError {
     #[error("bwrap not found, caused by: {0}")]
     BwrapNotFound(#[from] which::Error),
@@ -200,14 +153,4 @@ pub enum PackageError {
     ParseModeError(#[from] std::num::ParseIntError),
     #[error("failed to sign artifacts, caused by: {0}")]
     SignError(#[from] SigningError),
-}
-
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("I/O error during config loading, caused by: {0}")]
-    IoError(#[from] io::Error),
-    #[error("failed to serialize config, caused by: {0}")]
-    DirError(#[from] SerializeError),
-    #[error("error during config creation, caused by: {0}")]
-    ParseError(#[from] config::ConfigError),
 }

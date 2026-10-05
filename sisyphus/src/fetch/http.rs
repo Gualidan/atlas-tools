@@ -1,7 +1,6 @@
-use crate::types::{
-    error::FetchError,
-    fetcher::{FetchedSource, Fetcher},
-};
+use common::types::error::FetchError;
+
+use crate::types::fetcher::{FetchedSource, Fetcher};
 use std::{fs::File, path::PathBuf};
 
 pub struct HttpFetcher {

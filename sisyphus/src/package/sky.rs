@@ -3,7 +3,8 @@ use std::{fs::File, path::PathBuf};
 use tar::{Builder, Header};
 use zstd::Encoder;
 
-use crate::types::{error::PackageError, package::Package};
+use crate::types::error::PackageError;
+use common::types::package::Package;
 
 pub fn sky_gen(
     metadata: &String,

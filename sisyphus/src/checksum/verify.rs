@@ -1,9 +1,9 @@
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::checksum::hash::hash;
-use crate::types::error::ChecksumError;
-use crate::types::package::Package;
+use common::functions::hash::hash;
+use common::types::error::ChecksumError;
+use common::types::package::Package;
 
 pub fn verify(file: &PathBuf, package: &Package) -> Result<(), ChecksumError> {
     let computed = hash(File::open(file)?)?;
@@ -16,7 +16,7 @@ pub fn verify(file: &PathBuf, package: &Package) -> Result<(), ChecksumError> {
         .collect::<String>();
     let expected = expected.unwrap();
     if computed != expected {
-        return Err(ChecksumError::ChecksumMismatchError(format!(
+        return Err(ChecksumError::ChecksumMismatch(format!(
             "Expected: {expected}, got: {computed}"
         )));
     }

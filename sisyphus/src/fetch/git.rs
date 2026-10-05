@@ -1,7 +1,5 @@
-use crate::types::{
-    error::FetchError,
-    fetcher::{FetchedSource, Fetcher},
-};
+use crate::types::fetcher::{FetchedSource, Fetcher};
+use common::types::error::FetchError;
 use std::{path::PathBuf, process::Command};
 use which::which;
 

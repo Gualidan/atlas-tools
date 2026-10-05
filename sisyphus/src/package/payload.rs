@@ -5,15 +5,13 @@ use std::{
     path::PathBuf,
 };
 
+use common::functions::hash::hash;
 use tar::Header;
 use walkdir::WalkDir;
 
-use crate::{
-    checksum::hash::hash,
-    types::{
-        error::PackageError,
-        manifest::{FileType, ManifestLine},
-    },
+use crate::types::{
+    error::PackageError,
+    manifest::{FileType, ManifestLine},
 };
 
 pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>), PackageError> {

@@ -1,4 +1,4 @@
-use crate::types::error::FetchError;
+use common::types::error::FetchError;
 use std::path::PathBuf;
 
 #[derive(Debug)]

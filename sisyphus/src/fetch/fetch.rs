@@ -1,12 +1,9 @@
 use crate::{
     checksum::verify::verify,
     fetch::{git::GitFetcher, http::HttpFetcher},
-    types::{
-        error::FetchError,
-        fetcher::{FetchedSource, Fetcher},
-        package::Package,
-    },
+    types::fetcher::{FetchedSource, Fetcher},
 };
+use common::types::{error::FetchError, package::Package};
 use tempfile::{Builder, TempDir};
 use url::Url;
 

@@ -4,8 +4,9 @@ use dirs::data_dir;
 
 use crate::{
     package::{metadata::metadata_gen, payload::payload_gen, sign::sign_artifacts, sky::sky_gen},
-    types::{error::PackageError, package::Package},
+    types::error::PackageError,
 };
+use common::types::package::Package;
 
 pub fn package_gen(
     recipe: &PathBuf,

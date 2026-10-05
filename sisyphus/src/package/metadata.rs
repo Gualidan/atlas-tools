@@ -2,10 +2,10 @@ use std::{fs::File, path::PathBuf};
 
 use chrono::Utc;
 
-use crate::{
-    checksum::hash::hash,
+use crate::types::error::PackageError;
+use common::{
+    functions::hash::hash,
     types::{
-        error::PackageError,
         metadata::{Build, Metadata},
         package::Package,
     },

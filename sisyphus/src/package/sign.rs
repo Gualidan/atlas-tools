@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use crate::{checksum::hash::hash, signing::signing::sign, types::error::SigningError};
+use common::functions::hash::hash;
+
+use crate::{signing::signing::sign, types::error::SigningError};
 
 pub fn sign_artifacts(
     priv_key_path: &PathBuf,
