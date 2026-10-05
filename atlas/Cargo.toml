@@ -6,3 +6,9 @@ edition = "2024"
 [dependencies]
 clap.workspace = true
 thiserror.workspace = true
+sisyphus = { path = "../sisyphus" }
+tar.workspace = true
+zstd.workspace = true
+ring.workspace = true
+serde-saphyr.workspace = true
+common.workspace = true

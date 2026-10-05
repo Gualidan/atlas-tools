@@ -1,4 +1,3 @@
-use crate::types::error::Cli as CliError;
 use clap::Parser;
 
 #[derive(Parser)]
@@ -15,7 +14,3 @@ pub struct Cli {
 
 #[derive(Parser)]
 pub enum Commands {}
-
-pub fn run() -> Result<(), CliError> {
-    Ok(())
-}
