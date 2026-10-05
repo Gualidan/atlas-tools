@@ -171,13 +171,13 @@ impl State for Installed {
 
             match current_version.cmp(&version) {
                 std::cmp::Ordering::Less => {
-                    return Err(StateError::UpToDate);
+                    return Ok(Box::new(Verified));
                 }
                 std::cmp::Ordering::Equal => {
                     return Err(StateError::UpToDate);
                 }
                 std::cmp::Ordering::Greater => {
-                    return Ok(Box::new(Verified));
+                    return Err(StateError::UpToDate);
                 }
             };
         }
