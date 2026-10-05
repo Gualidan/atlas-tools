@@ -35,4 +35,6 @@ pub enum State {
     UpToDate,
     #[error("failed to atomically rename: {0}")]
     Rename(#[from] rustix::io::Errno),
+    #[error("failed to walk directory: {0}")]
+    WalkDir(#[from] walkdir::Error),
 }
