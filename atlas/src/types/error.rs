@@ -29,4 +29,8 @@ pub enum State {
     NotInstalled(String),
     #[error("package is installed")]
     Installed(String),
+    #[error("failed to parse version: {0}")]
+    InvalidVersion(#[from] semver::Error),
+    #[error("package already up to date")]
+    UpToDate,
 }
