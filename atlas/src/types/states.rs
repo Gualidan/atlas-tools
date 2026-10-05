@@ -4,6 +4,7 @@ use std::{
 };
 
 use common::{functions::sky_verify::sky_verify, types::context::Context};
+use rustix::fs::{CWD, RenameFlags, renameat_with};
 use semver::Version;
 use tar::Archive;
 use zstd::Decoder;
@@ -113,7 +114,13 @@ impl State for Staged {
     }
 
     fn commit(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
-        fs::rename(ctx.temp_dir.clone(), ctx.install_dir.clone())?;
+        renameat_with(
+            CWD,
+            ctx.temp_dir.clone(),
+            CWD,
+            ctx.install_dir.clone(),
+            RenameFlags::EXCHANGE,
+        )?;
         Ok(Box::new(Installed))
     }
 
