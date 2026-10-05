@@ -33,4 +33,6 @@ pub enum State {
     InvalidVersion(#[from] semver::Error),
     #[error("package already up to date")]
     UpToDate,
+    #[error("failed to atomically rename: {0}")]
+    Rename(#[from] rustix::io::Errno),
 }
