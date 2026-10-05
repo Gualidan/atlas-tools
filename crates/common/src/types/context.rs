@@ -6,6 +6,7 @@ use crate::types::settings::Settings;
 pub struct Context<'a> {
     pub package: &'a Package,
     pub sky_path: PathBuf,
+    pub sky_repo: PathBuf,
     pub install_dir: PathBuf,
     pub temp_dir: PathBuf,
     pub settings: &'a Settings,
