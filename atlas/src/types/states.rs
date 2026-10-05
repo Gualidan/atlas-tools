@@ -4,6 +4,7 @@ use std::{
 };
 
 use common::{functions::sky_verify::sky_verify, types::context::Context};
+use semver::Version;
 use tar::Archive;
 use zstd::Decoder;
 
@@ -146,7 +147,34 @@ impl State for Installed {
         Ok(Box::new(NotInstalled))
     }
 
-    fn update(self, _ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
-        todo!("implement update logic")
+    fn update(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
+        let current_version = Version::parse(&ctx.package.version)?;
+
+        let sky_repo = ctx.sky_path.parent().unwrap();
+
+        for entry in sky_repo
+            .read_dir()
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(&ctx.package.name))
+        {
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            let version = file_name.split("-").collect::<Vec<_>>();
+            let version = Version::parse(version.get(1).unwrap())?;
+
+            match current_version.cmp(&version) {
+                std::cmp::Ordering::Less => {
+                    return Err(StateError::UpToDate);
+                }
+                std::cmp::Ordering::Equal => {
+                    return Err(StateError::UpToDate);
+                }
+                std::cmp::Ordering::Greater => {
+                    return Ok(Box::new(Verified));
+                }
+            };
+        }
+
+        Err(StateError::UpToDate)
     }
 }
