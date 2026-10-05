@@ -2,10 +2,10 @@ use clap::Parser;
 
 #[derive(Parser)]
 #[command(
-    name = "sisyphus",
+    name = "atlas",
     author = "Gualidan",
     version = "0.1.0",
-    about = "Package build system for the Atlas package manager"
+    about = "The Atlas package manager"
 )]
 pub struct Cli {
     #[command(subcommand)]
