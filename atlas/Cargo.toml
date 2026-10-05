@@ -14,3 +14,4 @@ serde-saphyr.workspace = true
 common.workspace = true
 semver.workspace = true
 walkdir.workspace = true
+rustix = "1.1.5"

@@ -96,6 +96,7 @@ dependencies = [
  "clap",
  "common",
  "ring",
+ "rustix",
  "semver",
  "serde-saphyr",
  "sisyphus",
