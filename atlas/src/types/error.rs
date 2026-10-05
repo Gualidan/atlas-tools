@@ -23,6 +23,10 @@ pub enum State {
     NotVerified,
     #[error("package is not staged")]
     NotStaged,
+    #[error("package is staged")]
+    Staged(String),
     #[error("package not installed: {0}")]
     NotInstalled(String),
+    #[error("package is installed")]
+    Installed(String),
 }
