@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File},
+    fs::{self, File, remove_dir_all, remove_file},
     io::{Cursor, Read},
 };
 
@@ -7,6 +7,7 @@ use common::{functions::sky_verify::sky_verify, types::context::Context};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 use semver::Version;
 use tar::Archive;
+use walkdir::WalkDir;
 use zstd::Decoder;
 
 use crate::types::error::State as StateError;
@@ -78,7 +79,20 @@ impl State for Verified {
                     file.read_to_end(&mut buffer)?;
                     let tar = Decoder::new(Cursor::new(&buffer))?;
                     let mut archive = Archive::new(tar);
-                    archive.unpack(&ctx.temp_dir)?;
+                    match archive.unpack(&ctx.temp_dir) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            for entry in WalkDir::new(&ctx.temp_dir) {
+                                let entry = entry?;
+                                if entry.file_type().is_dir() {
+                                    remove_dir_all(&entry.path())?;
+                                } else {
+                                    remove_file(&entry.path())?;
+                                }
+                            }
+                            return Err(e.into());
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -157,7 +171,7 @@ impl State for Installed {
     fn update(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
         let current_version = Version::parse(&ctx.package.version)?;
 
-        let sky_repo = ctx.sky_path.parent().unwrap();
+        let sky_repo = ctx.sky_path.ancestors().nth(2).unwrap();
 
         for entry in sky_repo
             .read_dir()
@@ -171,6 +185,7 @@ impl State for Installed {
 
             match current_version.cmp(&version) {
                 std::cmp::Ordering::Less => {
+                    ctx.sky_path = entry.path();
                     return Ok(Box::new(Verified));
                 }
                 std::cmp::Ordering::Equal => {
