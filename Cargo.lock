@@ -96,10 +96,12 @@ dependencies = [
  "clap",
  "common",
  "ring",
+ "semver",
  "serde-saphyr",
  "sisyphus",
  "tar",
  "thiserror",
+ "walkdir",
  "zstd",
 ]
 
