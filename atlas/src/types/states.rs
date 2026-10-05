@@ -1,9 +1,11 @@
 use std::{
+    cmp::Ordering,
     fs::{self, File, remove_dir_all, remove_file},
     io::{Cursor, Read},
 };
 
 use common::{functions::sky_verify::sky_verify, types::context::Context};
+use regex::Regex;
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 use semver::Version;
 use tar::Archive;
@@ -128,14 +130,26 @@ impl State for Staged {
     }
 
     fn commit(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
-        renameat_with(
+        match renameat_with(
             CWD,
             ctx.temp_dir.clone(),
             CWD,
             ctx.install_dir.clone(),
             RenameFlags::EXCHANGE,
-        )?;
-        Ok(Box::new(Installed))
+        ) {
+            Ok(_) => Ok(Box::new(Installed)),
+            Err(e) => {
+                for entry in WalkDir::new(&ctx.temp_dir) {
+                    let entry = entry?;
+                    if entry.file_type().is_dir() {
+                        remove_dir_all(&entry.path())?;
+                    } else {
+                        remove_file(&entry.path())?;
+                    }
+                }
+                Err(StateError::Io(e.into()))
+            }
+        }
     }
 
     fn remove(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
@@ -171,30 +185,48 @@ impl State for Installed {
     fn update(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
         let current_version = Version::parse(&ctx.package.version)?;
 
-        let sky_repo = ctx.sky_path.ancestors().nth(2).unwrap();
+        let sky_repo = ctx.sky_repo.clone();
+
+        let re = Regex::new(
+            r"^(?P<name>.+)-(?P<version>\d+(?:\.\d+)*)-(?P<release>\d+)-(?P<architecture>[^.]+)\.sky$"
+        )
+        .unwrap();
 
         for entry in sky_repo
             .read_dir()
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().contains(&ctx.package.name))
+            .map_err(StateError::Io)?
+            .filter_map(Result::ok)
         {
-            let file_name = entry.file_name().to_string_lossy().into_owned();
-            let version = file_name.split("-").collect::<Vec<_>>();
-            let version = Version::parse(version.get(1).unwrap())?;
+            let filename = entry.file_name();
+            let filename = filename.to_string_lossy();
+
+            // Avoid matching similarly named packages.
+            let Some(captures) = re.captures(&filename) else {
+                continue;
+            };
+
+            if captures.name("name").unwrap().as_str() != ctx.package.name {
+                continue;
+            }
+
+            let version_text = captures.name("version").unwrap().as_str();
+
+            let Ok(version) = Version::parse(version_text) else {
+                continue;
+            };
 
             match current_version.cmp(&version) {
-                std::cmp::Ordering::Less => {
+                Ordering::Less => {
+                    // The repository has a newer version.
                     ctx.sky_path = entry.path();
                     return Ok(Box::new(Verified));
                 }
-                std::cmp::Ordering::Equal => {
-                    return Err(StateError::UpToDate);
+
+                Ordering::Equal | Ordering::Greater => {
+                    // This file is not newer.
+                    continue;
                 }
-                std::cmp::Ordering::Greater => {
-                    return Err(StateError::UpToDate);
-                }
-            };
+            }
         }
 
         Err(StateError::UpToDate)
