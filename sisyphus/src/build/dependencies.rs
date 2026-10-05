@@ -209,8 +209,8 @@ impl<'a> Resolver<'a> {
             ));
         let metadata = sky_verify(&file_name, package, settings)?.unwrap();
         Ok(Some(ReusableArtifact {
-            name: metadata.name.clone(),
-            version: metadata.version.clone(),
+            name: metadata.name,
+            version: metadata.version,
             release: metadata.release,
             architecture: metadata.architecture,
             artifact_path: file_name,
