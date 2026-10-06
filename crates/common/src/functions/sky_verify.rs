@@ -17,11 +17,7 @@ pub fn sky_verify(
     file_name: &PathBuf,
     package: &Package,
     settings: &Settings,
-) -> Result<Option<Metadata>, VerifyError> {
-    if !file_name.exists() {
-        return Ok(None);
-    }
-
+) -> Result<Metadata, VerifyError> {
     let tar_gz = File::open(&file_name)?;
     let tar = Decoder::new(tar_gz)?;
     let mut archive = Archive::new(tar);
@@ -85,20 +81,20 @@ pub fn sky_verify(
     let metadata: Metadata = serde_saphyr::from_slice(&metadata_bytes)?;
 
     if metadata.name != package.name {
-        return Ok(None);
+        return Err(VerifyError::InvalidMetadata);
     }
 
     if metadata.version != package.version {
-        return Ok(None);
+        return Err(VerifyError::InvalidMetadata);
     }
 
     if metadata.release != package.release {
-        return Ok(None);
+        return Err(VerifyError::InvalidMetadata);
     }
 
     if metadata.architecture != package.architecture {
-        return Ok(None);
+        return Err(VerifyError::InvalidMetadata);
     }
 
-    Ok(Some(metadata))
+    Ok(metadata)
 }
