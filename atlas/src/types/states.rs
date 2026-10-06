@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File, remove_dir_all, remove_file},
     io::{Cursor, Read},
+    path::PathBuf,
 };
 
 use common::{functions::sky_verify::sky_verify, types::context::Context};
@@ -202,6 +203,11 @@ impl State for Installed {
             ],
             |row| row.get(0),
         )?;
-        Ok(Box::new(Installed))
+        if sky_path == ctx.sky_path {
+            return Err(StateError::UpToDate);
+        }
+
+        ctx.sky_path = PathBuf::from(sky_path);
+        Ok(Box::new(Verified))
     }
 }
