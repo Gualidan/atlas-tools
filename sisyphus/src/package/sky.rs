@@ -3,16 +3,21 @@ use std::{fs::File, path::PathBuf};
 use tar::{Builder, Header};
 use zstd::Encoder;
 
-use crate::types::error::PackageError;
-use common::types::package::Package;
+use crate::{
+    package::db::insert_package,
+    types::{error::PackageError, runtime_config::RuntimeConfig},
+};
+use common::types::{metadata::Metadata, package::Package};
 
 pub fn sky_gen(
-    metadata: &String,
+    metadata_string: &String,
+    metadata: &Metadata,
     payload: &Vec<u8>,
     manifest: &String,
     signature: &Vec<u8>,
     package: &Package,
     output_path: PathBuf,
+    runtime_config: &RuntimeConfig,
 ) -> Result<PathBuf, PackageError> {
     if !output_path.exists() {
         std::fs::create_dir_all(&output_path)?;
@@ -28,8 +33,12 @@ pub fn sky_gen(
 
     let mut metadata_header = Header::new_gnu();
     metadata_header.set_mode(0o644);
-    metadata_header.set_size(metadata.len() as u64);
-    archive.append_data(&mut metadata_header, "metadata.yaml", metadata.as_bytes())?;
+    metadata_header.set_size(metadata_string.len() as u64);
+    archive.append_data(
+        &mut metadata_header,
+        "metadata.yaml",
+        metadata_string.as_bytes(),
+    )?;
 
     let mut payload_header = Header::new_gnu();
     payload_header.set_mode(0o644);
@@ -51,6 +60,13 @@ pub fn sky_gen(
     )?;
 
     let archive = archive.into_inner()?.finish()?;
+
+    insert_package(
+        runtime_config,
+        package,
+        &output_path.as_os_str().to_string_lossy(),
+        metadata,
+    )?;
 
     drop(archive);
 

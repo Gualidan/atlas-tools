@@ -11,7 +11,7 @@ use common::{
     },
 };
 
-pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<String, PackageError> {
+pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata, PackageError> {
     let reader = File::open(recipe)?;
 
     let metadata = Metadata {
@@ -28,6 +28,5 @@ pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<String, Packa
             builder: format!("sisyphus {}", env!("CARGO_PKG_VERSION")),
         },
     };
-    let metadata_string = serde_saphyr::to_string(&metadata)?;
-    Ok(metadata_string)
+    Ok(metadata)
 }
