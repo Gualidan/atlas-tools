@@ -13,7 +13,7 @@ pub fn insert_source(
     let conn = Connection::open(&runtime_config.db_path)?;
     conn.execute("BEGIN", [])?;
 
-    conn.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT, path TEXT NOT NULL, fetched_at INTEGER NOT NULL)", [])?;
+    conn.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT, path TEXT NOT NULL, fetched_at TEXT NOT NULL)", [])?;
 
     conn.execute(
         "INSERT OR REPLACE INTO sources (url, sha256, path, fetched_at) VALUES (?, ?, ?, ?)",

@@ -10,7 +10,7 @@ use crate::{
 };
 use common::types::{error::FetchError, package::Package};
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use url::Url;
 
 pub fn fetch(
@@ -22,17 +22,20 @@ pub fn fetch(
     let parsed_url = Url::parse(&package.source.url)?;
 
     let conn = Connection::open(&runtime_config.db_path)?;
-    let mut stmt = conn.prepare("SELECT path FROM sources WHERE name = ? AND sha256 = ?")?;
-    let path: Option<String> = stmt
-        .query_row(params![&package.name, &package.source.sha256], |row| {
-            row.get(0)
-        })?;
+    let mut stmt = if let Some(_sha) = &package.source.sha256 {
+        conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")?
+    } else {
+        conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 IS NULL")?
+    };
 
-    if !path.is_none() {
-        return Ok((
-            FetchedSource::Archive(PathBuf::from(path.unwrap())),
-            download_path,
-        ));
+    let path: Option<String> = match &package.source.sha256 {
+        Some(sha) => stmt.query_row(params![&package.source.url, sha], |row| row.get(0)),
+        None => stmt.query_row(params![&package.source.url], |row| row.get(0)),
+    }
+    .optional()?;
+
+    if let Some(path) = path {
+        return Ok((FetchedSource::Archive(PathBuf::from(path)), download_path));
     }
 
     let fetcher = if package.source.url.ends_with("git") {
@@ -49,7 +52,7 @@ pub fn fetch(
     let (fetched, fetched_at) = fetcher.fetch()?;
     if verify_checksum && !parsed_url.path().trim_end_matches("/").ends_with(".git") {
         match fetched {
-            FetchedSource::Archive(ref path) => verify(&path, package)?,
+            FetchedSource::Archive(ref path) => verify(path, package)?,
             FetchedSource::Dir(_) => {}
         }
     }
