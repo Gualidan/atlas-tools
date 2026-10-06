@@ -13,6 +13,7 @@ use common::{
         settings::Settings,
     },
 };
+use rusqlite::Connection;
 
 use std::{
     collections::HashMap,
@@ -200,22 +201,30 @@ impl<'a> Resolver<'a> {
         package: &Package,
         settings: &Settings,
     ) -> Result<Option<ReusableArtifact>, BuildError> {
-        let artifact_store: &Path = &self.config.sky_repo;
-        let file_name = artifact_store
-            .join(format!("{}", package.architecture))
-            .join(format!(
-                "{}-{}-{}-{}.sky",
-                package.name, package.version, package.release, package.architecture
-            ));
-        let metadata = sky_verify(&file_name, package, settings)?;
-        Ok(Some(ReusableArtifact {
-            name: metadata.name,
-            version: metadata.version,
-            release: metadata.release,
-            architecture: metadata.architecture,
-            artifact_path: file_name,
-            deps: metadata.deps,
-        }))
+        let conn = Connection::open(&self.config.db_path)?;
+        let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecure = ? LIMIT 1")?;
+        let rows: Option<String> = stmt.query_row(
+            [
+                &package.name,
+                &package.version,
+                &package.release.to_string(),
+                &package.architecture.to_string(),
+            ],
+            |row| row.get(0),
+        )?;
+
+        if let Some(path) = rows {
+            let metadata = sky_verify(&PathBuf::from(&path), package, settings)?;
+            return Ok(Some(ReusableArtifact {
+                name: metadata.name,
+                version: metadata.version,
+                release: metadata.release,
+                architecture: metadata.architecture,
+                artifact_path: PathBuf::from(path),
+                deps: metadata.deps,
+            }));
+        }
+        Ok(None)
     }
 
     fn cycle(&self, repeated_name: &str) -> String {
