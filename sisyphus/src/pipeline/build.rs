@@ -40,6 +40,7 @@ pub fn run_build(
         &pkgdir.path().to_path_buf(),
         &package,
         &config.priv_key_path,
+        runtime_config,
     )?;
 
     Ok(())
