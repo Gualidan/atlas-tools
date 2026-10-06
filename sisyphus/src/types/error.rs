@@ -123,6 +123,8 @@ pub enum SigningError {
     ParseError(#[from] error::KeyRejected),
     #[error("failed to hash data: {0}")]
     MetadataHashError(#[from] ChecksumError),
+    #[error("failed to serialize metadata")]
+    SerializeMetadata(#[from] serde_saphyr::SerializeError),
 }
 
 #[derive(Error, Debug)]

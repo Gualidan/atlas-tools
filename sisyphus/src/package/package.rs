@@ -17,8 +17,7 @@ pub fn package_gen(
 ) -> Result<PathBuf, PackageError> {
     let (manifest, payload) = payload_gen(pkgdir)?;
     let metadata = metadata_gen(&recipe, package)?;
-    let metadata_string = serde_saphyr::to_string(&metadata)?;
-    let signature = sign_artifacts(priv_key_path, &metadata_string, &payload, &manifest)?;
+    let signature = sign_artifacts(priv_key_path, &metadata, &payload, &manifest)?;
 
     let output_path = PathBuf::from(
         data_dir()
@@ -33,7 +32,6 @@ pub fn package_gen(
     std::fs::create_dir_all(&output_path)?;
 
     let output_path = sky_gen(
-        &metadata_string,
         &metadata,
         &payload,
         &manifest,

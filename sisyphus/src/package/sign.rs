@@ -1,16 +1,18 @@
 use std::path::PathBuf;
 
-use common::functions::hash::hash;
+use common::{functions::hash::hash, types::metadata::Metadata};
 
 use crate::{signing::signing::sign, types::error::SigningError};
 
 pub fn sign_artifacts(
     priv_key_path: &PathBuf,
-    metadata: &String,
+    metadata: &Metadata,
     payload: &Vec<u8>,
     manifest: &String,
 ) -> Result<Vec<u8>, SigningError> {
-    let metadata_hash = hash(metadata.as_bytes())?;
+    let metadata_string = serde_saphyr::to_string(metadata)?;
+
+    let metadata_hash = hash(metadata_string.as_bytes())?;
     let payload_hash = hash(payload.as_slice())?;
     let manifest_hash = hash(manifest.as_bytes())?;
 

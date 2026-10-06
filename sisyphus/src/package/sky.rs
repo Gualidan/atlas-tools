@@ -10,7 +10,6 @@ use crate::{
 use common::types::{metadata::Metadata, package::Package};
 
 pub fn sky_gen(
-    metadata_string: &String,
     metadata: &Metadata,
     payload: &Vec<u8>,
     manifest: &String,
@@ -28,6 +27,7 @@ pub fn sky_gen(
     )));
 
     let sky_file = File::create(&output_path)?;
+    let metadata_string = serde_saphyr::to_string(metadata)?;
 
     let mut archive = Builder::new(Encoder::new(sky_file, 3)?);
 
