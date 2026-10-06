@@ -8,5 +8,5 @@ pub enum FetchedSource {
 }
 
 pub trait Fetcher {
-    fn fetch(self: Box<Self>) -> Result<FetchedSource, FetchError>;
+    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String), FetchError>;
 }
