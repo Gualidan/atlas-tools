@@ -207,7 +207,7 @@ impl<'a> Resolver<'a> {
                 "{}-{}-{}-{}.sky",
                 package.name, package.version, package.release, package.architecture
             ));
-        let metadata = sky_verify(&file_name, package, settings)?.unwrap();
+        let metadata = sky_verify(&file_name, package, settings)?;
         Ok(Some(ReusableArtifact {
             name: metadata.name,
             version: metadata.version,
