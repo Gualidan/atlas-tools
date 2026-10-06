@@ -32,7 +32,7 @@ pub trait State {
 
 impl State for NotInstalled {
     fn verify(self, ctx: &mut Context) -> Result<Option<Box<dyn State>>, StateError> {
-        let mut stmt = ctx.conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecute = ? LIMIT 1")?;
+        let mut stmt = ctx.conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
         let rows: bool = stmt.query_row(
             params![
                 ctx.package.name,
