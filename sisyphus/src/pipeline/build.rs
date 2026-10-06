@@ -1,4 +1,5 @@
 use common::types::settings::load_settings;
+use rusqlite::Connection;
 
 use crate::{
     build::{build::build, dependencies::resolve},
@@ -19,8 +20,25 @@ pub fn run_build(
     let config = load_settings()?;
     let runtime_config = runtime_config.unwrap_or(&binding);
 
+    // Abort if package already exists
+    let conn = Connection::open(&runtime_config.db_path)?;
+    let mut stmt = conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+    let package_exists: bool = stmt.query_row(
+        &[
+            &package.name,
+            &package.version,
+            &package.release.to_string(),
+            &package.architecture.to_string(),
+        ],
+        |row| row.get(0),
+    )?;
+
+    if package_exists {
+        return Ok(());
+    }
+
     // Phase 1: Fetch
-    let (fetched, _download_dir) = fetch(&package, true)?;
+    let (fetched, _download_dir) = fetch(&package, true, runtime_config)?;
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched)?;
