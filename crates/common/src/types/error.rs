@@ -69,6 +69,9 @@ pub enum FetchError {
 
     #[error("failed to parse URL, caused by: {0}")]
     UrlError(#[from] url::ParseError),
+
+    #[error("failed to query database, caused by: {0}")]
+    DbError(#[from] rusqlite::Error),
 }
 
 impl From<ChecksumError> for FetchError {

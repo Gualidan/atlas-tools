@@ -40,6 +40,8 @@ pub enum BuildPipelineError {
     RunError(#[from] PackageError),
     #[error("failed to get runtime config, caused by: {0}")]
     RuntimeConfigError(#[from] RuntimeConfigError),
+    #[error("failed to query database, caused by: {0}")]
+    OpenDbError(#[from] rusqlite::Error),
 }
 
 #[derive(Error, Debug)]
@@ -52,6 +54,9 @@ pub enum RuntimeConfigError {
 
     #[error("failed to serialize config, caused by: {0}")]
     SerializeError(#[from] serde_saphyr::SerializeError),
+
+    #[error("failed to derive runtime config, caused by: {0}")]
+    DeriveRuntimeConfigError(#[from] ChecksumError),
 }
 
 #[derive(Error, Debug)]
@@ -87,6 +92,8 @@ pub enum BuildError {
     InvalidPublicKey,
     #[error("failed to verify sky file, caused by: {0}")]
     SkyVerifyError(#[from] VerifyError),
+    #[error("failed to query database, caused by: {0}")]
+    DatabaseError(#[from] rusqlite::Error),
 }
 
 impl From<BuildPipelineError> for BuildError {
