@@ -1,3 +1,4 @@
+use chrono::Utc;
 use common::types::error::FetchError;
 
 use crate::types::fetcher::{FetchedSource, Fetcher};
@@ -9,7 +10,7 @@ pub struct HttpFetcher {
 }
 
 impl Fetcher for HttpFetcher {
-    fn fetch(self: Box<Self>) -> Result<FetchedSource, FetchError> {
+    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String), FetchError> {
         let response = reqwest::blocking::get(&self.url)?;
         let response = response.error_for_status()?;
 
@@ -25,9 +26,10 @@ impl Fetcher for HttpFetcher {
         let content = response.bytes()?;
 
         std::io::copy(&mut content.as_ref(), &mut dest)?;
+        let fetched_at = Utc::now().to_rfc3339();
         // ensure it's flushed/closed before reopening
         drop(dest);
 
-        Ok(FetchedSource::Archive(fname))
+        Ok((FetchedSource::Archive(fname), fetched_at))
     }
 }

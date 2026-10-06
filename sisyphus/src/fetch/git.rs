@@ -1,4 +1,5 @@
 use crate::types::fetcher::{FetchedSource, Fetcher};
+use chrono::Utc;
 use common::types::error::FetchError;
 use std::{path::PathBuf, process::Command};
 use which::which;
@@ -9,7 +10,7 @@ pub struct GitFetcher {
 }
 
 impl Fetcher for GitFetcher {
-    fn fetch(self: Box<Self>) -> Result<FetchedSource, FetchError> {
+    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String), FetchError> {
         which("git")?;
 
         let output = Command::new("git")
@@ -18,6 +19,7 @@ impl Fetcher for GitFetcher {
             .arg(&self.destination)
             .output()?;
 
+        let fetched_at = Utc::now().to_rfc3339();
         if !output.status.success() {
             return Err(FetchError::CloneError(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -25,6 +27,6 @@ impl Fetcher for GitFetcher {
             )));
         }
 
-        Ok(FetchedSource::Dir(self.destination))
+        Ok((FetchedSource::Dir(self.destination), fetched_at))
     }
 }
