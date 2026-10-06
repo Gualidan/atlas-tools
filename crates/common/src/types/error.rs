@@ -36,6 +36,8 @@ pub enum VerifyError {
     InvalidPublicKey,
     #[error("failed to verify signature: {0}")]
     Signature(#[from] ring::error::Unspecified),
+    #[error("verification failed (invalid metadata)")]
+    InvalidMetadata,
 }
 
 #[derive(Error, Debug)]

@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use rusqlite::Connection;
+
 use crate::types::package::Package;
 use crate::types::settings::Settings;
 
@@ -11,4 +13,5 @@ pub struct Context<'a> {
     pub temp_dir: PathBuf,
     pub settings: &'a Settings,
     pub dependencies: Vec<String>,
+    pub conn: &'a Connection,
 }

@@ -9,6 +9,7 @@ pub struct RuntimeConfig {
     pub recipe_repo: PathBuf,
     pub sky_repo: PathBuf,
     pub srcdir: PathBuf,
+    pub db_path: PathBuf,
 }
 
 impl RuntimeConfig {
@@ -36,6 +37,15 @@ impl RuntimeConfig {
                     "Cache directory not found",
                 )))?
                 .join("sisyphus"),
+            db_path: data_dir()
+                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Cache directory not found",
+                )))?
+                .join("sisyphus")
+                .join("repo")
+                .join("repo")
+                .with_extension("db"),
         })
     }
 }

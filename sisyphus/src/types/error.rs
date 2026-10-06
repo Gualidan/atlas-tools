@@ -153,4 +153,6 @@ pub enum PackageError {
     ParseModeError(#[from] std::num::ParseIntError),
     #[error("failed to sign artifacts, caused by: {0}")]
     SignError(#[from] SigningError),
+    #[error("failed to open database, caused by: {0}")]
+    OpenDbError(#[from] rusqlite::Error),
 }
