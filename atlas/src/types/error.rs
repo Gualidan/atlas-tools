@@ -1,4 +1,4 @@
-use common::types::error::VerifyError;
+use common::types::error::{ConfigError, VerifyError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,8 +9,6 @@ pub enum State {
     Io(#[from] std::io::Error),
     #[error("failed to hash file: {0}")]
     Hash(#[from] common::types::error::ChecksumError),
-    #[error("failed to parse public key: {0}")]
-    ParsePublicKey(#[from] ring::error::Unspecified),
     #[error("failed to serialize metadata: {0}")]
     SerializeMetadata(#[from] serde_saphyr::Error),
     #[error("invalid public key")]
@@ -37,4 +35,12 @@ pub enum State {
     Rename(#[from] rustix::io::Errno),
     #[error("failed to walk directory: {0}")]
     WalkDir(#[from] walkdir::Error),
+    #[error("failed to query database: {0}")]
+    Query(#[from] rusqlite::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum Cli {
+    #[error("failed to load settings: {0}")]
+    LoadSettings(#[from] ConfigError),
 }

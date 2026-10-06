@@ -1,13 +1,13 @@
 use std::{
-    cmp::Ordering,
     fs::{self, File, remove_dir_all, remove_file},
     io::{Cursor, Read},
 };
 
 use common::{functions::sky_verify::sky_verify, types::context::Context};
-use regex::Regex;
+
+use rusqlite::params;
 use rustix::fs::{CWD, RenameFlags, renameat_with};
-use semver::Version;
+
 use tar::Archive;
 use walkdir::WalkDir;
 use zstd::Decoder;
@@ -32,11 +32,22 @@ pub trait State {
 
 impl State for NotInstalled {
     fn verify(self, ctx: &mut Context) -> Result<Option<Box<dyn State>>, StateError> {
-        let metadata = sky_verify(&ctx.sky_path, &ctx.package, &ctx.settings)?;
+        let mut stmt = ctx.conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecute = ? LIMIT 1")?;
+        let rows: bool = stmt.query_row(
+            params![
+                ctx.package.name,
+                ctx.package.version,
+                ctx.package.release,
+                ctx.package.architecture.to_string()
+            ],
+            |row| row.get(0),
+        )?;
 
-        if metadata.is_none() {
+        if !rows {
             return Err(StateError::VerificationFailed);
         }
+
+        sky_verify(&ctx.sky_path, &ctx.package, &ctx.settings)?;
 
         Ok(Some(Box::new(Verified)))
     }
@@ -183,52 +194,14 @@ impl State for Installed {
     }
 
     fn update(self, ctx: &mut Context) -> Result<Box<dyn State>, StateError> {
-        let current_version = Version::parse(&ctx.package.version)?;
-
-        let sky_repo = ctx.sky_repo.clone();
-
-        let re = Regex::new(
-            r"^(?P<name>.+)-(?P<version>\d+(?:\.\d+)*)-(?P<release>\d+)-(?P<architecture>[^.]+)\.sky$"
-        )
-        .unwrap();
-
-        for entry in sky_repo
-            .read_dir()
-            .map_err(StateError::Io)?
-            .filter_map(Result::ok)
-        {
-            let filename = entry.file_name();
-            let filename = filename.to_string_lossy();
-
-            // Avoid matching similarly named packages.
-            let Some(captures) = re.captures(&filename) else {
-                continue;
-            };
-
-            if captures.name("name").unwrap().as_str() != ctx.package.name {
-                continue;
-            }
-
-            let version_text = captures.name("version").unwrap().as_str();
-
-            let Ok(version) = Version::parse(version_text) else {
-                continue;
-            };
-
-            match current_version.cmp(&version) {
-                Ordering::Less => {
-                    // The repository has a newer version.
-                    ctx.sky_path = entry.path();
-                    return Ok(Box::new(Verified));
-                }
-
-                Ordering::Equal | Ordering::Greater => {
-                    // This file is not newer.
-                    continue;
-                }
-            }
-        }
-
-        Err(StateError::UpToDate)
+        let mut stmt = ctx.conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? ORDER BY version DESC, release DESC LIMIT 1")?;
+        let sky_path: String = stmt.query_row(
+            params![
+                ctx.package.name.as_str(),
+                ctx.package.architecture.to_string()
+            ],
+            |row| row.get(0),
+        )?;
+        Ok(Box::new(Installed))
     }
 }
