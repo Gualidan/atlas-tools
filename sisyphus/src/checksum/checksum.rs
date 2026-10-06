@@ -1,6 +1,7 @@
 use crate::fetch::fetch::fetch;
 
 use crate::types::fetcher::FetchedSource;
+use crate::types::runtime_config::RuntimeConfig;
 use common::functions::hash::hash;
 use common::types::error::ChecksumError;
 use common::types::package::Package;
@@ -13,9 +14,12 @@ pub enum ChecksumResult {
     Dir(PathBuf),
 }
 
-pub fn checksum_gen(package: &Package) -> Result<ChecksumResult, ChecksumError> {
+pub fn checksum_gen(
+    package: &Package,
+    runtime_config: &RuntimeConfig,
+) -> Result<ChecksumResult, ChecksumError> {
     #[allow(unused_variables)]
-    let (fetched, temp_dir) = fetch(package, false)?;
+    let (fetched, temp_dir) = fetch(package, false, runtime_config)?;
 
     // Generate checksum and print it to the user
     match fetched {
