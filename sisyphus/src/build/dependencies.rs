@@ -15,10 +15,7 @@ use common::{
 };
 use rusqlite::Connection;
 
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::PathBuf};
 
 /// A recipe that must be built before the requested root package.
 ///
@@ -202,7 +199,7 @@ impl<'a> Resolver<'a> {
         settings: &Settings,
     ) -> Result<Option<ReusableArtifact>, BuildError> {
         let conn = Connection::open(&self.config.db_path)?;
-        let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecure = ? LIMIT 1")?;
+        let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
         let rows: Option<String> = stmt.query_row(
             [
                 &package.name,
