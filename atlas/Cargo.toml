@@ -9,10 +9,9 @@ thiserror.workspace = true
 sisyphus = { path = "../sisyphus" }
 tar.workspace = true
 zstd.workspace = true
-ring.workspace = true
 serde-saphyr.workspace = true
 common.workspace = true
 semver.workspace = true
 walkdir.workspace = true
 rustix = "1.1.5"
-regex = "1.13.1"
+rusqlite.workspace = true

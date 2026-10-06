@@ -16,3 +16,4 @@ dirs.workspace = true
 which.workspace = true
 url.workspace = true
 reqwest.workspace = true
+rusqlite.workspace = true
