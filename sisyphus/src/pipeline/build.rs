@@ -34,23 +34,25 @@ pub fn run_build(
             |row| row.get(0),
         )?;
 
-        let mut stmt = conn.prepare("SELECT sky_path FROM packages where name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
-        let sky_path: String = stmt.query_row(
-            &[
-                &package.name,
-                &package.version,
-                &package.release.to_string(),
-                &package.architecture.to_string(),
-            ],
-            |row| row.get(0),
-        )?;
+        if package_exists {
+            let mut stmt = conn.prepare("SELECT sky_path FROM packages where name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+            let sky_path: String = stmt.query_row(
+                &[
+                    &package.name,
+                    &package.version,
+                    &package.release.to_string(),
+                    &package.architecture.to_string(),
+                ],
+                |row| row.get(0),
+            )?;
 
-        if package_exists && PathBuf::from(sky_path).exists() {
-            println!(
-                "Package \"{}\" already exists, skipping build",
-                package.name
-            );
-            return Ok(());
+            if PathBuf::from(sky_path).exists() {
+                println!(
+                    "Package \"{}\" already exists, skipping build",
+                    package.name
+                );
+                return Ok(());
+            }
         }
     }
 
