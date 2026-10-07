@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use common::types::{context::Context, settings::load_settings};
 
 use crate::types::error::Cli as CliError;
 

@@ -18,8 +18,7 @@ pub fn checksum_gen(
     package: &Package,
     runtime_config: &RuntimeConfig,
 ) -> Result<ChecksumResult, ChecksumError> {
-    #[allow(unused_variables)]
-    let (fetched, temp_dir) = fetch(package, false, runtime_config)?;
+    let fetched = fetch(package, false, runtime_config)?;
 
     // Generate checksum and print it to the user
     match fetched {
