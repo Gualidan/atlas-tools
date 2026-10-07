@@ -19,8 +19,8 @@ pub fn fetch(
 ) -> Result<FetchedSource, FetchError> {
     let download_path = runtime_config.fetch_cache.clone();
 
-    if runtime_config.db_path.exists() {
-        let conn = Connection::open(&runtime_config.db_path)?;
+    if runtime_config.cache_db_path.exists() {
+        let conn = Connection::open(&runtime_config.cache_db_path)?;
         let mut stmt = if let Some(_sha) = &package.source.sha256 {
             conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")?
         } else {
@@ -36,6 +36,11 @@ pub fn fetch(
         if let Some(path) = source_path
             && PathBuf::from(&path).exists()
         {
+            println!("Cache hit: {}", path);
+            if PathBuf::from(&path).is_dir() {
+                return Ok(FetchedSource::Dir(PathBuf::from(path)));
+            }
+
             verify(&PathBuf::from(&path), package)?;
             return Ok(FetchedSource::Archive(PathBuf::from(path)));
         }
@@ -44,14 +49,15 @@ pub fn fetch(
     let fetcher = if package.source.url.ends_with("git") {
         Box::new(GitFetcher {
             url: package.source.url.clone(),
-            destination: download_path.clone(),
+            destination: download_path.join(&package.name),
         }) as Box<dyn Fetcher>
     } else {
         Box::new(HttpFetcher {
             url: package.source.url.clone(),
-            destination: download_path.clone(),
+            destination: download_path.join(&package.name),
         }) as Box<dyn Fetcher>
     };
+    println!("h");
     let (fetched, fetched_at) = fetcher.fetch()?;
     match fetched {
         FetchedSource::Archive(ref path) => {

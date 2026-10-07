@@ -10,7 +10,7 @@ pub fn insert_source(
     fetched_at: &String,
     runtime_config: &RuntimeConfig,
 ) -> Result<(), FetchError> {
-    let conn = Connection::open(&runtime_config.db_path)?;
+    let conn = Connection::open(&runtime_config.cache_db_path)?;
     conn.execute("BEGIN", [])?;
 
     conn.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT, path TEXT NOT NULL, fetched_at TEXT NOT NULL)", [])?;
