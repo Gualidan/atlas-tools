@@ -294,7 +294,6 @@ dependencies = [
  "serde-saphyr",
  "tar",
  "thiserror",
- "url",
  "which",
  "zstd",
 ]
@@ -1775,7 +1774,6 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror",
- "url",
  "walkdir",
  "which",
  "whoami",

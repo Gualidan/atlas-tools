@@ -21,6 +21,5 @@ chrono = "0.4.45"
 tar.workspace = true
 zstd.workspace = true
 ring.workspace = true
-url.workspace = true
 common.workspace = true
 rusqlite.workspace = true
