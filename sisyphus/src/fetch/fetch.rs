@@ -57,7 +57,7 @@ pub fn fetch(
             destination: download_path.join(&package.name),
         }) as Box<dyn Fetcher>
     };
-    println!("h");
+
     let (fetched, fetched_at) = fetcher.fetch()?;
     match fetched {
         FetchedSource::Archive(ref path) => {
