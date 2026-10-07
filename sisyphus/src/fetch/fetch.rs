@@ -11,7 +11,6 @@ use crate::{
 use common::types::{error::FetchError, package::Package};
 
 use rusqlite::{Connection, OptionalExtension, params};
-use url::Url;
 
 pub fn fetch(
     package: &Package,
@@ -19,7 +18,6 @@ pub fn fetch(
     runtime_config: &RuntimeConfig,
 ) -> Result<FetchedSource, FetchError> {
     let download_path = runtime_config.fetch_cache.clone();
-    let parsed_url = Url::parse(&package.source.url)?;
 
     if runtime_config.db_path.exists() {
         let conn = Connection::open(&runtime_config.db_path)?;
@@ -29,13 +27,16 @@ pub fn fetch(
             conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 IS NULL")?
         };
 
-        let path: Option<String> = match &package.source.sha256 {
+        let source_path: Option<String> = match &package.source.sha256 {
             Some(sha) => stmt.query_row(params![&package.source.url, sha], |row| row.get(0)),
             None => stmt.query_row(params![&package.source.url], |row| row.get(0)),
         }
         .optional()?;
 
-        if let Some(path) = path {
+        if let Some(path) = source_path
+            && PathBuf::from(&path).exists()
+        {
+            verify(&PathBuf::from(&path), package)?;
             return Ok(FetchedSource::Archive(PathBuf::from(path)));
         }
     }
@@ -52,26 +53,26 @@ pub fn fetch(
         }) as Box<dyn Fetcher>
     };
     let (fetched, fetched_at) = fetcher.fetch()?;
-    if verify_checksum && !parsed_url.path().trim_end_matches("/").ends_with(".git") {
-        match fetched {
-            FetchedSource::Archive(ref path) => {
+    match fetched {
+        FetchedSource::Archive(ref path) => {
+            if verify_checksum {
                 verify(path, package)?;
-                insert_source(
-                    &package.source.url,
-                    &package.source.sha256,
-                    &path.to_string_lossy().into_owned(),
-                    &fetched_at,
-                    runtime_config,
-                )?;
             }
-            FetchedSource::Dir(ref path) => insert_source(
+            insert_source(
                 &package.source.url,
                 &package.source.sha256,
                 &path.to_string_lossy().into_owned(),
                 &fetched_at,
                 runtime_config,
-            )?,
+            )?;
         }
+        FetchedSource::Dir(ref path) => insert_source(
+            &package.source.url,
+            &package.source.sha256,
+            &path.to_string_lossy().into_owned(),
+            &fetched_at,
+            runtime_config,
+        )?,
     }
 
     Ok(fetched)
