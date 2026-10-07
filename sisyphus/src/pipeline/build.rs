@@ -21,24 +21,41 @@ pub fn run_build(
     let runtime_config = runtime_config.unwrap_or(&binding);
 
     // Abort if package already exists
-    let conn = Connection::open(&runtime_config.db_path)?;
-    let mut stmt = conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
-    let package_exists: bool = stmt.query_row(
-        &[
-            &package.name,
-            &package.version,
-            &package.release.to_string(),
-            &package.architecture.to_string(),
-        ],
-        |row| row.get(0),
-    )?;
+    if runtime_config.db_path.exists() {
+        let conn = Connection::open(&runtime_config.db_path)?;
+        let mut stmt = conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+        let package_exists: bool = stmt.query_row(
+            &[
+                &package.name,
+                &package.version,
+                &package.release.to_string(),
+                &package.architecture.to_string(),
+            ],
+            |row| row.get(0),
+        )?;
 
-    if package_exists {
-        return Ok(());
+        let mut stmt = conn.prepare("SELECT sky_path FROM packages where name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+        let sky_path: String = stmt.query_row(
+            &[
+                &package.name,
+                &package.version,
+                &package.release.to_string(),
+                &package.architecture.to_string(),
+            ],
+            |row| row.get(0),
+        )?;
+
+        if package_exists && PathBuf::from(sky_path).exists() {
+            println!(
+                "Package \"{}\" already exists, skipping build",
+                package.name
+            );
+            return Ok(());
+        }
     }
 
     // Phase 1: Fetch
-    let (fetched, _download_dir) = fetch(&package, true, runtime_config)?;
+    let fetched = fetch(&package, true, runtime_config)?;
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched)?;
