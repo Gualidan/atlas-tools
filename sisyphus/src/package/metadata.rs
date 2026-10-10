@@ -16,12 +16,12 @@ pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata, Pac
 
     let metadata = Metadata {
         format: 1,
-        name: package.name.clone(),
-        version: package.version.clone(),
-        release: package.release.clone(),
-        architecture: package.architecture.clone(),
-        deps: package.deps.clone(),
-        source: package.source.clone(),
+        name: package.name.to_owned(),
+        version: package.version.to_owned(),
+        release: package.release.to_owned(),
+        architecture: package.architecture.to_owned(),
+        deps: package.deps.to_owned(),
+        source: package.source.to_owned(),
         build: Build {
             recipe_sha256: hex::encode(hash(reader)?),
             built_at: Utc::now().to_rfc3339(),
