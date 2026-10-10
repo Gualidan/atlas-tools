@@ -43,4 +43,6 @@ pub enum State {
 pub enum Cli {
     #[error("failed to load settings: {0}")]
     LoadSettings(#[from] ConfigError),
+    #[error("failed to query database")]
+    QueryDB(#[from] rusqlite::Error),
 }
