@@ -198,7 +198,7 @@ impl<'a> Resolver<'a> {
         package: &Package,
         settings: &Settings,
     ) -> Result<Option<ReusableArtifact>, BuildError> {
-        let conn = Connection::open(&self.config.db_path)?;
+        let conn = Connection::open(&self.config.repo_db_path)?;
         let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
         let rows: Option<String> = stmt.query_row(
             [

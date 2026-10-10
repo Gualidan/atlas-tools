@@ -9,9 +9,10 @@ pub struct RuntimeConfig {
     pub recipe_repo: PathBuf,
     pub sky_repo: PathBuf,
     pub srcdir: PathBuf,
-    pub db_path: PathBuf,
+    pub repo_db_path: PathBuf,
     pub fetch_cache: PathBuf,
     pub cache_db_path: PathBuf,
+    pub install_db_path: PathBuf,
 }
 
 impl RuntimeConfig {
@@ -39,7 +40,7 @@ impl RuntimeConfig {
                     "Cache directory not found",
                 )))?
                 .join("sisyphus"),
-            db_path: data_dir()
+            repo_db_path: data_dir()
                 .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     "Cache directory not found",
@@ -63,6 +64,14 @@ impl RuntimeConfig {
                 )))?
                 .join("sisyphus")
                 .join("sources"),
+            install_db_path: data_dir()
+                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Cache directory not found",
+                )))?
+                .join("atlas")
+                .join("installed")
+                .with_extension("db"),
         })
     }
 }

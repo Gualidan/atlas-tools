@@ -9,7 +9,7 @@ pub fn insert_package(
     sky_path: &str,
     metadata: &Metadata,
 ) -> Result<(), PackageError> {
-    let db_path = &runtime_config.db_path;
+    let db_path = &runtime_config.repo_db_path;
 
     let conn = Connection::open(db_path)?;
 

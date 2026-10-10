@@ -21,8 +21,8 @@ pub fn run_build(
     let runtime_config = runtime_config.unwrap_or(&binding);
 
     // Abort if package already exists
-    if runtime_config.db_path.exists() {
-        let conn = Connection::open(&runtime_config.db_path)?;
+    if runtime_config.repo_db_path.exists() {
+        let conn = Connection::open(&runtime_config.repo_db_path)?;
         let mut stmt = conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
         let package_exists: bool = stmt.query_row(
             &[
