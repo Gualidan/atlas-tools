@@ -1,17 +1,15 @@
-use common::types::{context::Context, metadata::Metadata, package::Package};
+use common::types::{metadata::Metadata, package::Package};
 use rusqlite::{Connection, params};
-use sisyphus::types::runtime_config::RuntimeConfig;
 
-use crate::types::error::Cli;
+use crate::types::{error::Cli, runtime_config::RuntimeConfig};
 
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: Metadata,
     package: &Package,
-    ctx: Context,
     install_dir: String,
 ) -> Result<(), Cli> {
-    let mut install_db_conn = Connection::open(&runtime_config.install_db_path)?;
+    let mut install_db_conn = Connection::open(&runtime_config.install_db)?;
     install_db_conn.execute("PRAGMA foreign_keys = ON", [])?;
     let transaction = install_db_conn.transaction()?;
 
@@ -45,7 +43,7 @@ pub fn insert_installed_package(
     )?;
 
     // First insert dependencies into the installed_packages table
-    let repo_db_conn = Connection::open(&runtime_config.repo_db_path)?;
+    let repo_db_conn = Connection::open(&runtime_config.repo_db)?;
     // Insert the root package into installed_packages
     let mut stmt = repo_db_conn
         .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")?;

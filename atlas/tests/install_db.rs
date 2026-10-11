@@ -1,28 +1,20 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use atlas::cli::db::insert_installed_package;
+use atlas::{
+    cli::db::insert_installed_package,
+    types::{error::RuntimeConfig as RuntimeConfigError, runtime_config::RuntimeConfig},
+};
 use common::types::{
-    context::Context,
     metadata::{Build, Metadata},
     package::{Architectures, Package, Source},
-    settings::Settings,
 };
 use rusqlite::{Connection, params};
-use sisyphus::types::runtime_config::RuntimeConfig;
 use tempfile::TempDir;
 
 const ARCH: Architectures = Architectures::X86_64;
 
-fn runtime_config(tmp: &TempDir) -> RuntimeConfig {
-    RuntimeConfig {
-        recipe_repo: tmp.path().join("recipes"),
-        sky_repo: tmp.path().join("sky"),
-        srcdir: tmp.path().join("src"),
-        repo_db_path: tmp.path().join("repo.db"),
-        fetch_cache: tmp.path().join("fetch"),
-        cache_db_path: tmp.path().join("cache.db"),
-        install_db_path: tmp.path().join("install.db"),
-    }
+fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig, RuntimeConfigError> {
+    Ok(RuntimeConfig::build_at(&tmp.path().to_path_buf())?)
 }
 
 fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
@@ -93,35 +85,17 @@ fn metadata(package: &Package) -> Metadata {
     }
 }
 
-fn context<'a>(
-    package: &'a Package,
-    settings: &'a Settings,
-    conn: &'a Connection,
-    config: &RuntimeConfig,
-) -> Context<'a> {
-    Context {
-        package,
-        sky_path: PathBuf::from("/sky/root.sky"),
-        sky_repo: config.sky_repo.clone(),
-        install_dir: PathBuf::from("/"),
-        temp_dir: PathBuf::from("/tmp"),
-        settings,
-        dependencies: package.deps.clone(),
-        conn,
-    }
-}
-
 fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
     conn.query_row(sql, params, |row| row.get(0)).unwrap()
 }
 
 #[test]
-fn insert_installed_package_records_root_deps_and_edges() {
+fn insert_installed_package_records_root_deps_and_edges() -> Result<(), RuntimeConfigError> {
     let tmp = TempDir::new().unwrap();
-    let config = runtime_config(&tmp);
+    let config = runtime_config(&tmp)?;
 
     seed_repo_db(
-        &config.repo_db_path,
+        &config.repo_db,
         &[
             ("root", "1.0.0", 1, "/sky/root.sky"),
             ("dep-a", "2.1.0", 3, "/sky/dep-a.sky"),
@@ -130,23 +104,11 @@ fn insert_installed_package_records_root_deps_and_edges() {
     );
 
     let package = package("root", &["dep-a", "dep-b"]);
-    let settings = Settings {
-        priv_key_path: PathBuf::from("/tmp/key"),
-        pub_key_path: PathBuf::from("/tmp/key.pub"),
-    };
-    let ctx_conn = Connection::open_in_memory().unwrap();
 
-    let ctx = context(&package, &settings, &ctx_conn, &config);
-    insert_installed_package(
-        &config,
-        metadata(&package),
-        &package,
-        ctx,
-        "/usr".to_string(),
-    )
-    .expect("first install should succeed");
+    insert_installed_package(&config, metadata(&package), &package, "/usr".to_string())
+        .expect("first install should succeed");
 
-    let conn = Connection::open(&config.install_db_path).unwrap();
+    let conn = Connection::open(&config.install_db).unwrap();
 
     // Root row exists.
     assert_eq!(
@@ -197,17 +159,10 @@ fn insert_installed_package_records_root_deps_and_edges() {
 
     // Idempotence: a second run must still succeed and leave row counts stable
     // thanks to `INSERT OR REPLACE`.
-    let ctx2 = context(&package, &settings, &ctx_conn, &config);
-    insert_installed_package(
-        &config,
-        metadata(&package),
-        &package,
-        ctx2,
-        "/usr".to_string(),
-    )
-    .expect("second install should succeed");
+    insert_installed_package(&config, metadata(&package), &package, "/usr".to_string())
+        .expect("second install should succeed");
 
-    let conn = Connection::open(&config.install_db_path).unwrap();
+    let conn = Connection::open(&config.install_db).unwrap();
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
         3,
@@ -218,4 +173,5 @@ fn insert_installed_package_records_root_deps_and_edges() {
         2,
         "idempotent run changed dependency edge count"
     );
+    Ok(())
 }
