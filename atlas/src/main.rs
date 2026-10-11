@@ -1,6 +1,12 @@
-mod cli;
-mod types;
+use atlas::cli::cli::run;
+use std::process::ExitCode;
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
