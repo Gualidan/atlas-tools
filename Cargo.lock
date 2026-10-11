@@ -95,6 +95,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "common",
+ "dirs",
  "rusqlite",
  "rustix",
  "semver",

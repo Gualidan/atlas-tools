@@ -46,3 +46,9 @@ pub enum Cli {
     #[error("failed to query database")]
     QueryDB(#[from] rusqlite::Error),
 }
+
+#[derive(Error, Debug)]
+pub enum RuntimeConfig {
+    #[error("failed to derive directory: {0}")]
+    Dir(#[from] std::io::Error),
+}
