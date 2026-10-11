@@ -1,14 +1,14 @@
 use common::types::package::{Architectures, Source};
 use std::{env::consts::ARCH, path::PathBuf};
 
-use common::types::{context::Context, package::Package, settings::load_settings};
+use common::types::{package::Package, settings::load_settings};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use tempfile::Builder;
 
 use crate::{
     cli::cli::InstallArgs,
-    types::{error::Cli, runtime_config::RuntimeConfig},
+    types::{context::Context, error::Cli, runtime_config::RuntimeConfig},
 };
 
 pub fn install(
@@ -64,12 +64,13 @@ pub fn install(
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
         .tempdir()?;
+
     let context = Context {
         package: &package,
         sky_path: PathBuf::from(sky_path),
         sky_repo: runtime_config.sky_repo.to_owned(),
         install_dir,
-        temp_dir: temp_dir.path().to_path_buf(),
+        temp_dir: temp_dir,
         settings: &settings,
         dependencies: vec![],
         conn: &conn,
