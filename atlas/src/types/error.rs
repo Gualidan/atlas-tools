@@ -53,6 +53,8 @@ pub enum Cli {
     FromStr(String),
     #[error("failed to build runtime config: {0}")]
     RuntimeConfig(#[from] RuntimeConfig),
+    #[error("Error occured during transaction: {0}")]
+    State(#[from] State),
 }
 
 impl From<&str> for Cli {

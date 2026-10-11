@@ -8,7 +8,12 @@ use tempfile::Builder;
 
 use crate::{
     cli::cli::InstallArgs,
-    types::{context::Context, error::Cli, runtime_config::RuntimeConfig},
+    types::{
+        context::Context,
+        error::Cli,
+        runtime_config::RuntimeConfig,
+        states::{NotInstalled, State},
+    },
 };
 
 pub fn install(
@@ -41,6 +46,8 @@ pub fn install(
         sky_path = path.to_string_lossy().to_string();
     }
 
+    let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
+
     let package = Package {
         schema: 1,
         name,
@@ -65,7 +72,7 @@ pub fn install(
         .prefix("sisyphus_install_tmp_dir_")
         .tempdir()?;
 
-    let context = Context {
+    let mut ctx = Context {
         package: &package,
         sky_path: PathBuf::from(sky_path),
         sky_repo: runtime_config.sky_repo.to_owned(),
@@ -75,6 +82,12 @@ pub fn install(
         dependencies: vec![],
         conn: &conn,
     };
+
+    let state = Box::new(NotInstalled) as Box<dyn State>;
+
+    let state = state.verify(&mut ctx)?;
+    let state = state.stage(&mut ctx)?;
+    state.commit(&mut ctx)?;
 
     Ok(())
 }
