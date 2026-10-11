@@ -45,6 +45,20 @@ pub enum Cli {
     LoadSettings(#[from] ConfigError),
     #[error("failed to query database")]
     QueryDB(#[from] rusqlite::Error),
+    #[error("package: {0} not found")]
+    PackageNotFound(String),
+    #[error("I/O error during install")]
+    IO(#[from] std::io::Error),
+    #[error("Failed to convert String to known Architecture: {0}")]
+    FromStr(String),
+    #[error("failed to build runtime config: {0}")]
+    RuntimeConfig(#[from] RuntimeConfig),
+}
+
+impl From<&str> for Cli {
+    fn from(value: &str) -> Self {
+        Cli::FromStr(value.to_string())
+    }
 }
 
 #[derive(Error, Debug)]

@@ -1,8 +1,11 @@
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::types::error::Cli as CliError;
+use crate::{
+    cli::install::install,
+    types::{error::Cli as CliError, runtime_config::RuntimeConfig},
+};
 
 #[derive(Parser)]
 #[command(
@@ -25,11 +28,11 @@ enum Commands {
 }
 
 #[derive(Args)]
-struct InstallArgs {
+pub struct InstallArgs {
     /// The package to install
-    package: String,
+    pub package: String,
     /// The path to a sky file to install
-    sky_path: Option<PathBuf>,
+    pub sky_path: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -55,20 +58,11 @@ pub fn run() -> Result<(), CliError> {
 
     match &cli.commands {
         Commands::Install(args) => {
-            let sky_path = if let Some(path) = &args.sky_path {
-                Some(PathBuf::from(path))
-            } else {
-                None
-            };
-            // let context = Context {
-            //     package: &args.package,
-            //     sky_path: sky_path,
-            //     sky_repo: PathBuf::new(),
-            //     install_dir: PathBuf::new(),
-            //     temp_dir: PathBuf::new(),
-            //     settings: &load_settings()?,
-            //     dependencies: Vec::new(),
-            // };
+            let runtime_config = RuntimeConfig::build()?;
+            let install_dir =
+                env::var("ATLAS_INSTALL_DIR").unwrap_or(String::from("/var/lib/atlas/local"));
+
+            install(args, &runtime_config, PathBuf::from(install_dir))?;
         }
         Commands::Verify(args) => {}
         Commands::Uninstall(args) => {}
