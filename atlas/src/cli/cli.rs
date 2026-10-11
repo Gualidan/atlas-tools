@@ -64,9 +64,9 @@ pub fn run() -> Result<(), CliError> {
 
             install(args, &runtime_config, PathBuf::from(install_dir))?;
         }
-        Commands::Verify(args) => {}
-        Commands::Uninstall(args) => {}
-        Commands::Update(args) => {}
+        Commands::Verify(_args) => {}
+        Commands::Uninstall(_args) => {}
+        Commands::Update(_args) => {}
     }
     Ok(())
 }
