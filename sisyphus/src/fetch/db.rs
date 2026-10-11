@@ -10,17 +10,17 @@ pub fn insert_source(
     fetched_at: &String,
     runtime_config: &RuntimeConfig,
 ) -> Result<(), FetchError> {
-    let conn = Connection::open(&runtime_config.cache_db_path)?;
-    conn.execute("BEGIN", [])?;
+    let mut conn = Connection::open(&runtime_config.cache_db_path)?;
+    let transaction = conn.transaction()?;
 
-    conn.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT, path TEXT NOT NULL, fetched_at TEXT NOT NULL)", [])?;
+    transaction.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT, path TEXT NOT NULL, fetched_at TEXT NOT NULL)", [])?;
 
-    conn.execute(
+    transaction.execute(
         "INSERT OR REPLACE INTO sources (url, sha256, path, fetched_at) VALUES (?, ?, ?, ?)",
         params![url, sha256, path, fetched_at],
     )?;
 
-    conn.execute("COMMIT", [])?;
+    transaction.commit()?;
 
     Ok(())
 }
