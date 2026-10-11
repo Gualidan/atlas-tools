@@ -35,7 +35,7 @@ pub struct Source {
 #[serde(rename_all = "lowercase")]
 pub enum Architectures {
     X86_64,
-    AARCH64,
+    ARM,
 }
 
 impl Display for Architectures {
@@ -48,7 +48,20 @@ impl AsRef<std::ffi::OsStr> for Architectures {
     fn as_ref(&self) -> &std::ffi::OsStr {
         match self {
             Architectures::X86_64 => "x86_64".as_ref(),
-            Architectures::AARCH64 => "aarch64".as_ref(),
+            Architectures::ARM => "arm".as_ref(),
+        }
+    }
+}
+
+impl TryFrom<String> for Architectures {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value == String::from("x86_64") {
+            Ok(Architectures::X86_64)
+        } else if value == String::from("arm") {
+            Ok(Architectures::ARM)
+        } else {
+            Err("Unsupported architecture only ARM and x86_64 are supported")
         }
     }
 }
