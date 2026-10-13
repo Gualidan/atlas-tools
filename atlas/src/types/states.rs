@@ -15,16 +15,12 @@ use zstd::Decoder;
 
 use crate::types::{context::Context, error::State as StateError};
 
-#[derive(PartialEq)]
 pub struct NotInstalled;
 
-#[derive(PartialEq)]
 pub struct Verified;
 
-#[derive(PartialEq)]
 pub struct Staged;
 
-#[derive(PartialEq)]
 pub struct Installed;
 
 pub trait State {
