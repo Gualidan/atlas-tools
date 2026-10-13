@@ -67,7 +67,6 @@ pub fn install(
     };
     let settings = load_settings()?;
 
-    std::fs::create_dir_all(&install_dir)?;
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
         .tempdir()?;

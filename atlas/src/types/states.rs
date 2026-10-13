@@ -156,7 +156,10 @@ impl State for Staged {
             ctx.install_dir.clone(),
             RenameFlags::EXCHANGE,
         ) {
-            Ok(_) => Ok(Box::new(Installed)),
+            Ok(_) => {
+                remove_dir_all(ctx.temp_dir.path())?;
+                Ok(Box::new(Installed))
+            }
             Err(e) => {
                 for entry in WalkDir::new(&ctx.temp_dir) {
                     let entry = entry?;
