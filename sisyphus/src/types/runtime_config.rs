@@ -1,8 +1,7 @@
+use anyhow::{Context, Result};
 use dirs::{cache_dir, data_dir};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-use crate::types::error::RuntimeConfigError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -16,59 +15,38 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    pub fn build(recipe: &PathBuf) -> Result<RuntimeConfig, RuntimeConfigError> {
+    pub fn build(recipe: &PathBuf) -> Result<RuntimeConfig> {
         let recipe = recipe.canonicalize()?;
         Ok(RuntimeConfig {
             recipe_repo: recipe
                 .ancestors()
                 .nth(2)
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Recipe directory not found",
-                )))?
+                .context("Failed to derive recipe directory")?
                 .to_path_buf(),
             sky_repo: data_dir()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Data directory not found",
-                )))?
+                .context("Failed to derive user's data directory")?
                 .join("sisyphus")
                 .join("repo"),
             srcdir: cache_dir()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's cache directory")?
                 .join("sisyphus"),
             repo_db_path: data_dir()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's data directory")?
                 .join("sisyphus")
                 .join("repo")
                 .join("repo")
                 .with_extension("db"),
             cache_db_path: cache_dir()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's cache directory")?
                 .join("sisyphus")
                 .join("cache")
                 .with_extension("db"),
             fetch_cache: cache_dir()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's cache directory")?
                 .join("sisyphus")
                 .join("sources"),
             install_db_path: data_dir()
-                .ok_or(RuntimeConfigError::DirError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's data directory")?
                 .join("atlas")
                 .join("installed")
                 .with_extension("db"),

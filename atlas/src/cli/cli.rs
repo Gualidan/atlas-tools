@@ -1,11 +1,9 @@
 use std::{env, path::PathBuf};
 
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 
-use crate::{
-    cli::install::install,
-    types::{error::Cli as CliError, runtime_config::RuntimeConfig},
-};
+use crate::{cli::install::install, types::runtime_config::RuntimeConfig};
 
 #[derive(Parser)]
 #[command(
@@ -53,12 +51,13 @@ struct UpdateArgs {
     package: Option<String>,
 }
 
-pub fn run() -> Result<(), CliError> {
+pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.commands {
         Commands::Install(args) => {
-            let runtime_config = RuntimeConfig::build()?;
+            let runtime_config =
+                RuntimeConfig::build().context("Failed to build runtime config")?;
             let install_dir =
                 env::var("ATLAS_INSTALL_DIR").unwrap_or(String::from("/var/lib/atlas/local"));
 

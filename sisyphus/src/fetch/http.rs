@@ -1,5 +1,5 @@
+use anyhow::{Context, Result};
 use chrono::Utc;
-use common::types::error::FetchError;
 
 use crate::types::fetcher::{FetchedSource, Fetcher};
 use std::{fs::File, path::PathBuf};
@@ -10,9 +10,12 @@ pub struct HttpFetcher {
 }
 
 impl Fetcher for HttpFetcher {
-    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String), FetchError> {
-        let response = reqwest::blocking::get(&self.url)?;
-        let response = response.error_for_status()?;
+    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String)> {
+        let response =
+            reqwest::blocking::get(&self.url).context("Failed to perform HTTP request")?;
+        let response = response
+            .error_for_status()
+            .context("HTTP request returned an error status")?;
 
         let fname = response
             .url()
@@ -22,10 +25,13 @@ impl Fetcher for HttpFetcher {
             .unwrap_or("tmp.bin");
         let fname = self.destination.join(fname);
 
-        let mut dest = File::create(&fname)?;
-        let content = response.bytes()?;
+        let mut dest = File::create(&fname).context("Failed to create destination file")?;
+        let content = response
+            .bytes()
+            .context("Failed to read HTTP response body")?;
 
-        std::io::copy(&mut content.as_ref(), &mut dest)?;
+        std::io::copy(&mut content.as_ref(), &mut dest)
+            .context("Failed to write downloaded content to disk")?;
         let fetched_at = Utc::now().to_rfc3339();
         // ensure it's flushed/closed before reopening
         drop(dest);

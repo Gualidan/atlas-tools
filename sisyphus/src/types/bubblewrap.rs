@@ -1,3 +1,4 @@
+use anyhow::{Context, Result, anyhow};
 use which::which;
 
 use crate::types::sandbox::Sandbox;
@@ -15,7 +16,7 @@ pub struct Bubblewrap {
 }
 
 impl Sandbox for Bubblewrap {
-    fn run_phase(&self, phase: String) -> Result<(), super::error::SandboxError> {
+    fn run_phase(&self, phase: String) -> Result<()> {
         which("bwrap")?;
         let mut cmd = Command::new("bwrap")
             .arg("--ro-bind")
@@ -65,12 +66,16 @@ impl Sandbox for Bubblewrap {
             .arg("/pkgdir")
             .arg("--unshare-net")
             .args(&["bash", "-euo", "pipefail", "-c", &phase])
-            .spawn()?;
+            .spawn()
+            .context("Failed to spawn bwrap command")?;
 
         let status = cmd.wait()?;
 
         if !status.success() {
-            return Err(super::error::SandboxError::BwrapExitError(status));
+            return Err(anyhow!(
+                "Bubblewrap exited with non zero exit status: {}",
+                status
+            ));
         }
 
         Ok(())

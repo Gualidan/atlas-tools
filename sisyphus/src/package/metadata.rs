@@ -1,8 +1,8 @@
 use std::{fs::File, path::PathBuf};
 
+use anyhow::{Context, Result};
 use chrono::Utc;
 
-use crate::types::error::PackageError;
 use common::{
     functions::hash::hash,
     types::{
@@ -11,8 +11,8 @@ use common::{
     },
 };
 
-pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata, PackageError> {
-    let reader = File::open(recipe)?;
+pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata> {
+    let reader = File::open(recipe).context("Failed to open recipe file")?;
 
     let metadata = Metadata {
         format: 1,
@@ -23,7 +23,7 @@ pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata, Pac
         deps: package.deps.to_owned(),
         source: package.source.to_owned(),
         build: Build {
-            recipe_sha256: hex::encode(hash(reader)?),
+            recipe_sha256: hex::encode(hash(reader).context("Failed to hash recipe file")?),
             built_at: Utc::now().to_rfc3339(),
             builder: format!("sisyphus {}", env!("CARGO_PKG_VERSION")),
         },

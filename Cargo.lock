@@ -73,6 +73,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
 name = "arraydeque"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -93,6 +99,7 @@ dependencies = [
 name = "atlas"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "common",
  "dirs",
@@ -103,7 +110,6 @@ dependencies = [
  "sisyphus",
  "tar",
  "tempfile",
- "thiserror",
  "walkdir",
  "zstd",
 ]
@@ -287,6 +293,7 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "config",
  "dirs",
  "reqwest",
@@ -295,7 +302,6 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "tar",
- "thiserror",
  "which",
  "zstd",
 ]
@@ -1761,6 +1767,7 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 name = "sisyphus"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "clap",
  "common",
@@ -1775,7 +1782,6 @@ dependencies = [
  "serde-saphyr",
  "tar",
  "tempfile",
- "thiserror",
  "walkdir",
  "which",
  "whoami",

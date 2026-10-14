@@ -1,8 +1,7 @@
 use std::fmt::Display;
 
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
-
-use crate::types::error::RecipeError;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Package {
@@ -54,24 +53,22 @@ impl AsRef<std::ffi::OsStr> for Architectures {
 }
 
 impl TryFrom<String> for Architectures {
-    type Error = &'static str;
+    type Error = anyhow::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value == String::from("x86_64") {
-            Ok(Architectures::X86_64)
-        } else if value == String::from("arm") {
-            Ok(Architectures::ARM)
-        } else {
-            Err("Unsupported architecture only ARM and x86_64 are supported")
+        match value.as_str() {
+            "x86_64" => Ok(Architectures::X86_64),
+            "arm" => Ok(Architectures::ARM),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported architecture only ARM and x86_64 are supported"
+            )),
         }
     }
 }
 
 impl Package {
-    pub fn validate(&self) -> Result<(), RecipeError> {
+    pub fn validate(&self) -> Result<()> {
         if self.schema == 0 || self.schema > 1 {
-            return Err(RecipeError::Validation(
-                "Only schema version 1 is supported".to_string(),
-            ));
+            return Err(anyhow!("Only schema version 1 is supported"));
         }
 
         if self.name.is_empty()
@@ -86,8 +83,8 @@ impl Package {
                     || c == '-'
             })
         {
-            return Err(RecipeError::Validation(
-                "Name field is invalid refer to the package naming documentation".to_string(),
+            return Err(anyhow!(
+                "Name field is invalid refer to the package naming documentation"
             ));
         }
         if self.version.is_empty()
@@ -96,28 +93,25 @@ impl Package {
                 .chars()
                 .any(|s| s.is_control() || s.is_whitespace() || s == '/')
         {
-            return Err(RecipeError::Validation(
+            return Err(anyhow!(
                 "Version field is invalid: whitespaces, control characters, and slashes are not allowed"
-                    .to_string(),
             ));
         }
         if self.source.url.is_empty() {
-            return Err(RecipeError::Validation("URL field is empty".to_string()));
+            return Err(anyhow!("URL field is empty"));
         }
         if self.deps.contains(&self.name) {
-            return Err(RecipeError::Validation(
-                "Package is not allowed to list itself as a dependency".to_string(),
+            return Err(anyhow!(
+                "Package is not allowed to list itself as a dependency"
             ));
         }
         if self.makedeps.contains(&self.name) {
-            return Err(RecipeError::Validation(
-                "Package is not allowed to list itself as a make dependency".to_string(),
+            return Err(anyhow!(
+                "Package is not allowed to list itself as a make dependency"
             ));
         }
         if self.package.is_empty() {
-            return Err(RecipeError::Validation(
-                "Package phase field is empty".to_string(),
-            ));
+            return Err(anyhow!("Package phase field is empty"));
         }
         Ok(())
     }

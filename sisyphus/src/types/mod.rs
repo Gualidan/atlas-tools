@@ -1,5 +1,4 @@
 pub mod bubblewrap;
-pub mod error;
 pub mod fetcher;
 pub mod manifest;
 pub mod recipe;

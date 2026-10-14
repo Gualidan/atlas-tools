@@ -1,24 +1,29 @@
+use anyhow::{Context, Result, anyhow};
+use common::functions::hash::hash;
+use common::types::package::Package;
 use std::fs::File;
 use std::path::PathBuf;
 
-use common::functions::hash::hash;
-use common::types::error::ChecksumError;
-use common::types::package::Package;
+pub fn verify(file: &PathBuf, package: &Package) -> Result<()> {
+    let computed = hash(File::open(file).context("Failed to open file for checksum verification")?)
+        .context("Failed to hash file for checksum verification")?;
 
-pub fn verify(file: &PathBuf, package: &Package) -> Result<(), ChecksumError> {
-    let computed = hash(File::open(file)?)?;
-    let expected = package.source.sha256.clone();
+    let expected = package
+        .source
+        .sha256
+        .clone()
+        .context("Package does not specify a sha256 checksum")?;
 
     let computed = computed
         .as_ref()
         .iter()
         .map(|b| format!("{:02x}", b))
         .collect::<String>();
-    let expected = expected.unwrap();
+
     if computed != expected {
-        return Err(ChecksumError::ChecksumMismatch(format!(
-            "Expected: {expected}, got: {computed}"
-        )));
+        return Err(anyhow!(
+            "Checksum mismatch: expected {expected}, got {computed}"
+        ));
     }
     Ok(())
 }

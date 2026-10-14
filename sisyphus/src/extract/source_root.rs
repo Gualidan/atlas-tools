@@ -1,12 +1,13 @@
-use crate::types::error::ExtractError;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 
 /// Find the single top-level directory in an extracted archive
 /// Many source tarballs have a single directory at the root (e.g., package-1.0.0/)
 /// This function finds and returns that directory path
-pub fn find_source_root(extracted_dir: &PathBuf) -> Result<PathBuf, ExtractError> {
+pub fn find_source_root(extracted_dir: &PathBuf) -> Result<PathBuf> {
     // Read all entries (files and directories) from the extracted directory
-    let entries: Vec<_> = std::fs::read_dir(extracted_dir)?
+    let entries: Vec<_> = std::fs::read_dir(extracted_dir)
+        .context("Failed to read extracted directory")?
         .filter_map(|e| e.ok())
         .collect();
 

@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
-thiserror.workspace = true
 serde-saphyr.workspace = true
 tar.workspace = true
 zstd.workspace = true
@@ -16,3 +15,4 @@ dirs.workspace = true
 which.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
+anyhow.workspace = true

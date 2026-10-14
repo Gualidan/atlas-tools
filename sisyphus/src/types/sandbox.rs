@@ -1,5 +1,5 @@
-use crate::types::error::SandboxError;
+use anyhow::Result;
 
 pub trait Sandbox {
-    fn run_phase(&self, phase: String) -> Result<(), SandboxError>;
+    fn run_phase(&self, phase: String) -> Result<()>;
 }

@@ -1,8 +1,9 @@
-use crate::types::fetcher::{FetchedSource, Fetcher};
+use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
-use common::types::error::FetchError;
 use std::{path::PathBuf, process::Command};
 use which::which;
+
+use crate::types::fetcher::{FetchedSource, Fetcher};
 
 pub struct GitFetcher {
     pub url: String,
@@ -10,21 +11,22 @@ pub struct GitFetcher {
 }
 
 impl Fetcher for GitFetcher {
-    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String), FetchError> {
-        which("git")?;
+    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String)> {
+        which("git").context("Git not found")?;
 
         let output = Command::new("git")
             .arg("clone")
             .arg(&self.url)
             .arg(&self.destination)
-            .output()?;
+            .output()
+            .context("Failed to run git clone")?;
 
         let fetched_at = Utc::now().to_rfc3339();
         if !output.status.success() {
-            return Err(FetchError::CloneError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            )));
+            return Err(anyhow!(
+                "Failed to clone git repository: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         Ok((FetchedSource::Dir(self.destination), fetched_at))

@@ -1,17 +1,23 @@
+use anyhow::{Context, Result};
 use common::types::{metadata::Metadata, package::Package};
 use rusqlite::{Connection, params};
 
-use crate::types::{error::Cli, runtime_config::RuntimeConfig};
+use crate::types::runtime_config::RuntimeConfig;
 
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: Metadata,
     package: &Package,
     install_dir: String,
-) -> Result<(), Cli> {
-    let mut install_db_conn = Connection::open(&runtime_config.install_db)?;
-    install_db_conn.execute("PRAGMA foreign_keys = ON", [])?;
-    let transaction = install_db_conn.transaction()?;
+) -> Result<()> {
+    let mut install_db_conn = Connection::open(&runtime_config.install_db)
+        .context("Failed to open connection to the install database")?;
+    install_db_conn
+        .execute("PRAGMA foreign_keys = ON", [])
+        .context("Failed to enable foreign key enforcement")?;
+    let transaction = install_db_conn
+        .transaction()
+        .context("Failed to start an install database transaction")?;
 
     transaction.execute(
         "CREATE TABLE IF NOT EXISTS installed_packages (
@@ -25,7 +31,8 @@ pub fn insert_installed_package(
         PRIMARY KEY (name, architecture)
     )",
         [],
-    )?;
+    )
+    .context("Failed to create installed_packages table")?;
 
     transaction.execute(
         "CREATE TABLE IF NOT EXISTS package_dependencies (
@@ -40,42 +47,52 @@ pub fn insert_installed_package(
         CHECK (package_name != dependency_name)
     )",
         [],
-    )?;
+    )
+    .context("Failed to create package_dependencies table")?;
 
     // First insert dependencies into the installed_packages table
-    let repo_db_conn = Connection::open(&runtime_config.repo_db)?;
+    let repo_db_conn = Connection::open(&runtime_config.repo_db)
+        .context("Failed to open connection to the repository database")?;
     // Insert the root package into installed_packages
     let mut stmt = repo_db_conn
-        .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")?;
-    let sky_path: String = stmt.query_row(
-        params![package.name, package.architecture.to_string()],
-        |row| row.get(0),
-    )?;
-    transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir])?;
+        .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
+        .context("Failed to prepare repository lookup query")?;
+    let sky_path: String = stmt
+        .query_row(
+            params![package.name, package.architecture.to_string()],
+            |row| row.get(0),
+        )
+        .context("Failed to look up package in repository database")?;
+    transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir]).context("Failed to insert root package into install database")?;
     for dep in &metadata.deps {
         let mut stmt = repo_db_conn
-            .prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")?;
+            .prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
+            .with_context(|| format!("Failed to prepare repository lookup query for dependency `{dep}`"))?;
         let (name, version, release, architecture, sky_path): (
             String,
             String,
             u32,
             String,
             String,
-        ) = stmt.query_row(params![dep, package.architecture.to_string()], |row| {
-            let name: String = row.get(0)?;
-            let version: String = row.get(1)?;
-            let release: u32 = row.get(2)?;
-            let architecture: String = row.get(3)?;
-            let sky_path: String = row.get(4)?;
-            Ok((name, version, release, architecture, sky_path))
-        })?;
+        ) = stmt
+            .query_row(params![dep, package.architecture.to_string()], |row| {
+                let name: String = row.get(0)?;
+                let version: String = row.get(1)?;
+                let release: u32 = row.get(2)?;
+                let architecture: String = row.get(3)?;
+                let sky_path: String = row.get(4)?;
+                Ok((name, version, release, architecture, sky_path))
+            })
+            .with_context(|| format!("Failed to look up dependency `{dep}` in repository database"))?;
 
-        transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![name, version, release, architecture, sky_path, install_dir])?;
+        transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![name, version, release, architecture, sky_path, install_dir]).context("Failed to insert dependency into install database")?;
 
-        transaction.execute("INSERT OR REPLACE INTO package_dependencies (package_name, architecture, dependency_name) VALUES (?, ?, ?)", params![package.name, package.architecture.to_string(), dep])?;
+        transaction.execute("INSERT OR REPLACE INTO package_dependencies (package_name, architecture, dependency_name) VALUES (?, ?, ?)", params![package.name, package.architecture.to_string(), dep]).context("Failed to insert dependency edge into install database")?;
     }
 
-    transaction.commit()?;
+    transaction
+        .commit()
+        .context("Failed to commit changes to install database")?;
 
     Ok(())
 }

@@ -1,7 +1,8 @@
+use anyhow::{Context as AnyhowContext, Result};
 use common::types::package::{Architectures, Source};
 use std::{env::consts::ARCH, path::PathBuf};
 
-use common::types::{package::Package, settings::load_settings};
+use common::types::{config::load_config, package::Package};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use tempfile::Builder;
@@ -10,7 +11,6 @@ use crate::{
     cli::cli::InstallArgs,
     types::{
         context::Context,
-        error::Cli,
         runtime_config::RuntimeConfig,
         states::{NotInstalled, State},
     },
@@ -20,10 +20,11 @@ pub fn install(
     args: &InstallArgs,
     runtime_config: &RuntimeConfig,
     install_dir: PathBuf,
-) -> Result<(), Cli> {
-    let conn = Connection::open(&runtime_config.repo_db)?;
+) -> Result<()> {
+    let conn = Connection::open(&runtime_config.repo_db)
+        .context("Failed to open connection to the repository database")?;
 
-    let mut stmt = conn.prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ?")?;
+    let mut stmt = conn.prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
     let (name, version, release, architecture, mut sky_path): (
         String,
         String,
@@ -41,7 +42,7 @@ pub fn install(
             Ok((name, version, release, architecture, sky_path))
         })
         .optional()?
-        .ok_or_else(|| Cli::PackageNotFound(args.package.to_owned()))?;
+        .with_context(|| format!("Package {} not found", args.package))?;
     if let Some(path) = &args.sky_path {
         sky_path = path.to_string_lossy().to_string();
     }
@@ -65,11 +66,12 @@ pub fn install(
         check: None,
         package: String::new(),
     };
-    let settings = load_settings()?;
+    let settings = load_config().context("Failed to load settings")?;
 
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
-        .tempdir()?;
+        .tempdir()
+        .context("Failed to create temporary directory")?;
 
     let mut ctx = Context {
         package: &package,

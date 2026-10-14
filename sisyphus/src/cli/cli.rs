@@ -1,7 +1,5 @@
-use crate::{
-    pipeline::{build::run_build, checksum::run_checksum, keygen::run_keygen},
-    types::error::CliError,
-};
+use crate::pipeline::{build::run_build, checksum::run_checksum, keygen::run_keygen};
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -50,7 +48,7 @@ struct ChecksumArgs {
     recipe_path: PathBuf,
 }
 
-pub fn run() -> Result<(), CliError> {
+pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -59,15 +57,15 @@ pub fn run() -> Result<(), CliError> {
                 println!("Skipping build.");
                 return Ok(());
             }
-            run_build(&args.recipe_path, None, false)?;
+            run_build(&args.recipe_path, None, false).context("Failed to run build")?;
             Ok(())
         }
         Commands::Keygen(args) => {
-            run_keygen(&args.keypair_path)?;
+            run_keygen(&args.keypair_path).context("Failed to run key generation")?;
             Ok(())
         }
         Commands::ChecksumGen(args) => {
-            run_checksum(&args.recipe_path)?;
+            run_checksum(&args.recipe_path).context("Failed to run checksum generation")?;
             Ok(())
         }
     }

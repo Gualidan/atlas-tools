@@ -5,23 +5,21 @@ use std::{
     path::PathBuf,
 };
 
+use anyhow::{Context, Result, anyhow};
 use common::functions::hash::hash;
 use tar::Header;
 use walkdir::WalkDir;
 
-use crate::types::{
-    error::PackageError,
-    manifest::{FileType, ManifestLine},
-};
+use crate::types::manifest::{FileType, ManifestLine};
 
-pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>), PackageError> {
+pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
     let mut metadata: Vec<ManifestLine> = vec![];
 
     let writer = Cursor::new(Vec::new());
     let mut archive = tar::Builder::new(zstd::Encoder::new(writer, 3)?);
 
     for entry in WalkDir::new(&pkgdir) {
-        let entry = entry?;
+        let entry = entry.context("Failed to get entry")?;
         if entry.path() == pkgdir {
             continue;
         }
@@ -52,7 +50,7 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>), PackageError> 
 
                 archive.append_data(&mut header, relative_path, &mut file)?;
                 manifest_line
-            },
+            }
             ft if ft.is_dir() => {
                 let mut header = Header::new_gnu();
                 header.set_username("root")?;
@@ -72,7 +70,7 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>), PackageError> 
                     path: relative_path,
                 };
                 manifest_line
-            },
+            }
             ft if ft.is_symlink() => {
                 let target = read_link(path)?;
 
@@ -96,7 +94,11 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>), PackageError> 
                 };
                 manifest_line
             }
-            _ => return Err(PackageError::FileTypeError("File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink)".to_string(), path.to_path_buf()))
+            _ => {
+                return Err(anyhow!(
+                    "File in pkgdir has an unexpected file type (allowed filetypes are: file, directory, symlink)",
+                ));
+            }
         };
         metadata.push(manifest_line);
     }

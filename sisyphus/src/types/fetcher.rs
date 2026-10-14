@@ -1,4 +1,4 @@
-use common::types::error::FetchError;
+use anyhow::Result;
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -8,5 +8,5 @@ pub enum FetchedSource {
 }
 
 pub trait Fetcher {
-    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String), FetchError>;
+    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String)>;
 }

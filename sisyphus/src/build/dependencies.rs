@@ -5,12 +5,13 @@
 //! deterministic, cycle-free build plan. The executor will later consume that
 //! plan, build missing packages, and assemble a Bubblewrap build root.
 
-use crate::types::{error::BuildError, recipe::Recipe, runtime_config::RuntimeConfig};
+use anyhow::{Context, Result, anyhow};
+use crate::types::{recipe::Recipe, runtime_config::RuntimeConfig};
 use common::{
     functions::sky_verify::sky_verify,
     types::{
+        config::SisyphusConfig,
         package::{Architectures, Package},
-        settings::Settings,
     },
 };
 use rusqlite::Connection;
@@ -103,8 +104,8 @@ impl<'a> Resolver<'a> {
     fn resolve_root(
         mut self,
         root_package: &Package,
-        settings: &Settings,
-    ) -> Result<BuildPlan, BuildError> {
+        settings: &SisyphusConfig,
+    ) -> Result<BuildPlan> {
         for dependency in stable_names(&root_package.makedeps) {
             self.resolve_dependency(&dependency, settings)?;
         }
@@ -116,7 +117,11 @@ impl<'a> Resolver<'a> {
     /// The post-order insertion near the end is what produces a valid
     /// dependency-first build order without relying on HashMap/HashSet
     /// iteration order.
-    fn resolve_dependency(&mut self, name: &str, settings: &Settings) -> Result<(), BuildError> {
+    fn resolve_dependency(
+        &mut self,
+        name: &str,
+        settings: &SisyphusConfig,
+    ) -> Result<()> {
         match self
             .states
             .get(name)
@@ -125,7 +130,7 @@ impl<'a> Resolver<'a> {
         {
             VisitState::Resolved => return Ok(()),
             VisitState::Visiting => {
-                return Err(BuildError::CircularDependency(self.cycle(name)));
+                return Err(anyhow!("Circular dependency detected: {}", self.cycle(name)));
             }
             VisitState::Unvisited => {}
         }
@@ -143,7 +148,8 @@ impl<'a> Resolver<'a> {
         let dep_package = Recipe {
             path: &dep_recipe_path,
         }
-        .parse()?;
+        .parse()
+        .with_context(|| format!("Failed to parse recipe for dependency `{name}`"))?;
         if let Some(artifact) = self.find_reusable_artifact(&dep_package, settings)? {
             self.plan.build_root_packages.push(name.to_owned());
             self.plan.reusable_artifacts.push(artifact.clone());
@@ -180,15 +186,15 @@ impl<'a> Resolver<'a> {
 
     /// Return the canonical v1 recipe path. Do not scan arbitrary directories:
     /// the repository contract is exactly `<name>/sky.yaml`.
-    fn recipe_path(&self, name: &str) -> Result<PathBuf, BuildError> {
+    fn recipe_path(&self, name: &str) -> Result<PathBuf> {
         let recipe_path = self.config.recipe_repo.join(name).join("sky.yaml");
         if recipe_path.is_file() {
             Ok(recipe_path)
         } else {
-            Err(BuildError::ResolveDependenciesError(format!(
+            Err(anyhow!(
                 "dependency `{name}` was not found at `{}`",
                 recipe_path.display()
-            )))
+            ))
         }
     }
 
@@ -196,10 +202,11 @@ impl<'a> Resolver<'a> {
     fn find_reusable_artifact(
         &self,
         package: &Package,
-        settings: &Settings,
-    ) -> Result<Option<ReusableArtifact>, BuildError> {
-        let conn = Connection::open(&self.config.repo_db_path)?;
-        let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+        settings: &SisyphusConfig,
+    ) -> Result<Option<ReusableArtifact>> {
+        let conn = Connection::open(&self.config.repo_db_path)
+            .context("Failed to open connection to repository database")?;
+        let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1").context("Failed to prepare artifact lookup query")?;
         let rows: Option<String> = stmt.query_row(
             [
                 &package.name,
@@ -208,10 +215,11 @@ impl<'a> Resolver<'a> {
                 &package.architecture.to_string(),
             ],
             |row| row.get(0),
-        )?;
+        ).context("Failed to query artifact from repository database")?;
 
         if let Some(path) = rows {
-            let metadata = sky_verify(&PathBuf::from(&path), package, settings)?;
+            let metadata =
+                sky_verify(&PathBuf::from(&path), package, settings).context("Failed to verify reusable artifact")?;
             return Ok(Some(ReusableArtifact {
                 name: metadata.name,
                 version: metadata.version,
@@ -254,7 +262,7 @@ fn stable_names(names: &[String]) -> Vec<String> {
 pub fn resolve(
     config: &RuntimeConfig,
     root_package: &Package,
-    settings: &Settings,
-) -> Result<BuildPlan, BuildError> {
+    settings: &SisyphusConfig,
+) -> Result<BuildPlan> {
     Resolver::new(config, root_package).resolve_root(root_package, settings)
 }

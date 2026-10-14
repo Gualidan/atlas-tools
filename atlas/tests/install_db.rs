@@ -1,8 +1,9 @@
 use std::path::Path;
 
+use anyhow::Result;
 use atlas::{
     cli::db::insert_installed_package,
-    types::{error::RuntimeConfig as RuntimeConfigError, runtime_config::RuntimeConfig},
+    types::runtime_config::RuntimeConfig,
 };
 use common::types::{
     metadata::{Build, Metadata},
@@ -13,8 +14,8 @@ use tempfile::TempDir;
 
 const ARCH: Architectures = Architectures::X86_64;
 
-fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig, RuntimeConfigError> {
-    Ok(RuntimeConfig::build_at(&tmp.path().to_path_buf())?)
+fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig> {
+    RuntimeConfig::build_at(&tmp.path().to_path_buf())
 }
 
 fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
@@ -90,7 +91,7 @@ fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
 }
 
 #[test]
-fn insert_installed_package_records_root_deps_and_edges() -> Result<(), RuntimeConfigError> {
+fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
     let tmp = TempDir::new().unwrap();
     let config = runtime_config(&tmp)?;
 

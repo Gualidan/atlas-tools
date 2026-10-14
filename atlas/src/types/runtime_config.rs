@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
+use anyhow::{Context, Result};
 use dirs::data_dir;
-
-use crate::types::error::RuntimeConfig as RuntimeConfigError;
 
 pub struct RuntimeConfig {
     pub repo_db: PathBuf,
@@ -11,35 +10,26 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    pub fn build() -> Result<Self, RuntimeConfigError> {
+    pub fn build() -> Result<Self> {
         Ok(RuntimeConfig {
             repo_db: data_dir()
-                .ok_or(RuntimeConfigError::Dir(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's data directory")?
                 .join("sisyphus")
                 .join("repo")
                 .join("repo")
                 .with_extension("db"),
             install_db: data_dir()
-                .ok_or(RuntimeConfigError::Dir(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Cache directory not found",
-                )))?
+                .context("Failed to derive user's cache directory")?
                 .join("atlas")
                 .join("installed")
                 .with_extension("db"),
             sky_repo: data_dir()
-                .ok_or(RuntimeConfigError::Dir(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Data directory not found",
-                )))?
+                .context("Failed to derive user's data directory")?
                 .join("sisyphus")
                 .join("repo"),
         })
     }
-    pub fn build_at(path: &PathBuf) -> Result<Self, RuntimeConfigError> {
+    pub fn build_at(path: &PathBuf) -> Result<Self> {
         Ok(RuntimeConfig {
             repo_db: path.join("repo").with_extension("db"),
             install_db: path.join("installed").with_extension("db"),

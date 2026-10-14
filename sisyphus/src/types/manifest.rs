@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::types::error::PackageError;
+use anyhow::Result;
 
 pub struct ManifestLine {
     pub file_type: FileType,
@@ -10,7 +10,7 @@ pub struct ManifestLine {
 }
 
 impl ManifestLine {
-    pub fn format(self) -> Result<String, PackageError> {
+    pub fn format(self) -> Result<String> {
         let mode = self.mode & 0o7777;
         Ok(format!(
             "{}\t{:04o}\t{}\t{}\n",

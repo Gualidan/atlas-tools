@@ -1,4 +1,3 @@
-pub mod error;
+pub mod config;
 pub mod metadata;
 pub mod package;
-pub mod settings;
