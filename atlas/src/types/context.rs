@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use common::types::metadata::Metadata;
 use rusqlite::Connection;
 
 use common::types::config::SisyphusConfig;
@@ -15,4 +16,5 @@ pub struct Context<'a> {
     pub settings: &'a SisyphusConfig,
     pub dependencies: Vec<String>,
     pub conn: &'a Connection,
+    pub metadata: Option<Metadata>,
 }

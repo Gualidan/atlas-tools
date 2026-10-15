@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use dirs::data_dir;
+use common::functions::dirs::data_dir;
 
 pub struct RuntimeConfig {
     pub repo_db: PathBuf,

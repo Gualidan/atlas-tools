@@ -49,7 +49,8 @@ impl State for NotInstalled {
             return Err(anyhow!("Verification failed"));
         }
 
-        sky_verify(&ctx.sky_path, &ctx.package, &ctx.settings)?;
+        let metadata = sky_verify(&ctx.sky_path, &ctx.package, &ctx.settings)?;
+        ctx.metadata = Some(metadata);
 
         Ok(Box::new(Verified))
     }
