@@ -1,3 +1,5 @@
+use std::fs::{self, File};
+
 use anyhow::{Context, Result};
 use common::types::{metadata::Metadata, package::Package};
 use rusqlite::{Connection, params};
@@ -10,6 +12,25 @@ pub fn insert_installed_package(
     package: &Package,
     install_dir: String,
 ) -> Result<()> {
+    if !runtime_config
+        .install_db
+        .parent()
+        .context("Failed to get path's parent")?
+        .exists()
+    {
+        fs::create_dir(
+            &runtime_config
+                .install_db
+                .parent()
+                .context("Failed to get path's parent")?,
+        )
+        .context("Failed to create directory")?;
+    }
+    if !runtime_config.install_db.exists() {
+        File::create_new(&runtime_config.install_db)
+            .context("Failed to create installed database file")?;
+    }
+
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to the install database")?;
     install_db_conn
@@ -19,8 +40,9 @@ pub fn insert_installed_package(
         .transaction()
         .context("Failed to start an install database transaction")?;
 
-    transaction.execute(
-        "CREATE TABLE IF NOT EXISTS installed_packages (
+    transaction
+        .execute(
+            "CREATE TABLE IF NOT EXISTS installed_packages (
         name TEXT NOT NULL,
         version TEXT NOT NULL,
         release INTEGER NOT NULL,
@@ -30,12 +52,13 @@ pub fn insert_installed_package(
         installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (name, architecture)
     )",
-        [],
-    )
-    .context("Failed to create installed_packages table")?;
+            [],
+        )
+        .context("Failed to create installed_packages table")?;
 
-    transaction.execute(
-        "CREATE TABLE IF NOT EXISTS package_dependencies (
+    transaction
+        .execute(
+            "CREATE TABLE IF NOT EXISTS package_dependencies (
         package_name TEXT NOT NULL,
         architecture TEXT NOT NULL,
         dependency_name TEXT NOT NULL,
@@ -46,9 +69,9 @@ pub fn insert_installed_package(
             REFERENCES installed_packages(name, architecture),
         CHECK (package_name != dependency_name)
     )",
-        [],
-    )
-    .context("Failed to create package_dependencies table")?;
+            [],
+        )
+        .context("Failed to create package_dependencies table")?;
 
     // First insert dependencies into the installed_packages table
     let repo_db_conn = Connection::open(&runtime_config.repo_db)
@@ -83,7 +106,9 @@ pub fn insert_installed_package(
                 let sky_path: String = row.get(4)?;
                 Ok((name, version, release, architecture, sky_path))
             })
-            .with_context(|| format!("Failed to look up dependency `{dep}` in repository database"))?;
+            .with_context(|| {
+                format!("Failed to look up dependency `{dep}` in repository database")
+            })?;
 
         transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![name, version, release, architecture, sky_path, install_dir]).context("Failed to insert dependency into install database")?;
 

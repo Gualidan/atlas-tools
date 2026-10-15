@@ -8,7 +8,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tempfile::Builder;
 
 use crate::{
-    cli::cli::InstallArgs,
+    cli::{cli::InstallArgs, db::insert_installed_package},
     types::{
         context::Context,
         runtime_config::RuntimeConfig,
@@ -70,18 +70,19 @@ pub fn install(
 
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
-        .tempdir()
+        .tempdir_in(PathBuf::from("/var/tmp"))
         .context("Failed to create temporary directory")?;
 
     let mut ctx = Context {
         package: &package,
         sky_path: PathBuf::from(sky_path),
         sky_repo: runtime_config.sky_repo.to_owned(),
-        install_dir,
+        install_dir: install_dir.to_owned(),
         temp_dir: temp_dir,
         settings: &settings,
         dependencies: vec![],
         conn: &conn,
+        metadata: None,
     };
 
     let state = Box::new(NotInstalled) as Box<dyn State>;
@@ -89,6 +90,13 @@ pub fn install(
     let state = state.verify(&mut ctx)?;
     let state = state.stage(&mut ctx)?;
     state.commit(&mut ctx)?;
+
+    insert_installed_package(
+        runtime_config,
+        ctx.metadata.context("Metadata should not be empty.")?,
+        &package,
+        install_dir.to_owned().to_string_lossy().to_string(),
+    )?;
 
     Ok(())
 }

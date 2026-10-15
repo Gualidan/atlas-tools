@@ -58,6 +58,7 @@ pub fn run() -> Result<()> {
         Commands::Install(args) => {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
+
             let install_dir =
                 env::var("ATLAS_INSTALL_DIR").unwrap_or(String::from("/var/lib/atlas/local"));
 
