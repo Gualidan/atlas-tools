@@ -1,13 +1,12 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use dirs::data_dir;
 
 use crate::{
     package::{metadata::metadata_gen, payload::payload_gen, sign::sign_artifacts, sky::sky_gen},
     types::runtime_config::RuntimeConfig,
 };
-use common::types::package::Package;
+use common::{functions::dirs::data_dir, types::package::Package};
 
 pub fn package_gen(
     recipe: &PathBuf,

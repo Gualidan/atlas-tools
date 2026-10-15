@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 
 use crate::types::fetcher::{FetchedSource, Fetcher};
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::{self, File},
+    path::PathBuf,
+};
 
 pub struct HttpFetcher {
     pub url: String,
@@ -25,6 +28,7 @@ impl Fetcher for HttpFetcher {
             .unwrap_or("tmp.bin");
         let fname = self.destination.join(fname);
 
+        fs::create_dir_all(self.destination).context("Failed to create destination directory")?;
         let mut dest = File::create(&fname).context("Failed to create destination file")?;
         let content = response
             .bytes()

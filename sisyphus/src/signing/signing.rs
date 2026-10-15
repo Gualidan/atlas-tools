@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use common::functions::dirs::config_dir;
 use libc::umask;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -9,7 +10,7 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
     let path = match keypath {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let keys_dir = dirs::config_dir()
+            let keys_dir = config_dir()
                 .context("Failed to derive user's config directory")?
                 .join("sisyphus")
                 .join("keys");

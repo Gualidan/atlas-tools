@@ -1,6 +1,6 @@
 use crate::signing::signing::keygen;
 use anyhow::{Context, Result};
-use dirs::config_dir;
+use common::functions::dirs::config_dir;
 use std::{fs::File, io::Write, path::PathBuf};
 
 pub fn run_keygen(path: &Option<PathBuf>) -> Result<()> {

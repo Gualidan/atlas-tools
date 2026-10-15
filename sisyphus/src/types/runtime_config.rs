@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use dirs::{cache_dir, data_dir};
+use common::functions::dirs::{cache_dir, data_dir};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
