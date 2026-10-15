@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 clap.workspace = true
 compress-tools = "0.16.1"
-dirs.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true

@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 clap.workspace = true
-sisyphus = { path = "../sisyphus" }
 tar.workspace = true
 zstd.workspace = true
 serde-saphyr.workspace = true
@@ -15,5 +14,4 @@ walkdir.workspace = true
 rustix = "1.1.5"
 rusqlite.workspace = true
 tempfile.workspace = true
-dirs.workspace = true
 anyhow.workspace = true
