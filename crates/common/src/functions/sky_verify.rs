@@ -28,7 +28,9 @@ pub fn sky_verify(
     let mut files_bytes: Vec<u8> = Vec::new();
     let mut signature_bytes: Vec<u8> = Vec::new();
 
-    let entries = archive.entries().context("Failed to read sky archive entries")?;
+    let entries = archive
+        .entries()
+        .context("Failed to read sky archive entries")?;
     for entry in entries {
         let mut entry = entry.context("Failed to read sky archive entry")?;
 

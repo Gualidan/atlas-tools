@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use config::{Config, File};
-use dirs::config_dir;
 use serde::Deserialize;
 use std::path::PathBuf;
+
+use crate::functions::dirs::config_dir;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SisyphusConfig {
