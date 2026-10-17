@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Ok, Result, anyhow};
 use ring::signature::{ED25519, UnparsedPublicKey};
 use tar::Archive;
 use zstd::Decoder;
@@ -14,19 +14,15 @@ use crate::{
     types::{config::SisyphusConfig, metadata::Metadata, package::Package},
 };
 
-pub fn sky_verify(
-    file_name: &PathBuf,
-    package: &Package,
-    settings: &SisyphusConfig,
-) -> Result<Metadata> {
-    let tar_gz = File::open(&file_name).context("Failed to open sky file")?;
+pub fn read_sky(path: &PathBuf) -> Result<(Vec<u8>, Vec<u8>, String, Vec<u8>)> {
+    let tar_gz = File::open(&path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
     let mut archive = Archive::new(tar);
 
-    let mut metadata_bytes: Vec<u8> = Vec::new();
-    let mut payload_bytes: Vec<u8> = Vec::new();
-    let mut files_bytes: Vec<u8> = Vec::new();
-    let mut signature_bytes: Vec<u8> = Vec::new();
+    let mut metadata = Vec::new();
+    let mut payload = Vec::new();
+    let mut files = String::new();
+    let mut signature = Vec::new();
 
     let entries = archive
         .entries()
@@ -42,32 +38,43 @@ pub fn sky_verify(
                 entry
                     .read_to_end(&mut buffer)
                     .context("Failed to read metadata from sky file")?;
-                metadata_bytes = buffer;
+                metadata = buffer;
             }
             Some("payload.tar.zst") => {
                 let mut buffer = Vec::new();
                 entry
                     .read_to_end(&mut buffer)
                     .context("Failed to read payload from sky file")?;
-                payload_bytes = buffer;
+                payload = buffer;
             }
             Some("files") => {
-                let mut buffer = Vec::new();
+                let mut buffer = String::new();
                 entry
-                    .read_to_end(&mut buffer)
+                    .read_to_string(&mut buffer)
                     .context("Failed to read manifest from sky file")?;
-                files_bytes = buffer;
+                files = buffer;
             }
             Some("signature.ed25519") => {
                 let mut buffer = Vec::new();
                 entry
                     .read_to_end(&mut buffer)
                     .context("Failed to read signature from sky file")?;
-                signature_bytes = buffer;
+                signature = buffer;
             }
             _ => {}
         }
     }
+
+    Ok((metadata, payload, files, signature))
+}
+
+pub fn sky_verify(
+    file_name: &PathBuf,
+    package: &Package,
+    settings: &SisyphusConfig,
+) -> Result<Metadata> {
+    let (metadata_bytes, payload_bytes, files_bytes, signature_bytes) =
+        read_sky(file_name).context("Failed to read sky file")?;
 
     let metadata_hash = hash(Cursor::new(&metadata_bytes)).context("Failed to hash metadata")?;
     let payload_hash = hash(Cursor::new(&payload_bytes)).context("Failed to hash payload")?;
