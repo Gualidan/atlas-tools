@@ -1,18 +1,15 @@
 use std::{
-    fs::{self, File, remove_dir_all, remove_file},
-    io::{Cursor, Read},
+    fs::{self, remove_dir_all, remove_file},
     path::PathBuf,
 };
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::functions::sky_verify::sky_verify;
+use common::functions::{sky_verify::sky_verify, unpack_payload::unpack_payload};
 
 use rusqlite::params;
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
-use tar::Archive;
 use walkdir::WalkDir;
-use zstd::Decoder;
 
 use crate::types::context::Context;
 
@@ -78,46 +75,7 @@ impl State for Verified {
     }
 
     fn stage(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
-        let tar_gz = File::open(&ctx.sky_path).context("Failed to open sky file")?;
-        let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
-        let mut archive = Archive::new(tar);
-
-        for entry in archive.entries()? {
-            let mut file = entry.context("Failed to get entry")?;
-
-            match file
-                .path()
-                .context("Failed to derive entry's path")?
-                .file_name()
-                .and_then(|n| n.to_str())
-            {
-                Some("payload.tar.zst") => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer)
-                        .context("Failed to read entry")?;
-                    let tar = Decoder::new(Cursor::new(&buffer))
-                        .context("Failed to decompress the sky file")?;
-                    let mut archive = Archive::new(tar);
-                    match archive.unpack(&ctx.temp_dir) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            for entry in WalkDir::new(&ctx.temp_dir) {
-                                let entry = entry.context("Failed to get entry")?;
-                                if entry.file_type().is_dir() {
-                                    remove_dir_all(&entry.path())
-                                        .context("Failed to recursively delete the entry")?;
-                                } else {
-                                    remove_file(&entry.path())
-                                        .context("Failed to delete the entry")?;
-                                }
-                            }
-                            return Err(e.into());
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
+        unpack_payload(&ctx.sky_path, &ctx.temp_dir)?;
 
         Ok(Box::new(Staged))
     }
