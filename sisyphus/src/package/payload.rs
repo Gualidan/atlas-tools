@@ -10,7 +10,7 @@ use common::functions::hash::hash;
 use tar::Header;
 use walkdir::WalkDir;
 
-use crate::types::manifest::{FileType, ManifestLine};
+use common::types::manifest::{FileType, ManifestLine};
 
 pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
     let mut metadata: Vec<ManifestLine> = vec![];
