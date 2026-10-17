@@ -3,7 +3,10 @@ use std::{env, path::PathBuf};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 
-use crate::{cli::install::install, types::runtime_config::RuntimeConfig};
+use crate::{
+    cli::{install::install, verify::verify},
+    types::runtime_config::RuntimeConfig,
+};
 
 #[derive(Parser)]
 #[command(
@@ -27,16 +30,18 @@ enum Commands {
 
 #[derive(Args)]
 pub struct InstallArgs {
-    /// The package to install
-    pub package: String,
-    /// The path to a sky file to install
-    pub sky_path: Option<PathBuf>,
+    /// The name package to install
+    pub package: Option<String>,
+    // TODO add suport for installing a specific sky file
 }
 
 #[derive(Args)]
-struct VerifyArgs {
-    /// The package to verify
-    package: String,
+pub struct VerifyArgs {
+    /// The name package to verify
+    pub package: Option<String>,
+
+    /// The path to a sky file to install
+    pub sky_path: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -64,7 +69,11 @@ pub fn run() -> Result<()> {
 
             install(args, &runtime_config, PathBuf::from(install_dir))?;
         }
-        Commands::Verify(_args) => {}
+        Commands::Verify(args) => {
+            let runtime_config =
+                RuntimeConfig::build().context("Failed to build runtime config")?;
+            verify(args, runtime_config)?;
+        }
         Commands::Uninstall(_args) => {}
         Commands::Update(_args) => {}
     }

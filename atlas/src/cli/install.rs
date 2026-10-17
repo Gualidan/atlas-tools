@@ -1,4 +1,4 @@
-use anyhow::{Context as AnyhowContext, Result};
+use anyhow::{Context as AnyhowContext, Result, anyhow};
 use common::types::package::{Architectures, Source};
 use std::{env::consts::ARCH, path::PathBuf};
 
@@ -21,18 +21,15 @@ pub fn install(
     runtime_config: &RuntimeConfig,
     install_dir: PathBuf,
 ) -> Result<()> {
+    if args.package.is_none() {
+        return Err(anyhow!("You must provide a package name to install"));
+    }
     let conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
 
     let mut stmt = conn.prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-    let (name, version, release, architecture, mut sky_path): (
-        String,
-        String,
-        u32,
-        String,
-        String,
-    ) = stmt
-        .query_row(params![&args.package, ARCH], |row| {
+    let (name, version, release, architecture, sky_path): (String, String, u32, String, String) =
+        stmt.query_row(params![&args.package, ARCH], |row| {
             let name: String = row.get(0)?;
             let version: String = row.get(1)?;
             let release: u32 = row.get(2)?;
@@ -42,10 +39,7 @@ pub fn install(
             Ok((name, version, release, architecture, sky_path))
         })
         .optional()?
-        .with_context(|| format!("Package {} not found", args.package))?;
-    if let Some(path) = &args.sky_path {
-        sky_path = path.to_string_lossy().to_string();
-    }
+        .with_context(|| format!("Package {} not found", args.package.to_owned().unwrap()))?;
 
     let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
 
