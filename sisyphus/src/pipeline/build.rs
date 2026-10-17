@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use common::types::config::load_config;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::{
     build::{build::build, dependencies::resolve},
@@ -26,7 +26,7 @@ pub fn run_build(
         let conn = Connection::open(&runtime_config.repo_db_path)
             .context("Failed to open connection to repository database")?;
         let mut stmt = conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1").context("Failed to prepare database query")?;
-        let package_exists: bool = stmt
+        let package_exists: Option<bool> = stmt
             .query_row(
                 &[
                     &package.name,
@@ -36,9 +36,10 @@ pub fn run_build(
                 ],
                 |row| row.get(0),
             )
+            .optional()
             .context("Failed to query database row")?;
 
-        if package_exists {
+        if !package_exists.is_none() {
             let mut stmt = conn.prepare("SELECT sky_path FROM packages where name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1").context("Failed to prepare database query")?;
             let sky_path: String = stmt
                 .query_row(
