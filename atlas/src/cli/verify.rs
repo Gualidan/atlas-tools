@@ -14,7 +14,7 @@ use tempfile::Builder;
 
 use crate::{cli::cli::VerifyArgs, types::runtime_config::RuntimeConfig};
 
-pub fn verify(args: &VerifyArgs, runtime_config: RuntimeConfig) -> Result<()> {
+pub fn verify(args: &VerifyArgs, runtime_config: &RuntimeConfig) -> Result<()> {
     if args.package.is_none() && args.sky_path.is_none() {
         return Err(anyhow!(
             "Provide a package name or a sky file's path to verify"
@@ -47,7 +47,6 @@ pub fn verify(args: &VerifyArgs, runtime_config: RuntimeConfig) -> Result<()> {
     let mut manifest_lines: Vec<ManifestLine> = Vec::new();
 
     for line in lines {
-        let line = line.trim_end_matches('\n');
         let fields: Vec<&str> = line.splitn(4, '\t').collect();
 
         match fields[..] {
@@ -108,13 +107,13 @@ pub fn verify(args: &VerifyArgs, runtime_config: RuntimeConfig) -> Result<()> {
                 );
                 if h != computed {
                     return Err(anyhow!(
-                        "Invalid record, cheksum mismatch expected {h} got {computed}"
+                        "Invalid record, checksum mismatch expected {h} got {computed}"
                     ));
                 }
             }
             (FileType::File, "-") => {
                 return Err(anyhow!(
-                    "Invalid record `{}`, it is missing it's hash",
+                    "Invalid record `{}`, it is missing its hash",
                     line.path.display()
                 ));
             }

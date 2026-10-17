@@ -72,7 +72,7 @@ pub fn run() -> Result<()> {
         Commands::Verify(args) => {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
-            verify(args, runtime_config)?;
+            verify(args, &runtime_config)?;
         }
         Commands::Uninstall(_args) => {}
         Commands::Update(_args) => {}
