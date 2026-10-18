@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{Cursor, Read},
+    io::{BufReader, Cursor, Read},
     path::{Path, PathBuf},
 };
 
@@ -14,16 +14,21 @@ use crate::{
     types::{config::SisyphusConfig, metadata::Metadata, package::Package},
 };
 
-pub fn read_sky<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, Vec<u8>, String, Vec<u8>)> {
+pub fn get_sky_archive<P: AsRef<Path>>(path: &P) -> Result<Archive<Decoder<'_, BufReader<File>>>> {
     let tar_gz = File::open(&path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
-    let mut archive = Archive::new(tar);
+    let archive = Archive::new(tar);
 
+    Ok(archive)
+}
+
+pub fn read_sky<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, Vec<u8>, String, Vec<u8>)> {
     let mut metadata = Vec::new();
     let mut payload = Vec::new();
     let mut files = String::new();
     let mut signature = Vec::new();
 
+    let mut archive = get_sky_archive(&path)?;
     let entries = archive
         .entries()
         .context("Failed to read sky archive entries")?;
