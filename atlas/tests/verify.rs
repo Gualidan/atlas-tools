@@ -59,7 +59,7 @@ fn build_payload(contents: &[u8], file_mode: u32) -> Result<Vec<u8>> {
     let mut builder = Builder::new(encoder);
 
     let mut dir_header = Header::new_gnu();
-    dir_header.set_mode(0o755);
+    dir_header.set_mode(0o777);
     dir_header.set_size(0);
     dir_header.set_entry_type(EntryType::dir());
     builder.append_data(&mut dir_header, "dir", std::io::empty())?;
@@ -70,7 +70,7 @@ fn build_payload(contents: &[u8], file_mode: u32) -> Result<Vec<u8>> {
     builder.append_data(&mut file_header, "dir/file.txt", contents)?;
 
     let mut lnk_header = Header::new_gnu();
-    lnk_header.set_mode(0o644);
+    lnk_header.set_mode(0o777);
     lnk_header.set_size(0);
     lnk_header.set_entry_type(EntryType::symlink());
     builder.append_link(&mut lnk_header, "dir/lnk", "file.txt")?;
@@ -91,7 +91,7 @@ fn write_sky(
     let mut builder = Builder::new(encoder);
 
     let mut header = Header::new_gnu();
-    header.set_mode(0o644);
+    header.set_mode(0o777);
     header.set_size(metadata_bytes.len() as u64);
     builder.append_data(&mut header, "metadata.yaml", metadata_bytes)?;
     header.set_size(payload.len() as u64);
@@ -140,7 +140,12 @@ fn test_metadata() -> Metadata {
     }
 }
 
-fn write_signed_sky(payload: &[u8], files: &str, tmp: &TempDir, name: &str) -> Result<(PathBuf, PathBuf)> {
+fn write_signed_sky(
+    payload: &[u8],
+    files: &str,
+    tmp: &TempDir,
+    name: &str,
+) -> Result<(PathBuf, PathBuf)> {
     let metadata_bytes = serde_saphyr::to_string(&test_metadata())?.into_bytes();
     let (keypair, pub_key) = generate_keypair()?;
     let data = data_to_sign(&metadata_bytes, payload.to_vec(), files.as_bytes())?;
