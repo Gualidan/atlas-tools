@@ -157,7 +157,7 @@ pub fn verify(
 
                 if expected_mode != computed_mode {
                     return Err(anyhow!(
-                        "Invalid record, mode mismatch expected {expected_mode} got {computed_mode}"
+                        "Invalid record, mode mismatch expected {expected_mode:04o} got {computed_mode:04o}"
                     ));
                 }
                 if !metadata.is_dir() {
@@ -188,7 +188,7 @@ pub fn verify(
 
                 if expected_mode != computed_mode {
                     return Err(anyhow!(
-                        "Invalid record, mode mismatch expected {expected_mode} got {computed_mode}"
+                        "Invalid record, mode mismatch expected {expected_mode:04o} got {computed_mode:04o}"
                     ));
                 }
                 if h != computed {
@@ -213,7 +213,7 @@ pub fn verify(
 
                 if expected_mode != computed_mode {
                     return Err(anyhow!(
-                        "Invalid record, mode mismatch expected {expected_mode} got {computed_mode}"
+                        "Invalid record, mode mismatch expected {expected_mode:04o} got {computed_mode:04o}"
                     ));
                 }
                 if PathBuf::from(h) != read_link(path).context("Failed to read symlink")? {
