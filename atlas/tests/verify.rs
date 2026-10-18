@@ -53,7 +53,7 @@ fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
     }
 }
 
-fn build_payload(contents: &[u8]) -> Result<Vec<u8>> {
+fn build_payload(contents: &[u8], file_mode: u32) -> Result<Vec<u8>> {
     let mut payload = Vec::new();
     let encoder = Encoder::new(&mut payload, 3)?;
     let mut builder = Builder::new(encoder);
@@ -65,7 +65,7 @@ fn build_payload(contents: &[u8]) -> Result<Vec<u8>> {
     builder.append_data(&mut dir_header, "dir", std::io::empty())?;
 
     let mut file_header = Header::new_gnu();
-    file_header.set_mode(0o644);
+    file_header.set_mode(file_mode);
     file_header.set_size(contents.len() as u64);
     builder.append_data(&mut file_header, "dir/file.txt", contents)?;
 
@@ -112,25 +112,16 @@ fn tamper_payload(payload: &[u8]) -> Vec<u8> {
     tampered
 }
 
-fn setup() -> Result<(TempDir, RuntimeConfig, SisyphusConfig, PathBuf, PathBuf)> {
-    let tmp = TempDir::new().unwrap();
-    let config = runtime_config(&tmp)?;
-
+fn generate_keypair() -> Result<(Ed25519KeyPair, Vec<u8>)> {
     let rng = &ring::rand::SystemRandom::new();
-    let keypair = Ed25519KeyPair::generate_pkcs8(rng)?;
-    let keypair = Ed25519KeyPair::from_pkcs8(keypair.as_ref())?;
+    let doc = Ed25519KeyPair::generate_pkcs8(rng)?;
+    let keypair = Ed25519KeyPair::from_pkcs8(doc.as_ref())?;
     let pub_key = keypair.public_key().as_ref().to_vec();
+    Ok((keypair, pub_key))
+}
 
-    let contents = b"hello, world!\n";
-    let payload = build_payload(contents)?;
-    let tampered_payload = tamper_payload(&payload);
-
-    let file_hash = hex::encode(hash(Cursor::new(contents))?);
-    let files = format!(
-        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0644\tfile.txt\tdir/lnk\n",
-        file_hash
-    );
-    let metadata = Metadata {
+fn test_metadata() -> Metadata {
+    Metadata {
         format: 1,
         name: "hello".to_string(),
         version: "1.0.0".to_string(),
@@ -146,8 +137,38 @@ fn setup() -> Result<(TempDir, RuntimeConfig, SisyphusConfig, PathBuf, PathBuf)>
             built_at: "2026-01-01T00:00:00Z".to_string(),
             builder: "tester".to_string(),
         },
-    };
-    let metadata_bytes = serde_saphyr::to_string(&metadata)?.into_bytes();
+    }
+}
+
+fn write_signed_sky(payload: &[u8], files: &str, tmp: &TempDir, name: &str) -> Result<(PathBuf, PathBuf)> {
+    let metadata_bytes = serde_saphyr::to_string(&test_metadata())?.into_bytes();
+    let (keypair, pub_key) = generate_keypair()?;
+    let data = data_to_sign(&metadata_bytes, payload.to_vec(), files.as_bytes())?;
+    let signature = keypair.sign(&data).as_ref().to_vec();
+
+    let sky_path = tmp.path().join(name);
+    write_sky(&sky_path, payload, &metadata_bytes, files, &signature)?;
+    let pub_key_path = tmp.path().join("hello.pub");
+    std::fs::write(&pub_key_path, &pub_key)?;
+    Ok((sky_path, pub_key_path))
+}
+
+fn setup() -> Result<(TempDir, RuntimeConfig, SisyphusConfig, PathBuf, PathBuf)> {
+    let tmp = TempDir::new().unwrap();
+    let config = runtime_config(&tmp)?;
+
+    let (keypair, pub_key) = generate_keypair()?;
+
+    let contents = b"hello, world!\n";
+    let payload = build_payload(contents, 0o644)?;
+    let tampered_payload = tamper_payload(&payload);
+
+    let file_hash = hex::encode(hash(Cursor::new(contents))?);
+    let files = format!(
+        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
+        file_hash
+    );
+    let metadata_bytes = serde_saphyr::to_string(&test_metadata())?.into_bytes();
 
     let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
@@ -268,5 +289,58 @@ fn mode2_signature_failure() -> Result<()> {
 
     let result = verify(mode2_args(&tampered_path), &config, settings);
     assert_chain(&result, "Failed to verify sky file signature");
+    Ok(())
+}
+
+#[test]
+fn mode_match_happy_path() -> Result<()> {
+    let tmp = TempDir::new().unwrap();
+    let config = runtime_config(&tmp)?;
+
+    let contents = b"hello, world!\n";
+    let payload = build_payload(contents, 0o644)?;
+
+    let file_hash = hex::encode(hash(Cursor::new(contents))?);
+    let files = format!(
+        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
+        file_hash
+    );
+
+    let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "modes.sky")?;
+    let settings = SisyphusConfig {
+        priv_key_path: tmp.path().join("unused.key"),
+        pub_key_path,
+    };
+
+    let result = verify(mode2_args(&sky_path), &config, settings);
+    assert!(
+        result.is_ok(),
+        "unexpected verification failure: {result:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn mode_mismatch_failure() -> Result<()> {
+    let tmp = TempDir::new().unwrap();
+    let config = runtime_config(&tmp)?;
+
+    let contents = b"hello, world!\n";
+    let payload = build_payload(contents, 0o644)?;
+
+    let file_hash = hex::encode(hash(Cursor::new(contents))?);
+    let files = format!(
+        "f\t0755\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
+        file_hash
+    );
+
+    let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "mismatch.sky")?;
+    let settings = SisyphusConfig {
+        priv_key_path: tmp.path().join("unused.key"),
+        pub_key_path,
+    };
+
+    let result = verify(mode2_args(&sky_path), &config, settings);
+    assert_chain(&result, "Invalid record, mode mismatch");
     Ok(())
 }
