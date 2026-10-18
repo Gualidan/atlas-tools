@@ -34,33 +34,79 @@ pub fn verify(
     }
     if args.package.is_some() && args.sky_path.is_some() {
         return Err(anyhow!(
-            "Either pass a package name or a sky file's path to verify not both."
+            "Either pass a package name or a sky file's path to verify, not both."
         ));
     }
 
-    let conn = Connection::open(&runtime_config.repo_db)
-        .context("Failed to open connection to the repository database")?;
+    let mut package = None;
+    let mut sky_path = String::new();
 
-    let sky_path: String;
+    if let Some(ref name) = args.package {
+        let conn = Connection::open(&runtime_config.repo_db)
+            .context("Failed to open connection to the repository database")?;
+        let mut stmt = conn.prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
+        let Some((version, release, architecture, s)) = stmt
+            .query_row(params![name, ARCH], |row| {
+                let version: String = row.get(1)?;
+                let release: u32 = row.get(2)?;
+                let architecture: String = row.get(3)?;
+                let sky_path: String = row.get(4)?;
+                Ok((version, release, architecture, sky_path))
+            })
+            .optional()?
+        else {
+            return Err(anyhow!("Package {name} not found"));
+        };
 
-    if args.sky_path.is_none() {
-        let mut stmt = conn
-            .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ?")
-            .context("Failed to prepare database query")?;
-        sky_path = stmt
-            .query_row(params![&args.package, ARCH], |row| row.get(0))
-            .with_context(|| format!("Package {} not found", args.package.to_owned().unwrap()))?;
-    } else {
-        sky_path = args
-            .sky_path
-            .to_owned()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        package = Some(Package {
+            schema: 1,
+            name: name.clone(),
+            version,
+            release,
+            architecture: Architectures::try_from(architecture)?,
+            source: Source {
+                url: String::new(),
+                sha256: None,
+            },
+            makedeps: vec![],
+            deps: vec![],
+            prepare: None,
+            build: None,
+            check: None,
+            package: String::new(),
+        });
+
+        sky_path = s;
+    }
+
+    if let Some(ref sp) = args.sky_path {
+        sky_path = sp.to_string_lossy().to_string();
     }
 
     let (metadata_bytes, payload_bytes, files, signature_bytes) =
         read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
+
+    match (args.package.as_ref(), args.sky_path.as_deref()) {
+        (Some(_), None) => {
+            let data = data_to_sign(&metadata_bytes, payload_bytes, files.as_bytes())
+                .context("Failed to produce the data to sign")?;
+
+            verify_metadata(&metadata_bytes, &package.unwrap())
+                .context("Failed to verify metadata")?;
+            verify_signature(&data, &settings, signature_bytes)
+                .context("Failed to verify signature")?;
+        }
+
+        (None, Some(_)) => {
+            let data = data_to_sign(&metadata_bytes, payload_bytes, files.as_bytes())
+                .context("Failed to produce the data to sign")?;
+            verify_signature(&data, &settings, signature_bytes)
+                .context("Failed to verify signature")?;
+        }
+
+        _ => {}
+    }
+
     let lines: Vec<&str> = files.lines().collect();
     let mut manifest_lines: Vec<ManifestLine> = Vec::new();
 
@@ -147,60 +193,6 @@ pub fn verify(
         }
     }
 
-    match (args.package.as_deref(), args.sky_path.as_deref()) {
-        (Some(name), None) => {
-            let mut stmt = conn.prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-            let (version, release, architecture): (String, u32, String) = stmt
-                .query_row(params![&name, ARCH], |row| {
-                    let version: String = row.get(1)?;
-                    let release: u32 = row.get(2)?;
-                    let architecture: String = row.get(3)?;
-
-                    Ok((version, release, architecture))
-                })
-                .optional()?
-                .with_context(|| {
-                    format!("Package {} not found", args.package.to_owned().unwrap())
-                })?;
-
-            let package = Package {
-                schema: 1,
-                name: name.to_string(),
-                version,
-                release,
-                architecture: Architectures::try_from(architecture)?,
-                source: Source {
-                    url: String::new(),
-                    sha256: None,
-                },
-                makedeps: vec![],
-                deps: vec![],
-                prepare: None,
-                build: None,
-                check: None,
-                package: String::new(),
-            };
-
-            let data = data_to_sign(&metadata_bytes, payload_bytes, files.into_bytes())
-                .context("Failed to produce the data to sign")?;
-
-            verify_metadata(&metadata_bytes, &package).context("Failed to verify metadata")?;
-            verify_signature(&data, &settings, signature_bytes)
-                .context("Failed to verify signature")?;
-        }
-
-        (None, Some(path)) => {
-            let (metadata_bytes, payload_bytes, files_bytes, signature_bytes) =
-                read_sky(path).context("Failed to read sky file")?;
-
-            let data = data_to_sign(&metadata_bytes, payload_bytes, files_bytes.into_bytes())
-                .context("Failed to produce the data to sign")?;
-            verify_signature(&data, &settings, signature_bytes)
-                .context("Failed to verify signature")?;
-        }
-
-        _ => {}
-    }
     println!("Success! The sky file is valid");
 
     Ok(())

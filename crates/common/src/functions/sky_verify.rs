@@ -107,7 +107,7 @@ pub fn verify_metadata(metadata_bytes: &Vec<u8>, package: &Package) -> Result<Me
 pub fn data_to_sign(
     metadata_bytes: &Vec<u8>,
     payload_bytes: Vec<u8>,
-    files_bytes: Vec<u8>,
+    files_bytes: &[u8],
 ) -> Result<Vec<u8>> {
     let metadata_hash = hash(Cursor::new(&metadata_bytes)).context("Failed to hash metadata")?;
     let payload_hash = hash(Cursor::new(&payload_bytes)).context("Failed to hash payload")?;
@@ -130,7 +130,7 @@ pub fn sky_verify(
     let (metadata_bytes, payload_bytes, files_bytes, signature_bytes) =
         read_sky(file_name).context("Failed to read sky file")?;
 
-    let data = data_to_sign(&metadata_bytes, payload_bytes, files_bytes.into_bytes())
+    let data = data_to_sign(&metadata_bytes, payload_bytes, files_bytes.as_bytes())
         .context("Failed to produce the data to sign")?;
 
     verify_signature(&data, settings, signature_bytes).context("Failed to verify signature")?;
