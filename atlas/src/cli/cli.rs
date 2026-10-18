@@ -2,6 +2,7 @@ use std::{env, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
+use common::types::config::load_config;
 
 use crate::{
     cli::{install::install, verify::verify},
@@ -72,7 +73,8 @@ pub fn run() -> Result<()> {
         Commands::Verify(args) => {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
-            verify(args, &runtime_config)?;
+            let settings = load_config().context("Failed to load config")?;
+            verify(args, &runtime_config, settings)?;
         }
         Commands::Uninstall(_args) => {}
         Commands::Update(_args) => {}
