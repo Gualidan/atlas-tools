@@ -1,6 +1,7 @@
 use std::{
     env::consts::ARCH,
     fs::{self, File, read_link},
+    os::unix::fs::MetadataExt,
     path::PathBuf,
 };
 
@@ -150,7 +151,16 @@ pub fn verify(
         match (line.file_type, h) {
             (FileType::Dir, "-") => {
                 let path = root.join(line.path);
-                if !fs::metadata(path)?.is_dir() {
+                let metadata = fs::metadata(path).context("Failed to get metadata")?;
+                let expected_mode = line.mode;
+                let computed_mode = metadata.mode() & 0o7777;
+
+                if expected_mode != computed_mode {
+                    return Err(anyhow!(
+                        "Invalid record, mode mismatch expected {expected_mode} got {computed_mode}"
+                    ));
+                }
+                if !metadata.is_dir() {
                     return Err(anyhow!(
                         "Invalid record, the file type should be a directory but it is not."
                     ));
@@ -165,10 +175,22 @@ pub fn verify(
             (FileType::File, h) if h != "-" => {
                 let path = root.join(line.path);
 
+                let expected_mode = line.mode;
+                let computed_mode = fs::metadata(&path)
+                    .context("Failed to get metadata")?
+                    .mode()
+                    & 0o7777;
+
                 let computed = hex::encode(
                     hash(File::open(path).context("Failed to open file")?)
                         .context("Failed to hash file")?,
                 );
+
+                if expected_mode != computed_mode {
+                    return Err(anyhow!(
+                        "Invalid record, mode mismatch expected {expected_mode} got {computed_mode}"
+                    ));
+                }
                 if h != computed {
                     return Err(anyhow!(
                         "Invalid record, checksum mismatch expected {h} got {computed}"
@@ -183,6 +205,17 @@ pub fn verify(
             }
             (FileType::Symlink, h) => {
                 let path = root.join(line.path);
+                let expected_mode = line.mode;
+                let computed_mode = fs::symlink_metadata(&path)
+                    .context("Failed to get metadata")?
+                    .mode()
+                    & 0o7777;
+
+                if expected_mode != computed_mode {
+                    return Err(anyhow!(
+                        "Invalid record, mode mismatch expected {expected_mode} got {computed_mode}"
+                    ));
+                }
                 if PathBuf::from(h) != read_link(path).context("Failed to read symlink")? {
                     return Err(anyhow!(
                         "Invalid record, symlink is pointing to the wrong file"
