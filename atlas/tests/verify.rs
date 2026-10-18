@@ -7,7 +7,10 @@ use anyhow::Result;
 use atlas::cli::cli::VerifyArgs;
 use atlas::cli::verify::verify;
 use atlas::types::runtime_config::RuntimeConfig;
-use common::functions::{hash::hash, sky_verify::data_to_sign};
+use common::functions::{
+    hash::hash, sky_verify::data_to_sign, validate_archive::validate_archive_paths,
+    validate_payload::validate_payload_paths,
+};
 use common::types::{
     config::SisyphusConfig,
     metadata::{Build, Metadata},
@@ -51,6 +54,65 @@ fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
         )
         .unwrap();
     }
+}
+
+fn raw_header(name: &str, mode: u32, size: u64) -> Header {
+    let mut header = Header::new_gnu();
+    header.set_mode(mode);
+    header.set_size(size);
+    header.set_entry_type(EntryType::file());
+    let bytes = name.as_bytes();
+    header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
+    header.set_cksum();
+    header
+}
+
+fn write_raw_sky(tmp: &TempDir, name: &str, members: &[(&str, &[u8])]) -> Result<PathBuf> {
+    let path = tmp.path().join(name);
+    let file = std::fs::File::create(&path)?;
+    let encoder = Encoder::new(file, 3)?;
+    let mut builder = Builder::new(encoder);
+
+    for (member_name, contents) in members {
+        let header = raw_header(member_name, 0o644, contents.len() as u64);
+        builder.append(&header, *contents)?;
+    }
+
+    builder.into_inner()?.finish()?;
+    Ok(path)
+}
+
+fn payload_tar_with_entries(entries: &[(&str, &[u8])]) -> Result<Vec<u8>> {
+    let mut payload = Vec::new();
+    let encoder = Encoder::new(&mut payload, 3)?;
+    let mut builder = Builder::new(encoder);
+
+    for (entry_name, contents) in entries {
+        let header = raw_header(entry_name, 0o644, contents.len() as u64);
+        builder.append(&header, *contents)?;
+    }
+
+    builder.into_inner()?.finish()?;
+    Ok(payload)
+}
+
+fn build_payload_with_path(path: &str, contents: &[u8]) -> Result<Vec<u8>> {
+    payload_tar_with_entries(&[(path, contents)])
+}
+
+fn build_payload_with_duplicate(path: &str, contents1: &[u8], contents2: &[u8]) -> Result<Vec<u8>> {
+    payload_tar_with_entries(&[(path, contents1), (path, contents2)])
+}
+
+fn canonical_metadata_bytes() -> Result<Vec<u8>> {
+    Ok(serde_saphyr::to_string(&test_metadata())?.into_bytes())
+}
+
+fn write_sky_with_payload(tmp: &TempDir, name: &str, payload: &[u8]) -> Result<PathBuf> {
+    let metadata_bytes = canonical_metadata_bytes()?;
+    let sky_path = tmp.path().join(name);
+    write_sky(&sky_path, payload, &metadata_bytes, "", &[0u8; 64])?;
+    Ok(sky_path)
 }
 
 fn build_payload(contents: &[u8], file_mode: u32) -> Result<Vec<u8>> {
@@ -402,7 +464,8 @@ fn manifest_references_path_not_in_payload() -> Result<()> {
         "0".repeat(64)
     );
 
-    let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "manifest_missing.sky")?;
+    let (sky_path, pub_key_path) =
+        write_signed_sky(&payload, &files, &tmp, "manifest_missing.sky")?;
     let settings = SisyphusConfig {
         priv_key_path: tmp.path().join("unused.key"),
         pub_key_path,
@@ -441,4 +504,170 @@ fn payload_contains_path_not_in_manifest() -> Result<()> {
     assert_chain(&result, "not in manifest");
     assert_chain(&result, "dir/secret.txt");
     Ok(())
+}
+
+mod outer_archive_validation {
+    use super::*;
+
+    fn canonical_members<'a>(
+        metadata: &'a [u8],
+        payload: &'a [u8],
+        signature: &'a [u8],
+    ) -> Vec<(&'a str, &'a [u8])> {
+        vec![
+            ("metadata.yaml", metadata),
+            ("payload.tar.zst", payload),
+            ("files", b""),
+            ("signature.ed25519", signature),
+        ]
+    }
+
+    fn valid_payload() -> Result<Vec<u8>> {
+        build_payload(b"hello\n", 0o644)
+    }
+
+    #[test]
+    fn absolute_path_in_outer_archive() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let metadata = canonical_metadata_bytes()?;
+        let payload = valid_payload()?;
+        let signature = [0u8; 64];
+
+        let mut members = canonical_members(&metadata, &payload, &signature);
+        members[0].0 = "/metadata.yaml";
+        let sky_path = write_raw_sky(&tmp, "absolute.sky", &members)?;
+
+        let result = validate_archive_paths(&sky_path);
+        assert_chain(&result, "absolute path");
+        assert_chain(&result, "/metadata.yaml");
+        Ok(())
+    }
+
+    #[test]
+    fn parent_dir_in_outer_archive() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let metadata = canonical_metadata_bytes()?;
+        let payload = valid_payload()?;
+        let signature = [0u8; 64];
+
+        let mut members = canonical_members(&metadata, &payload, &signature);
+        members[0].0 = "../metadata.yaml";
+        let sky_path = write_raw_sky(&tmp, "parentdir.sky", &members)?;
+
+        let result = validate_archive_paths(&sky_path);
+        assert_chain(&result, "ParentDir");
+        assert_chain(&result, "../metadata.yaml");
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_outer_archive_member() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let metadata = canonical_metadata_bytes()?;
+        let payload = valid_payload()?;
+        let signature = [0u8; 64];
+
+        let sky_path = write_raw_sky(
+            &tmp,
+            "duplicate.sky",
+            &[
+                ("metadata.yaml", &metadata),
+                ("metadata.yaml", b"duplicate"),
+                ("payload.tar.zst", &payload),
+                ("files", b""),
+                ("signature.ed25519", &signature),
+            ],
+        )?;
+
+        let result = validate_archive_paths(&sky_path);
+        assert_chain(&result, "Duplicate");
+        assert_chain(&result, "metadata.yaml");
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_outer_archive_member() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let metadata = canonical_metadata_bytes()?;
+        let payload = valid_payload()?;
+        let signature = [0u8; 64];
+
+        let sky_path = write_raw_sky(
+            &tmp,
+            "unknown.sky",
+            &[
+                ("metadata.yaml", &metadata),
+                ("payload.tar.zst", &payload),
+                ("files", b""),
+                ("signature.ed25519", &signature),
+                ("hax.txt", b"malicious"),
+            ],
+        )?;
+
+        let result = validate_archive_paths(&sky_path);
+        assert_chain(&result, "Unexpected");
+        assert_chain(&result, "hax.txt");
+        Ok(())
+    }
+
+    #[test]
+    fn missing_canonical_member() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let metadata = canonical_metadata_bytes()?;
+        let payload = valid_payload()?;
+
+        let sky_path = write_raw_sky(
+            &tmp,
+            "missing.sky",
+            &[
+                ("metadata.yaml", &metadata),
+                ("payload.tar.zst", &payload),
+                ("files", b""),
+            ],
+        )?;
+
+        let result = validate_archive_paths(&sky_path);
+        assert_chain(&result, "missing");
+        Ok(())
+    }
+}
+
+mod payload_archive_validation {
+    use super::*;
+
+    #[test]
+    fn absolute_path_in_payload() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload = build_payload_with_path("/etc/passwd", b"malicious\n")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_absolute.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "absolute");
+        assert_chain(&result, "/etc/passwd");
+        Ok(())
+    }
+
+    #[test]
+    fn parent_dir_in_payload() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload = build_payload_with_path("dir/../etc/passwd", b"malicious\n")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_parentdir.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "ParentDir");
+        assert_chain(&result, "dir/../etc/passwd");
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_payload_member() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload = build_payload_with_duplicate("dir/file.txt", b"first\n", b"second\n")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_duplicate.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "Duplicate");
+        assert_chain(&result, "dir/file.txt");
+        Ok(())
+    }
 }
