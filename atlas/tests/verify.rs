@@ -59,7 +59,7 @@ fn build_payload(contents: &[u8], file_mode: u32) -> Result<Vec<u8>> {
     let mut builder = Builder::new(encoder);
 
     let mut dir_header = Header::new_gnu();
-    dir_header.set_mode(0o777);
+    dir_header.set_mode(0o755);
     dir_header.set_size(0);
     dir_header.set_entry_type(EntryType::dir());
     builder.append_data(&mut dir_header, "dir", std::io::empty())?;
