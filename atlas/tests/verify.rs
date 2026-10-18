@@ -79,6 +79,43 @@ fn build_payload(contents: &[u8], file_mode: u32) -> Result<Vec<u8>> {
     Ok(payload)
 }
 
+fn build_payload_with_extra_file(
+    contents: &[u8],
+    file_mode: u32,
+    extra_path: &str,
+    extra_contents: &[u8],
+    extra_mode: u32,
+) -> Result<Vec<u8>> {
+    let mut payload = Vec::new();
+    let encoder = Encoder::new(&mut payload, 3)?;
+    let mut builder = Builder::new(encoder);
+
+    let mut dir_header = Header::new_gnu();
+    dir_header.set_mode(0o755);
+    dir_header.set_size(0);
+    dir_header.set_entry_type(EntryType::dir());
+    builder.append_data(&mut dir_header, "dir", std::io::empty())?;
+
+    let mut file_header = Header::new_gnu();
+    file_header.set_mode(file_mode);
+    file_header.set_size(contents.len() as u64);
+    builder.append_data(&mut file_header, "dir/file.txt", contents)?;
+
+    let mut lnk_header = Header::new_gnu();
+    lnk_header.set_mode(0o777);
+    lnk_header.set_size(0);
+    lnk_header.set_entry_type(EntryType::symlink());
+    builder.append_link(&mut lnk_header, "dir/lnk", "file.txt")?;
+
+    let mut extra_header = Header::new_gnu();
+    extra_header.set_mode(extra_mode);
+    extra_header.set_size(extra_contents.len() as u64);
+    builder.append_data(&mut extra_header, extra_path, extra_contents)?;
+
+    builder.into_inner()?.finish()?;
+    Ok(payload)
+}
+
 fn write_sky(
     path: &Path,
     payload: &[u8],
@@ -347,5 +384,61 @@ fn mode_mismatch_failure() -> Result<()> {
 
     let result = verify(mode2_args(&sky_path), &config, settings);
     assert_chain(&result, "Invalid record, mode mismatch");
+    Ok(())
+}
+
+#[test]
+fn manifest_references_path_not_in_payload() -> Result<()> {
+    let tmp = TempDir::new().unwrap();
+    let config = runtime_config(&tmp)?;
+
+    let contents = b"hello, world!\n";
+    let payload = build_payload(contents, 0o644)?;
+
+    let file_hash = hex::encode(hash(Cursor::new(contents))?);
+    let files = format!(
+        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\nf\t0644\t{}\tdir/missing.txt\n",
+        file_hash,
+        "0".repeat(64)
+    );
+
+    let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "manifest_missing.sky")?;
+    let settings = SisyphusConfig {
+        priv_key_path: tmp.path().join("unused.key"),
+        pub_key_path,
+    };
+
+    let result = verify(mode2_args(&sky_path), &config, settings);
+    assert_chain(&result, "manifest references path");
+    assert_chain(&result, "not in payload");
+    assert_chain(&result, "dir/missing.txt");
+    Ok(())
+}
+
+#[test]
+fn payload_contains_path_not_in_manifest() -> Result<()> {
+    let tmp = TempDir::new().unwrap();
+    let config = runtime_config(&tmp)?;
+
+    let contents = b"hello, world!\n";
+    let extra = b"secret\n";
+    let payload = build_payload_with_extra_file(contents, 0o644, "dir/secret.txt", extra, 0o644)?;
+
+    let file_hash = hex::encode(hash(Cursor::new(contents))?);
+    let files = format!(
+        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
+        file_hash
+    );
+
+    let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "payload_extra.sky")?;
+    let settings = SisyphusConfig {
+        priv_key_path: tmp.path().join("unused.key"),
+        pub_key_path,
+    };
+
+    let result = verify(mode2_args(&sky_path), &config, settings);
+    assert_chain(&result, "payload contains path");
+    assert_chain(&result, "not in manifest");
+    assert_chain(&result, "dir/secret.txt");
     Ok(())
 }

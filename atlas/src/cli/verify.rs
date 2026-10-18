@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env::consts::ARCH,
     fs::{self, File, read_link},
     os::unix::fs::MetadataExt,
@@ -20,6 +21,7 @@ use common::{
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use tempfile::Builder;
+use walkdir::WalkDir;
 
 use crate::{cli::cli::VerifyArgs, types::runtime_config::RuntimeConfig};
 
@@ -146,11 +148,40 @@ pub fn verify(
     unpack_payload(&PathBuf::from(&sky_path), &destination).context("Failed to unpack payload")?;
     let root = destination.path();
 
+    let mut payload_paths: HashSet<PathBuf> = HashSet::new();
+
+    for entry in WalkDir::new(root).into_iter().skip(1) {
+        let entry = entry.context("Failed to get entry")?;
+        let path = entry
+            .path()
+            .strip_prefix(root)
+            .context("Failed to strip root prefix from path")?;
+
+        payload_paths.insert(path.to_path_buf());
+    }
+
+    let mut manifest_paths: HashSet<PathBuf> = HashSet::new();
+
+    for line in &manifest_lines {
+        manifest_paths.insert(line.path.clone());
+    }
+
+    for path in &manifest_paths {
+        if !payload_paths.contains(path) {
+            return Err(anyhow!(
+                "manifest references path {} not in payload",
+                path.display()
+            ));
+        }
+    }
+
     for line in manifest_lines {
+        let path = line.path;
+
         let h = line.target_or_hash.as_str();
         match (line.file_type, h) {
             (FileType::Dir, "-") => {
-                let path = root.join(line.path);
+                let path = root.join(path);
                 let metadata = fs::metadata(path).context("Failed to get metadata")?;
                 let expected_mode = line.mode;
                 let computed_mode = metadata.mode() & 0o7777;
@@ -169,11 +200,11 @@ pub fn verify(
             (FileType::Dir, _) => {
                 return Err(anyhow!(
                     "Invalid record `{}` has non-sentinel hash",
-                    line.path.display()
+                    path.display()
                 ));
             }
             (FileType::File, h) if h != "-" => {
-                let path = root.join(line.path);
+                let path = root.join(path);
 
                 let expected_mode = line.mode;
                 let computed_mode = fs::metadata(&path)
@@ -200,11 +231,11 @@ pub fn verify(
             (FileType::File, "-") => {
                 return Err(anyhow!(
                     "Invalid record `{}`, it is missing its hash",
-                    line.path.display()
+                    path.display()
                 ));
             }
             (FileType::Symlink, h) => {
-                let path = root.join(line.path);
+                let path = root.join(path);
                 let expected_mode = line.mode;
                 let computed_mode = fs::symlink_metadata(&path)
                     .context("Failed to get metadata")?
@@ -223,6 +254,15 @@ pub fn verify(
                 }
             }
             _ => {}
+        }
+    }
+
+    for path in &payload_paths {
+        if !manifest_paths.contains(path) {
+            return Err(anyhow!(
+                "payload contains path {} not in manifest",
+                path.display()
+            ));
         }
     }
 
