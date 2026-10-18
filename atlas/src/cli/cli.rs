@@ -5,8 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use common::types::config::load_config;
 
 use crate::{
-    cli::{install::install, verify::verify},
-    types::runtime_config::RuntimeConfig,
+    install::install::install, types::runtime_config::RuntimeConfig, verify::verify::verify,
 };
 
 #[derive(Parser)]

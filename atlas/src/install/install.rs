@@ -8,7 +8,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tempfile::Builder;
 
 use crate::{
-    cli::{cli::InstallArgs, db::insert_installed_package},
+    cli::cli::InstallArgs,
+    install::db::insert_installed_package,
     types::{
         context::Context,
         runtime_config::RuntimeConfig,

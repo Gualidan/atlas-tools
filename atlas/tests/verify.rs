@@ -5,8 +5,8 @@ use std::{
 
 use anyhow::Result;
 use atlas::cli::cli::VerifyArgs;
-use atlas::cli::verify::verify;
 use atlas::types::runtime_config::RuntimeConfig;
+use atlas::verify::verify::verify;
 use common::functions::{
     hash::hash, sky_verify::data_to_sign, validate_archive::validate_archive_paths,
     validate_payload::validate_payload_paths,
