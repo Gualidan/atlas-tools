@@ -12,6 +12,8 @@ use common::{
         hash::hash,
         sky_verify::{data_to_sign, read_sky, verify_metadata, verify_signature},
         unpack_payload::unpack_payload,
+        validate_archive::validate_archive_paths,
+        validate_payload::validate_payload_paths,
     },
     types::{
         config::SisyphusConfig,
@@ -86,6 +88,8 @@ pub fn verify(
         sky_path = sp.to_string_lossy().to_string();
     }
 
+    validate_archive_paths(&sky_path).context("Failed to validate archive's paths")?;
+
     let (metadata_bytes, payload_bytes, files, signature_bytes) =
         read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
 
@@ -144,6 +148,8 @@ pub fn verify(
     let destination = Builder::new()
         .tempdir()
         .context("Failed to create temporary directory")?;
+
+    validate_payload_paths(&sky_path).context("Failed to validate payload paths")?;
 
     unpack_payload(&PathBuf::from(&sky_path), &destination).context("Failed to unpack payload")?;
     let root = destination.path();
