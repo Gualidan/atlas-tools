@@ -23,7 +23,7 @@ use tempfile::Builder;
 use crate::{cli::cli::VerifyArgs, types::runtime_config::RuntimeConfig};
 
 pub fn verify(
-    args: &VerifyArgs,
+    args: VerifyArgs,
     runtime_config: &RuntimeConfig,
     settings: SisyphusConfig,
 ) -> Result<()> {

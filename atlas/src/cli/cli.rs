@@ -60,7 +60,7 @@ struct UpdateArgs {
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    match &cli.commands {
+    match cli.commands {
         Commands::Install(args) => {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;

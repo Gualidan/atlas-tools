@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub fn install(
-    args: &InstallArgs,
+    args: InstallArgs,
     runtime_config: &RuntimeConfig,
     install_dir: PathBuf,
 ) -> Result<()> {
@@ -39,7 +39,7 @@ pub fn install(
             Ok((name, version, release, architecture, sky_path))
         })
         .optional()?
-        .with_context(|| format!("Package {} not found", args.package.to_owned().unwrap()))?;
+        .with_context(|| format!("Package {} not found", args.package.unwrap()))?;
 
     let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
 
@@ -89,7 +89,7 @@ pub fn install(
         runtime_config,
         ctx.metadata.context("Metadata should not be empty.")?,
         &package,
-        install_dir.to_owned().to_string_lossy().to_string(),
+        install_dir.to_string_lossy().to_string(),
     )?;
 
     Ok(())
