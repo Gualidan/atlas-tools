@@ -1,10 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use atlas::{
-    cli::db::insert_installed_package,
-    types::runtime_config::RuntimeConfig,
-};
+use atlas::{cli::db::insert_installed_package, types::runtime_config::RuntimeConfig};
 use common::types::{
     metadata::{Build, Metadata},
     package::{Architectures, Package, Source},

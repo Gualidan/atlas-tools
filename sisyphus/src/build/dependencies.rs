@@ -5,8 +5,8 @@
 //! deterministic, cycle-free build plan. The executor will later consume that
 //! plan, build missing packages, and assemble a Bubblewrap build root.
 
-use anyhow::{Context, Result, anyhow};
 use crate::types::{recipe::Recipe, runtime_config::RuntimeConfig};
+use anyhow::{Context, Result, anyhow};
 use common::{
     functions::sky_verify::sky_verify,
     types::{
@@ -117,11 +117,7 @@ impl<'a> Resolver<'a> {
     /// The post-order insertion near the end is what produces a valid
     /// dependency-first build order without relying on HashMap/HashSet
     /// iteration order.
-    fn resolve_dependency(
-        &mut self,
-        name: &str,
-        settings: &SisyphusConfig,
-    ) -> Result<()> {
+    fn resolve_dependency(&mut self, name: &str, settings: &SisyphusConfig) -> Result<()> {
         match self
             .states
             .get(name)
@@ -130,7 +126,10 @@ impl<'a> Resolver<'a> {
         {
             VisitState::Resolved => return Ok(()),
             VisitState::Visiting => {
-                return Err(anyhow!("Circular dependency detected: {}", self.cycle(name)));
+                return Err(anyhow!(
+                    "Circular dependency detected: {}",
+                    self.cycle(name)
+                ));
             }
             VisitState::Unvisited => {}
         }
@@ -207,19 +206,21 @@ impl<'a> Resolver<'a> {
         let conn = Connection::open(&self.config.repo_db_path)
             .context("Failed to open connection to repository database")?;
         let mut stmt = conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1").context("Failed to prepare artifact lookup query")?;
-        let rows: Option<String> = stmt.query_row(
-            [
-                &package.name,
-                &package.version,
-                &package.release.to_string(),
-                &package.architecture.to_string(),
-            ],
-            |row| row.get(0),
-        ).context("Failed to query artifact from repository database")?;
+        let rows: Option<String> = stmt
+            .query_row(
+                [
+                    &package.name,
+                    &package.version,
+                    &package.release.to_string(),
+                    &package.architecture.to_string(),
+                ],
+                |row| row.get(0),
+            )
+            .context("Failed to query artifact from repository database")?;
 
         if let Some(path) = rows {
-            let metadata =
-                sky_verify(&PathBuf::from(&path), package, settings).context("Failed to verify reusable artifact")?;
+            let metadata = sky_verify(&PathBuf::from(&path), package, settings)
+                .context("Failed to verify reusable artifact")?;
             return Ok(Some(ReusableArtifact {
                 name: metadata.name,
                 version: metadata.version,

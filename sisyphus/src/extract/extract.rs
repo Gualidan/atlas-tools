@@ -4,10 +4,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use tempfile::{Builder, TempDir};
 
-use crate::{
-    extract::source_root::find_source_root,
-    types::fetcher::FetchedSource,
-};
+use crate::{extract::source_root::find_source_root, types::fetcher::FetchedSource};
 
 pub fn extract(fetched: FetchedSource) -> Result<(TempDir, PathBuf)> {
     let destination = Builder::new()
