@@ -103,6 +103,7 @@ dependencies = [
  "clap",
  "common",
  "hex",
+ "ring",
  "rusqlite",
  "rustix",
  "semver",

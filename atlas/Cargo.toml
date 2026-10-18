@@ -16,3 +16,6 @@ rusqlite.workspace = true
 tempfile.workspace = true
 anyhow.workspace = true
 hex.workspace = true
+
+[dev-dependencies]
+ring.workspace = true
