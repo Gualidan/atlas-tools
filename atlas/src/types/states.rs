@@ -86,7 +86,7 @@ impl State for Verified {
         let mut stmt = ctx
             .install_conn
             .prepare(
-                "SELECT name FROM owned_files WHERE path = ? AND name != ? AND architecture = ?",
+                "SELECT package_name FROM owned_files WHERE path = ? AND package_name != ? AND architecture = ?",
             )
             .context("Failed to prepare database query")?;
         let Some(manifest_paths) = &ctx.manifest_paths else {
