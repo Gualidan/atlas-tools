@@ -1,47 +1,13 @@
-use std::path::Path;
+mod fixtures;
 
 use anyhow::Result;
-use atlas::{install::db::insert_installed_package, types::runtime_config::RuntimeConfig};
+use atlas::install::db::insert_installed_package;
 use common::types::{
     metadata::{Build, Metadata},
-    package::{Architectures, Package, Source},
+    package::{Package, Source},
 };
-use rusqlite::{Connection, params};
-use tempfile::TempDir;
-
-const ARCH: Architectures = Architectures::X86_64;
-
-fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig> {
-    RuntimeConfig::build_at(&tmp.path().to_path_buf())
-}
-
-fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
-    let conn = Connection::open(path).unwrap();
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS packages (name TEXT NOT NULL, version TEXT NOT NULL, release INTEGER NOT NULL, architecture TEXT NOT NULL, sky_path TEXT PRIMARY KEY, recipe_sha256 TEXT NOT NULL, built_at TEXT NOT NULL, builder TEXT NOT NULL, deps TEXT NOT NULL, makedeps TEXT NOT NULL)",
-        [],
-    )
-    .unwrap();
-
-    for (name, version, release, sky_path) in packages {
-        conn.execute(
-            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                *name,
-                *version,
-                *release,
-                ARCH.to_string(),
-                *sky_path,
-                "deadbeef",
-                "2026-01-01T00:00:00Z",
-                "tester",
-                "[]",
-                "[]"
-            ],
-        )
-        .unwrap();
-    }
-}
+use fixtures::{ARCH, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky};
+use rusqlite::Connection;
 
 fn package(name: &str, deps: &[&str]) -> Package {
     Package {
@@ -89,15 +55,20 @@ fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
 
 #[test]
 fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
-    let tmp = TempDir::new().unwrap();
+    let tmp = tempdir();
     let config = runtime_config(&tmp)?;
+    let (keypair, _pub_key) = generate_keypair()?;
+
+    let root_sky = write_signed_sky(&tmp, &keypair, "root.sky", "root", "1.0.0", 1, b"root\n")?;
+    let dep_a_sky = write_signed_sky(&tmp, &keypair, "dep-a.sky", "dep-a", "2.1.0", 3, b"dep-a\n")?;
+    let dep_b_sky = write_signed_sky(&tmp, &keypair, "dep-b.sky", "dep-b", "0.4.0", 1, b"dep-b\n")?;
 
     seed_repo_db(
         &config.repo_db,
         &[
-            ("root", "1.0.0", 1, "/sky/root.sky"),
-            ("dep-a", "2.1.0", 3, "/sky/dep-a.sky"),
-            ("dep-b", "0.4.0", 1, "/sky/dep-b.sky"),
+            ("root", "1.0.0", 1, root_sky.to_str().unwrap()),
+            ("dep-a", "2.1.0", 3, dep_a_sky.to_str().unwrap()),
+            ("dep-b", "0.4.0", 1, dep_b_sky.to_str().unwrap()),
         ],
     );
 
