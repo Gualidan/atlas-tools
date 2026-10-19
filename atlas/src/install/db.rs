@@ -1,7 +1,10 @@
 use std::fs::{self, File};
 
 use anyhow::{Context, Result};
-use common::types::{metadata::Metadata, package::Package};
+use common::{
+    functions::{parse_metadata_lines::parse_metadata_lines, sky_verify::read_sky},
+    types::{metadata::Metadata, package::Package},
+};
 use rusqlite::{Connection, params};
 
 use crate::types::runtime_config::RuntimeConfig;
@@ -73,6 +76,16 @@ pub fn insert_installed_package(
         )
         .context("Failed to create package_dependencies table")?;
 
+    transaction
+        .execute(
+            "CREATE TABLE IF NOT EXISTS owned_files (
+        path TEXT NOT NULL,
+        package_name TEXT PRIMARY KEY,
+        architecture TEXT NOT NULL,",
+            [],
+        )
+        .context("Failed to create owned_files table")?;
+
     // First insert dependencies into the installed_packages table
     let repo_db_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
@@ -87,6 +100,18 @@ pub fn insert_installed_package(
         )
         .context("Failed to look up package in repository database")?;
     transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir]).context("Failed to insert root package into install database")?;
+
+    // Insert root package's paths into "owned files"
+    let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
+    let manifest_lines = parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
+
+    for line in manifest_lines {
+        transaction.execute(
+            "INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
+            params![line.path.to_str().context("Failed to get the path as a string")?, package.name, package.architecture.to_string()],
+        ).context("Failed to insert owned files into install database")?;
+    }
+
     for dep in &metadata.deps {
         let mut stmt = repo_db_conn
             .prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
@@ -113,6 +138,8 @@ pub fn insert_installed_package(
         transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![name, version, release, architecture, sky_path, install_dir]).context("Failed to insert dependency into install database")?;
 
         transaction.execute("INSERT OR REPLACE INTO package_dependencies (package_name, architecture, dependency_name) VALUES (?, ?, ?)", params![package.name, package.architecture.to_string(), dep]).context("Failed to insert dependency edge into install database")?;
+
+        transaction.execute("INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?) ", params![sky_path, name, package.architecture.to_string()]).context("Failed to insert owned files into install database")?;
     }
 
     transaction

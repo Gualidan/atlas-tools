@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use common::types::manifest::ManifestLine;
 use common::types::metadata::Metadata;
 use rusqlite::Connection;
 
@@ -15,6 +16,8 @@ pub struct Context<'a> {
     pub temp_dir: TempDir,
     pub settings: &'a SisyphusConfig,
     pub dependencies: Vec<String>,
-    pub conn: &'a Connection,
+    pub repo_conn: &'a Connection,
+    pub install_conn: &'a Connection,
     pub metadata: Option<Metadata>,
+    pub manifest_paths: Option<Vec<ManifestLine>>,
 }

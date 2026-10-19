@@ -76,8 +76,11 @@ pub fn install(
         temp_dir: temp_dir,
         settings: &settings,
         dependencies: vec![],
-        conn: &conn,
+        repo_conn: &conn,
+        install_conn: &Connection::open(&runtime_config.install_db)
+            .context("Failed to open connection to install database")?,
         metadata: None,
+        manifest_paths: None,
     };
 
     let state = Box::new(NotInstalled) as Box<dyn State>;

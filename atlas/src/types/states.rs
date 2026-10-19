@@ -4,9 +4,13 @@ use std::{
 };
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::functions::{sky_verify::sky_verify, unpack_payload::unpack_payload};
+use common::functions::{
+    parse_metadata_lines::parse_metadata_lines,
+    sky_verify::{read_sky, sky_verify},
+    unpack_payload::unpack_payload,
+};
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
 use walkdir::WalkDir;
@@ -31,7 +35,7 @@ pub trait State {
 
 impl State for NotInstalled {
     fn verify(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
-        let mut stmt = ctx.conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+        let mut stmt = ctx.repo_conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
         let rows: bool = stmt.query_row(
             params![
                 ctx.package.name,
@@ -48,6 +52,10 @@ impl State for NotInstalled {
 
         let metadata = sky_verify(&ctx.sky_path, &ctx.package, &ctx.settings)?;
         ctx.metadata = Some(metadata);
+        let (_, _, files, _) =
+            read_sky(&PathBuf::from(&ctx.sky_path)).context("Failed to read sky file")?;
+        ctx.manifest_paths =
+            Some(parse_metadata_lines(files).context("Failed to parse manifest's lines")?);
 
         Ok(Box::new(Verified))
     }
@@ -75,6 +83,38 @@ impl State for Verified {
     }
 
     fn stage(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
+        let mut stmt = ctx
+            .install_conn
+            .prepare(
+                "SELECT name FROM owned_files WHERE path = ? AND name != ? AND architecture = ?",
+            )
+            .context("Failed to prepare database query")?;
+        let Some(manifest_paths) = &ctx.manifest_paths else {
+            return Err(anyhow!("Failed to get the manifest's paths"));
+        };
+
+        // File conflict check
+        for line in manifest_paths {
+            let Some(owner): Option<String> = stmt
+                .query_row(
+                    params![
+                        line.path.to_str().unwrap(),
+                        ctx.package.architecture.to_string(),
+                        ctx.package.name,
+                    ],
+                    |row| row.get(0),
+                )
+                .optional()?
+            else {
+                continue;
+            };
+
+            return Err(anyhow!(
+                "Another package {owner} already owns this path {}",
+                line.path.display()
+            ));
+        }
+
         unpack_payload(&ctx.sky_path, &ctx.temp_dir)?;
 
         Ok(Box::new(Staged))
@@ -164,7 +204,7 @@ impl State for Installed {
     }
 
     fn update(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
-        let mut stmt = ctx.conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? ORDER BY version DESC, release DESC LIMIT 1").context("Failed to prepare database query")?;
+        let mut stmt = ctx.repo_conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? ORDER BY version DESC, release DESC LIMIT 1").context("Failed to prepare database query")?;
         let sky_path: String = stmt.query_row(
             params![
                 ctx.package.name.as_str(),
