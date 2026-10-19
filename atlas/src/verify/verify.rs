@@ -10,6 +10,7 @@ use anyhow::{Context, Result, anyhow};
 use common::{
     functions::{
         hash::hash,
+        parse_metadata_lines::parse_metadata_lines,
         sky_verify::{data_to_sign, read_sky, verify_metadata, verify_signature},
         unpack_payload::unpack_payload,
         validate_archive::validate_archive_paths,
@@ -17,7 +18,7 @@ use common::{
     },
     types::{
         config::SisyphusConfig,
-        manifest::{FileType, ManifestLine},
+        manifest::FileType,
         package::{Architectures, Package, Source},
     },
 };
@@ -114,37 +115,7 @@ pub fn verify(
         _ => {}
     }
 
-    let lines: Vec<&str> = files.lines().collect();
-    let mut manifest_lines: Vec<ManifestLine> = Vec::new();
-
-    for line in lines {
-        let fields: Vec<&str> = line.splitn(4, '\t').collect();
-
-        match fields[..] {
-            [kind, mode, target_or_hash, path] => {
-                let mode = u32::from_str_radix(mode, 8)
-                    .context("Failed to parse mode, is it malformed?")?;
-                let kind = match kind {
-                    "d" => FileType::Dir,
-                    "f" => FileType::File,
-                    "l" => FileType::Symlink,
-                    unknown @ _ => {
-                        return Err(anyhow!("Invalid file type: {}", unknown));
-                    }
-                };
-                manifest_lines.push(ManifestLine {
-                    file_type: kind,
-                    mode: mode,
-                    target_or_hash: target_or_hash.to_string(),
-                    path: PathBuf::from(path),
-                });
-            }
-            _ => {
-                return Err(anyhow!("Invalid line"));
-            }
-        }
-    }
-
+    let manifest_lines = parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
     let destination = Builder::new()
         .tempdir()
         .context("Failed to create temporary directory")?;
