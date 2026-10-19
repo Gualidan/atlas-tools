@@ -80,8 +80,11 @@ pub fn insert_installed_package(
         .execute(
             "CREATE TABLE IF NOT EXISTS owned_files (
         path TEXT NOT NULL,
-        package_name TEXT PRIMARY KEY,
-        architecture TEXT NOT NULL,",
+        package_name TEXT NOT NULL,
+        architecture TEXT NOT NULL,
+        PRIMARY KEY (path, architecture)
+        FOREIGN KEY (package_name, architecture) REFERENCES installed_packages(name, architecture)
+        )",
             [],
         )
         .context("Failed to create owned_files table")?;
@@ -138,8 +141,6 @@ pub fn insert_installed_package(
         transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![name, version, release, architecture, sky_path, install_dir]).context("Failed to insert dependency into install database")?;
 
         transaction.execute("INSERT OR REPLACE INTO package_dependencies (package_name, architecture, dependency_name) VALUES (?, ?, ?)", params![package.name, package.architecture.to_string(), dep]).context("Failed to insert dependency edge into install database")?;
-
-        transaction.execute("INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?) ", params![sky_path, name, package.architecture.to_string()]).context("Failed to insert owned files into install database")?;
     }
 
     transaction
