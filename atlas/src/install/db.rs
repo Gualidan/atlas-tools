@@ -9,6 +9,53 @@ use rusqlite::{Connection, params};
 
 use crate::types::runtime_config::RuntimeConfig;
 
+pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS installed_packages (
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        release INTEGER NOT NULL,
+        architecture TEXT NOT NULL,
+        sky_path TEXT NOT NULL,
+        install_dir TEXT NOT NULL,
+        installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (name, architecture)
+    )",
+        [],
+    )
+    .context("Failed to create installed_packages table")?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS package_dependencies (
+        package_name TEXT NOT NULL,
+        architecture TEXT NOT NULL,
+        dependency_name TEXT NOT NULL,
+        PRIMARY KEY (package_name, architecture, dependency_name),
+        FOREIGN KEY (package_name, architecture)
+            REFERENCES installed_packages(name, architecture),
+        FOREIGN KEY (dependency_name, architecture)
+            REFERENCES installed_packages(name, architecture),
+        CHECK (package_name != dependency_name)
+    )",
+        [],
+    )
+    .context("Failed to create package_dependencies table")?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS owned_files (
+        path TEXT NOT NULL,
+        package_name TEXT NOT NULL,
+        architecture TEXT NOT NULL,
+        PRIMARY KEY (path, architecture)
+        FOREIGN KEY (package_name, architecture) REFERENCES installed_packages(name, architecture)
+        )",
+        [],
+    )
+    .context("Failed to create owned_files table")?;
+
+    Ok(())
+}
+
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: Metadata,
@@ -43,51 +90,7 @@ pub fn insert_installed_package(
         .transaction()
         .context("Failed to start an install database transaction")?;
 
-    transaction
-        .execute(
-            "CREATE TABLE IF NOT EXISTS installed_packages (
-        name TEXT NOT NULL,
-        version TEXT NOT NULL,
-        release INTEGER NOT NULL,
-        architecture TEXT NOT NULL,
-        sky_path TEXT NOT NULL,
-        install_dir TEXT NOT NULL,
-        installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (name, architecture)
-    )",
-            [],
-        )
-        .context("Failed to create installed_packages table")?;
-
-    transaction
-        .execute(
-            "CREATE TABLE IF NOT EXISTS package_dependencies (
-        package_name TEXT NOT NULL,
-        architecture TEXT NOT NULL,
-        dependency_name TEXT NOT NULL,
-        PRIMARY KEY (package_name, architecture, dependency_name),
-        FOREIGN KEY (package_name, architecture)
-            REFERENCES installed_packages(name, architecture),
-        FOREIGN KEY (dependency_name, architecture)
-            REFERENCES installed_packages(name, architecture),
-        CHECK (package_name != dependency_name)
-    )",
-            [],
-        )
-        .context("Failed to create package_dependencies table")?;
-
-    transaction
-        .execute(
-            "CREATE TABLE IF NOT EXISTS owned_files (
-        path TEXT NOT NULL,
-        package_name TEXT NOT NULL,
-        architecture TEXT NOT NULL,
-        PRIMARY KEY (path, architecture)
-        FOREIGN KEY (package_name, architecture) REFERENCES installed_packages(name, architecture)
-        )",
-            [],
-        )
-        .context("Failed to create owned_files table")?;
+    ensure_install_schema(&transaction)?;
 
     // First insert dependencies into the installed_packages table
     let repo_db_conn = Connection::open(&runtime_config.repo_db)
