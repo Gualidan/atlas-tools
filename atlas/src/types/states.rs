@@ -95,14 +95,14 @@ impl State for Verified {
 
         // File conflict check
         for line in manifest_paths {
-            let Some(owner): Option<String> = stmt
+            let Some(owner) = stmt
                 .query_row(
                     params![
-                        line.path.to_str().unwrap(),
-                        ctx.package.architecture.to_string(),
+                        line.path.to_string_lossy(),
                         ctx.package.name,
+                        ctx.package.architecture.to_string(),
                     ],
-                    |row| row.get(0),
+                    |row| row.get::<_, String>(0),
                 )
                 .optional()?
             else {
