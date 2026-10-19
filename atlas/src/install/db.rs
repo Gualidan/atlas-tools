@@ -46,7 +46,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
         path TEXT NOT NULL,
         package_name TEXT NOT NULL,
         architecture TEXT NOT NULL,
-        PRIMARY KEY (path, architecture)
+        PRIMARY KEY (path, architecture),
         FOREIGN KEY (package_name, architecture) REFERENCES installed_packages(name, architecture)
         )",
         [],
