@@ -12,9 +12,12 @@ pub struct SisyphusConfig {
 }
 
 pub fn load_config() -> Result<SisyphusConfig> {
-    let config_dir = config_dir()
-        .context("Failed to derive user's config directory")?
-        .join("sisyphus");
+    let config_dir = match std::env::var_os("SISYPHUS_CONFIG_DIR") {
+        Some(path) => PathBuf::from(path),
+        None => config_dir()
+            .context("Failed to derive user's config directory")?
+            .join("sisyphus"),
+    };
 
     std::fs::create_dir_all(&config_dir).context("Failed to create sisyphus' config directory")?;
 
