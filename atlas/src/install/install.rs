@@ -9,7 +9,7 @@ use tempfile::Builder;
 
 use crate::{
     cli::cli::InstallArgs,
-    install::db::insert_installed_package,
+    install::db::{ensure_install_schema, insert_installed_package},
     types::{
         context::Context,
         runtime_config::RuntimeConfig,
@@ -68,6 +68,17 @@ pub fn install(
         .tempdir_in(PathBuf::from("/var/tmp"))
         .context("Failed to create temporary directory")?;
 
+    if let Some(parent) = runtime_config.install_db.parent() {
+        std::fs::create_dir_all(parent)
+            .context("Failed to create the install database directory")?;
+    }
+    let install_conn = Connection::open(&runtime_config.install_db)
+        .context("Failed to open connection to install database")?;
+    install_conn
+        .execute("PRAGMA foreign_keys = ON", [])
+        .context("Failed to enable foreign key enforcement")?;
+    ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
+
     let mut ctx = Context {
         package: &package,
         sky_path: PathBuf::from(sky_path),
@@ -77,8 +88,7 @@ pub fn install(
         settings: &settings,
         dependencies: vec![],
         repo_conn: &conn,
-        install_conn: &Connection::open(&runtime_config.install_db)
-            .context("Failed to open connection to install database")?,
+        install_conn: &install_conn,
         metadata: None,
         manifest_paths: None,
     };
