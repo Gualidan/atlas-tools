@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, remove_dir_all, remove_file},
+    fs::{self},
     path::PathBuf,
 };
 
@@ -12,8 +12,6 @@ use common::functions::{
 
 use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
-
-use walkdir::WalkDir;
 
 use crate::types::context::Context;
 
@@ -128,7 +126,6 @@ impl State for Staged {
             return Err(anyhow!("No temp dir"));
         };
         fs::create_dir_all(&ctx.install_dir).context("Failed to create the install directory")?;
-        temp_dir.disable_cleanup(true);
 
         match renameat_with(
             CWD,
@@ -137,23 +134,8 @@ impl State for Staged {
             ctx.install_dir.clone(),
             RenameFlags::EXCHANGE,
         ) {
-            Ok(_) => {
-                remove_dir_all(temp_dir.path())
-                    .context("Failed to recursively delete the temporary directory")?;
-                Ok(Box::new(Installed))
-            }
-            Err(e) => {
-                for entry in WalkDir::new(&temp_dir) {
-                    let entry = entry.context("Failed to get entry")?;
-                    if entry.file_type().is_dir() {
-                        remove_dir_all(&entry.path())
-                            .context("Failed to recursively delete the entry")?;
-                    } else {
-                        remove_file(&entry.path()).context("Failed to delete the entry")?;
-                    }
-                }
-                Err(e.into())
-            }
+            Ok(_) => Ok(Box::new(Installed)),
+            Err(e) => Err(e.into()),
         }
     }
 
