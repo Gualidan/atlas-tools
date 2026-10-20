@@ -4,18 +4,17 @@ use std::{
 };
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::functions::{
-    sky_verify::{read_sky, sky_verify},
-    unpack_payload::unpack_payload,
+use common::{
+    functions::{
+        sky_verify::{read_sky, sky_verify},
+        unpack_payload::unpack_payload,
+    },
 };
 
 use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
-use crate::{
-    types::{context::Context, guards::InstallGuard},
-    verify::parse_metadata_lines::parse_metadata_lines,
-};
+use crate::{types::context::Context, verify::parse_metadata_lines::parse_metadata_lines};
 
 pub struct NotInstalled;
 
@@ -128,7 +127,6 @@ impl State for Staged {
             return Err(anyhow!("No temp dir"));
         };
         fs::create_dir_all(&ctx.install_dir).context("Failed to create the install directory")?;
-        let mut guard = InstallGuard::new(ctx.install_dir.clone());
 
         match renameat_with(
             CWD,
@@ -137,10 +135,7 @@ impl State for Staged {
             ctx.install_dir.clone(),
             RenameFlags::EXCHANGE,
         ) {
-            Ok(_) => {
-                guard.disarm();
-                Ok(Box::new(Installed))
-            }
+            Ok(_) => Ok(Box::new(Installed)),
             Err(e) => Err(e.into()),
         }
     }

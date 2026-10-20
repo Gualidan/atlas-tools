@@ -1,6 +1,6 @@
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use common::types::package::{Architectures, PackageIdentity};
-use std::{env::consts::ARCH, path::PathBuf};
+use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -12,7 +12,7 @@ use crate::{
     install::db::{ensure_install_schema, insert_installed_package},
     types::{
         context::Context,
-        guards::InstallGuard,
+        guards::SwapBackGuard,
         runtime_config::RuntimeConfig,
         states::{NotInstalled, State},
     },
@@ -53,10 +53,16 @@ pub fn install(
     };
     let settings = load_config().context("Failed to load settings")?;
 
+    create_dir_all(&install_dir).context("Failed to create install_dir and its parents")?;
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
-        .tempdir_in(PathBuf::from("/var/tmp"))
+        .tempdir_in(
+            install_dir
+                .parent()
+                .context("Failed to get install dir's parent")?,
+        )
         .context("Failed to create temporary directory")?;
+    let staging_dir = temp_dir.path().to_path_buf();
 
     if let Some(parent) = runtime_config.install_db.parent() {
         std::fs::create_dir_all(parent)
@@ -89,7 +95,7 @@ pub fn install(
     let state = state.stage(&mut ctx)?;
     state.commit(&mut ctx)?;
 
-    let mut guard = InstallGuard::new(install_dir.clone());
+    let mut guard = SwapBackGuard::new(install_dir.clone(), staging_dir, true);
 
     insert_installed_package(
         runtime_config,
@@ -99,6 +105,5 @@ pub fn install(
     )?;
 
     guard.disarm();
-
     Ok(())
 }

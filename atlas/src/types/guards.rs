@@ -1,57 +1,42 @@
 use std::{fs::remove_dir_all, path::PathBuf};
 
-pub struct InstallGuard {
+use rustix::fs::{CWD, RenameFlags, renameat_with};
+
+pub struct SwapBackGuard {
     install_dir: Option<PathBuf>,
+    staging_dir: Option<PathBuf>,
+    install_dir_existed: bool,
 }
 
-impl InstallGuard {
-    pub fn new(path: PathBuf) -> Self {
-        InstallGuard {
-            install_dir: Some(path),
+impl SwapBackGuard {
+    pub fn new(install_dir: PathBuf, staging_dir: PathBuf, install_dir_existed: bool) -> Self {
+        SwapBackGuard {
+            install_dir: Some(install_dir),
+            staging_dir: Some(staging_dir),
+            install_dir_existed,
         }
     }
     pub fn disarm(&mut self) {
         self.install_dir.take();
+        self.staging_dir.take();
     }
 }
 
-impl Drop for InstallGuard {
+impl Drop for SwapBackGuard {
     fn drop(&mut self) {
-        if let Some(path) = &self.install_dir {
-            let _ = remove_dir_all(path);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::InstallGuard;
-    use tempfile::tempdir;
-
-    #[test]
-    fn cleans_up_on_drop_without_disarm() {
-        let tmp = tempdir().unwrap();
-        let install_dir = tmp.path().join("install_dir");
-        std::fs::create_dir(&install_dir).unwrap();
-
+        if let Some(install_dir) = &self.install_dir
+            && let Some(tempdir) = &self.staging_dir
         {
-            let _guard = InstallGuard::new(install_dir.clone());
+            match renameat_with(CWD, install_dir, CWD, tempdir, RenameFlags::EXCHANGE) {
+                Ok(_) => {}
+                Err(_) => eprint!("Swap back exchange failed"),
+            }
+            if !self.install_dir_existed {
+                match remove_dir_all(install_dir) {
+                    Ok(_) => {}
+                    Err(_) => eprintln!("Attempt at placeholder removal failed"),
+                }
+            }
         }
-
-        assert!(!install_dir.exists());
-    }
-
-    #[test]
-    fn does_nothing_on_drop_after_disarm() {
-        let tmp = tempdir().unwrap();
-        let install_dir = tmp.path().join("install_dir");
-        std::fs::create_dir(&install_dir).unwrap();
-
-        {
-            let mut guard = InstallGuard::new(install_dir.clone());
-            guard.disarm();
-        }
-
-        assert!(install_dir.exists());
     }
 }
