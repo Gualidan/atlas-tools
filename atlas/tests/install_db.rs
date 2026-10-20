@@ -50,9 +50,36 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (keypair, _pub_key) = generate_keypair()?;
 
-    let root_sky = write_signed_sky(&tmp, &keypair, "root.sky", "root", "1.0.0", 1, b"root\n", vec![])?;
-    let dep_a_sky = write_signed_sky(&tmp, &keypair, "dep-a.sky", "dep-a", "2.1.0", 3, b"dep-a\n", vec![])?;
-    let dep_b_sky = write_signed_sky(&tmp, &keypair, "dep-b.sky", "dep-b", "0.4.0", 1, b"dep-b\n", vec![])?;
+    let root_sky = write_signed_sky(
+        &tmp,
+        &keypair,
+        "root.sky",
+        "root",
+        "1.0.0",
+        1,
+        b"root\n",
+        vec![],
+    )?;
+    let dep_a_sky = write_signed_sky(
+        &tmp,
+        &keypair,
+        "dep-a.sky",
+        "dep-a",
+        "2.1.0",
+        3,
+        b"dep-a\n",
+        vec![],
+    )?;
+    let dep_b_sky = write_signed_sky(
+        &tmp,
+        &keypair,
+        "dep-b.sky",
+        "dep-b",
+        "0.4.0",
+        1,
+        b"dep-b\n",
+        vec![],
+    )?;
 
     seed_repo_db(
         &config.repo_db,
