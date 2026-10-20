@@ -4,13 +4,15 @@ use std::{
 };
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::functions::sky_verify::{read_sky, sky_verify};
+use common::functions::{
+    sky_verify::{read_sky, sky_verify},
+    unpack_payload::unpack_payload,
+};
 
 use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
 use crate::{
-    install::unpack_payload::unpack_payload,
     types::{context::Context, guards::InstallGuard},
     verify::parse_metadata_lines::parse_metadata_lines,
 };

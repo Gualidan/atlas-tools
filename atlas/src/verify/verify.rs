@@ -11,6 +11,7 @@ use common::{
     functions::{
         hash::hash,
         sky_verify::{data_to_sign, read_sky, verify_metadata, verify_signature},
+        unpack_payload::unpack_payload,
     },
     types::{
         config::SisyphusConfig,
@@ -24,7 +25,6 @@ use walkdir::WalkDir;
 
 use crate::{
     cli::cli::VerifyArgs,
-    install::unpack_payload::unpack_payload,
     types::runtime_config::RuntimeConfig,
     verify::{
         parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
