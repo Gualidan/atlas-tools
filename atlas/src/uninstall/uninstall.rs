@@ -9,7 +9,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     cli::cli::UninstallArgs,
-    install::db::ensure_install_schema,
+    install::db::{ensure_install_schema, remove_uninstalled_package},
     types::{
         context::Context,
         runtime_config::RuntimeConfig,
@@ -24,7 +24,7 @@ pub fn uninstall(
 ) -> Result<()> {
     let repo_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to repository database")?;
-    let install_conn = Connection::open(&runtime_config.install_db)
+    let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
     let (install_dir, version, release, sky_path) =
         look_up_installed_package(&install_conn, &args.package)
@@ -53,6 +53,8 @@ pub fn uninstall(
 
     let state = Box::new(Installed) as Box<dyn State>;
     state.remove(&mut ctx)?;
+
+    remove_uninstalled_package(&mut install_conn, &package_id)?;
 
     Ok(())
 }
