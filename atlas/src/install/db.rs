@@ -169,7 +169,7 @@ pub fn remove_uninstalled_package(
 
     transaction
         .execute(
-            "DELETE FROM owned_files WHERE name = ? AND architecture = ?",
+            "DELETE FROM owned_files WHERE package_name = ? AND architecture = ?",
             params![package_id.name, package_id.architecture.to_string()],
         )
         .context("Failed to execute database query")?;
