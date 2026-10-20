@@ -57,7 +57,7 @@ pub fn run() -> Result<()> {
                 println!("Skipping build.");
                 return Ok(());
             }
-            run_build(&args.recipe_path, None, false).context("Failed to run build")?;
+            run_build(&args.recipe_path, None).context("Failed to run build")?;
             Ok(())
         }
         Commands::Keygen(args) => {

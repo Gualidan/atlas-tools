@@ -13,6 +13,7 @@ pub struct Bubblewrap {
     pub srcdir: PathBuf,
     pub builddir: PathBuf,
     pub pkgdir: PathBuf,
+    pub usr_root: PathBuf,
 }
 
 impl Sandbox for Bubblewrap {
@@ -20,7 +21,7 @@ impl Sandbox for Bubblewrap {
         which("bwrap")?;
         let mut cmd = Command::new("bwrap")
             .arg("--ro-bind")
-            .arg("/usr")
+            .arg(format!("{}/usr", self.usr_root.display()))
             .arg("/usr")
             .arg("--symlink")
             .arg("/usr/bin")

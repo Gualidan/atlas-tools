@@ -3,7 +3,10 @@ use common::types::config::load_config;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::{
-    build::{build::build, dependencies::resolve},
+    build::{
+        build::{build, build_package},
+        dependencies::resolve,
+    },
     extract::extract::extract,
     fetch::fetch::fetch,
     package::package::package_gen,
@@ -11,11 +14,7 @@ use crate::{
 };
 use std::path::PathBuf;
 
-pub fn run_build(
-    recipe: &PathBuf,
-    runtime_config: Option<&RuntimeConfig>,
-    nested: bool,
-) -> Result<()> {
+pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Result<()> {
     let package = Recipe { path: &recipe }.parse()?;
     let binding = RuntimeConfig::build(recipe)?;
     let config = load_config().context("Failed to load config")?;
@@ -70,14 +69,8 @@ pub fn run_build(
     let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
 
     // Phase 3: Dependency resolution / Build
-    let build_plan = if !nested {
-        Some(
-            resolve(runtime_config, &package, &config)
-                .context("Failed to resolve package's dependencies")?,
-        )
-    } else {
-        None
-    };
+    let build_plan = resolve(runtime_config, &package, &config)
+        .context("Failed to resolve package's dependencies")?;
 
     let pkgdir = build(runtime_config, &package, &source_root, &build_plan)
         .context("Failed to build package")?;
@@ -93,4 +86,33 @@ pub fn run_build(
     .context("Failed to generate sky file")?;
 
     Ok(())
+}
+
+pub fn run_planned_build(
+    recipe: &PathBuf,
+    runtime_config: &RuntimeConfig,
+    artifacts: &[PathBuf],
+) -> Result<PathBuf> {
+    let package = Recipe { path: recipe }.parse()?;
+    let config = load_config().context("Failed to load config")?;
+
+    // Phase 1: Fetch
+    let fetched = fetch(&package, true, runtime_config).context("Failed to fetch package")?;
+
+    // Phase 2: Extract
+    let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
+
+    // Phase 3: Build
+    let pkgdir = build_package(&package, &source_root, artifacts)
+        .with_context(|| format!("Failed to build package `{}`", package.name))?;
+
+    // Phase 4: Package generation
+    package_gen(
+        recipe,
+        &pkgdir.path().to_path_buf(),
+        &package,
+        &config.priv_key_path,
+        runtime_config,
+    )
+    .context("Failed to generate sky file")
 }

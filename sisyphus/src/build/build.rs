@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use common::functions::unpack_payload::unpack_payload;
 use tempfile::{Builder, TempDir};
 
 use crate::build::dependencies::BuildPlan;
-use crate::pipeline::build::run_build;
+use crate::pipeline::build::run_planned_build;
 use crate::types::bubblewrap::Bubblewrap;
 use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
@@ -14,21 +15,30 @@ pub fn build(
     runtime_config: &RuntimeConfig,
     package: &Package,
     srcdir: &PathBuf,
-    build_plan: &Option<BuildPlan>,
+    build_plan: &BuildPlan,
 ) -> Result<TempDir> {
-    if let Some(plan) = build_plan {
-        for dep in &plan.packages_to_build {
-            run_build(&dep.recipe_path, Some(runtime_config), true)
-                .with_context(|| format!("Failed to build dependency `{}`", dep.name))?;
-        }
+    let mut artifacts: Vec<PathBuf> = build_plan
+        .reusable_artifacts
+        .iter()
+        .map(|artifact| artifact.artifact_path.clone())
+        .collect();
+
+    for dep in &build_plan.packages_to_build {
+        let artifact = run_planned_build(&dep.recipe_path, runtime_config, &artifacts)
+            .with_context(|| format!("Failed to build dependency `{}`", dep.name))?;
+        artifacts.push(artifact);
     }
 
-    let pkgdir = build_package(package, srcdir)
+    let pkgdir = build_package(package, srcdir, &artifacts)
         .with_context(|| format!("Failed to build package `{}`", package.name))?;
     Ok(pkgdir)
 }
 
-pub fn build_package(package: &Package, srcdir: &PathBuf) -> Result<TempDir> {
+pub fn build_package(
+    package: &Package,
+    srcdir: &PathBuf,
+    artifacts: &[PathBuf],
+) -> Result<TempDir> {
     let builddir = Builder::new()
         .prefix("sisyphus_builddir")
         .tempdir()
@@ -37,9 +47,17 @@ pub fn build_package(package: &Package, srcdir: &PathBuf) -> Result<TempDir> {
         .prefix("sisyphus_pkgdir")
         .tempdir()
         .context("Failed to create package directory")?;
+    let usr_root = Builder::new()
+        .prefix("sisyphus_usr_root")
+        .tempdir()
+        .context("Failed to create temporary directory")?;
 
     let builddir = builddir.path().to_path_buf();
     let pkgdir_path = pkgdir.path().to_path_buf();
+    let usr_root_path = usr_root.path().to_path_buf();
+
+    extract_artifacts(artifacts, &usr_root)?;
+
     let bwp = Bubblewrap {
         name: package.name.clone(),
         version: package.version.clone(),
@@ -48,6 +66,7 @@ pub fn build_package(package: &Package, srcdir: &PathBuf) -> Result<TempDir> {
         srcdir: srcdir.clone(),
         builddir,
         pkgdir: pkgdir_path,
+        usr_root: usr_root_path,
     };
 
     if let Some(prepare) = &package.prepare {
@@ -66,4 +85,11 @@ pub fn build_package(package: &Package, srcdir: &PathBuf) -> Result<TempDir> {
         .context("Failed to run package phase")?;
 
     Ok(pkgdir)
+}
+
+pub fn extract_artifacts(artifacts: &[PathBuf], temp_root: &TempDir) -> Result<()> {
+    for artifact in artifacts {
+        unpack_payload(artifact, temp_root).context("Failed to unpack payload")?;
+    }
+    Ok(())
 }
