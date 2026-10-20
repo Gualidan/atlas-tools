@@ -143,6 +143,11 @@ pub fn build_payload(contents: &[u8]) -> Result<Vec<u8>> {
 
 /// Builds a payload containing `<dir>/` and `<dir>/file.txt`.
 pub fn build_payload_in_dir(dir: &str, contents: &[u8]) -> Result<Vec<u8>> {
+    build_payload_with_file(dir, "file.txt", contents)
+}
+
+/// Builds a payload containing `<dir>/` and `<dir>/<file_name>`.
+pub fn build_payload_with_file(dir: &str, file_name: &str, contents: &[u8]) -> Result<Vec<u8>> {
     let mut payload = Vec::new();
     let encoder = Encoder::new(&mut payload, 3)?;
     let mut builder = Builder::new(encoder);
@@ -153,11 +158,35 @@ pub fn build_payload_in_dir(dir: &str, contents: &[u8]) -> Result<Vec<u8>> {
     dir_header.set_entry_type(EntryType::dir());
     builder.append_data(&mut dir_header, dir, std::io::empty())?;
 
-    let file_path = format!("{dir}/file.txt");
+    let file_path = format!("{dir}/{file_name}");
     let mut file_header = Header::new_gnu();
     file_header.set_mode(0o644);
     file_header.set_size(contents.len() as u64);
     builder.append_data(&mut file_header, file_path, contents)?;
+
+    builder.into_inner()?.finish()?;
+    Ok(payload)
+}
+
+/// Builds a payload containing `<dir>/` and the symlink `<dir>/<link_name>`
+/// pointing at `target`.
+pub fn build_payload_with_symlink(dir: &str, link_name: &str, target: &str) -> Result<Vec<u8>> {
+    let mut payload = Vec::new();
+    let encoder = Encoder::new(&mut payload, 3)?;
+    let mut builder = Builder::new(encoder);
+
+    let mut dir_header = Header::new_gnu();
+    dir_header.set_mode(0o755);
+    dir_header.set_size(0);
+    dir_header.set_entry_type(EntryType::dir());
+    builder.append_data(&mut dir_header, dir, std::io::empty())?;
+
+    let link_path = format!("{dir}/{link_name}");
+    let mut link_header = Header::new_gnu();
+    link_header.set_mode(0o777);
+    link_header.set_size(0);
+    link_header.set_entry_type(EntryType::symlink());
+    builder.append_link(&mut link_header, &link_path, target)?;
 
     builder.into_inner()?.finish()?;
     Ok(payload)
@@ -170,10 +199,22 @@ pub fn manifest_for(contents: &[u8]) -> Result<String> {
 
 /// Builds the manifest matching [`build_payload_in_dir`].
 pub fn manifest_for_dir(dir: &str, contents: &[u8]) -> Result<String> {
+    manifest_for_file(dir, "file.txt", contents)
+}
+
+/// Builds the manifest matching [`build_payload_with_file`].
+pub fn manifest_for_file(dir: &str, file_name: &str, contents: &[u8]) -> Result<String> {
     let file_hash = hex::encode(hash(Cursor::new(contents))?);
     Ok(format!(
-        "f\t0644\t{}\t{dir}/file.txt\nd\t0755\t-\t{dir}\n",
+        "f\t0644\t{}\t{dir}/{file_name}\nd\t0755\t-\t{dir}\n",
         file_hash
+    ))
+}
+
+/// Builds the manifest matching [`build_payload_with_symlink`].
+pub fn manifest_for_symlink(dir: &str, link_name: &str, target: &str) -> Result<String> {
+    Ok(format!(
+        "l\t0777\t{target}\t{dir}/{link_name}\nd\t0755\t-\t{dir}\n"
     ))
 }
 
@@ -214,6 +255,58 @@ pub fn write_signed_sky_in_dir(
 ) -> Result<PathBuf> {
     let payload = build_payload_in_dir(dir, contents)?;
     let files = manifest_for_dir(dir, contents)?;
+    let metadata_bytes =
+        serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
+    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let signature = keypair.sign(&data).as_ref().to_vec();
+
+    let sky_path = tmp.path().join(sky_name);
+    write_sky(&sky_path, &payload, &metadata_bytes, &files, &signature)?;
+    Ok(sky_path)
+}
+
+/// Like [`write_signed_sky`] but with a custom payload directory and file
+/// name, so two packages can share a directory without colliding on a file.
+pub fn write_signed_sky_with_file(
+    tmp: &TempDir,
+    keypair: &Ed25519KeyPair,
+    sky_name: &str,
+    package_name: &str,
+    version: &str,
+    release: u32,
+    contents: &[u8],
+    deps: Vec<String>,
+    dir: &str,
+    file_name: &str,
+) -> Result<PathBuf> {
+    let payload = build_payload_with_file(dir, file_name, contents)?;
+    let files = manifest_for_file(dir, file_name, contents)?;
+    let metadata_bytes =
+        serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
+    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let signature = keypair.sign(&data).as_ref().to_vec();
+
+    let sky_path = tmp.path().join(sky_name);
+    write_sky(&sky_path, &payload, &metadata_bytes, &files, &signature)?;
+    Ok(sky_path)
+}
+
+/// Like [`write_signed_sky`] but shipping a single symlink instead of a
+/// regular file.
+pub fn write_signed_sky_with_symlink(
+    tmp: &TempDir,
+    keypair: &Ed25519KeyPair,
+    sky_name: &str,
+    package_name: &str,
+    version: &str,
+    release: u32,
+    link_name: &str,
+    target: &str,
+    deps: Vec<String>,
+    dir: &str,
+) -> Result<PathBuf> {
+    let payload = build_payload_with_symlink(dir, link_name, target)?;
+    let files = manifest_for_symlink(dir, link_name, target)?;
     let metadata_bytes =
         serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
     let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
