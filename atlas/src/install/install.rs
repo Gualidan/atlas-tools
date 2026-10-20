@@ -27,7 +27,6 @@ pub fn install(
         return Err(anyhow!("You must provide a package name to install"));
     }
 
-    let install_dir_existed = install_dir.exists();
     let conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
 
@@ -46,6 +45,7 @@ pub fn install(
         .with_context(|| format!("Package {} not found", args.package.unwrap()))?;
 
     let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
+    let install_dir_existed = install_dir.exists();
 
     let package_id = PackageIdentity {
         name,
