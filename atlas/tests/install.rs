@@ -24,7 +24,7 @@ fn fresh_install_populates_owned_files() -> Result<()> {
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n")?;
+    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n", vec![])?;
     seed_repo_db(
         &config.repo_db,
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
@@ -63,8 +63,8 @@ fn install_with_file_conflict_fails() -> Result<()> {
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let a_sky = write_signed_sky(&tmp, &keypair, "a.sky", "A", "1.0.0", 1, b"a\n")?;
-    let b_sky = write_signed_sky(&tmp, &keypair, "b.sky", "B", "1.0.0", 1, b"b\n")?;
+    let a_sky = write_signed_sky(&tmp, &keypair, "a.sky", "A", "1.0.0", 1, b"a\n", vec![])?;
+    let b_sky = write_signed_sky(&tmp, &keypair, "b.sky", "B", "1.0.0", 1, b"b\n", vec![])?;
     seed_repo_db(
         &config.repo_db,
         &[
@@ -93,7 +93,7 @@ fn idempotent_install_does_not_conflict_with_itself() -> Result<()> {
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n")?;
+    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n", vec![])?;
     seed_repo_db(
         &config.repo_db,
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
