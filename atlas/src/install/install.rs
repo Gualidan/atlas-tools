@@ -12,6 +12,7 @@ use crate::{
     install::db::{ensure_install_schema, insert_installed_package},
     types::{
         context::Context,
+        guards::InstallGuard,
         runtime_config::RuntimeConfig,
         states::{NotInstalled, State},
     },
@@ -88,12 +89,16 @@ pub fn install(
     let state = state.stage(&mut ctx)?;
     state.commit(&mut ctx)?;
 
+    let mut install_guard = InstallGuard::new(install_dir.clone());
+
     insert_installed_package(
         runtime_config,
         ctx.metadata.context("Metadata should not be empty.")?,
         &package_id,
         install_dir.to_string_lossy().to_string(),
     )?;
+
+    install_guard.disarm();
 
     Ok(())
 }
