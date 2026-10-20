@@ -17,4 +17,3 @@ rusqlite.workspace = true
 anyhow.workspace = true
 users.workspace = true
 tempfile.workspace = true
-walkdir.workspace = true

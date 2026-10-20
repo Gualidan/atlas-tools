@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, remove_dir_all, remove_file},
+    fs::File,
     io::{Cursor, Read},
     path::PathBuf,
 };
@@ -7,7 +7,6 @@ use std::{
 use anyhow::{Context, Result};
 use tar::Archive;
 use tempfile::TempDir;
-use walkdir::WalkDir;
 use zstd::Decoder;
 
 pub fn unpack_payload(path: &PathBuf, destination: &TempDir) -> Result<()> {
@@ -31,21 +30,9 @@ pub fn unpack_payload(path: &PathBuf, destination: &TempDir) -> Result<()> {
                 let tar = Decoder::new(Cursor::new(&buffer))
                     .context("Failed to decompress the sky file")?;
                 let mut archive = Archive::new(tar);
-                match archive.unpack(&destination) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        for entry in WalkDir::new(&destination) {
-                            let entry = entry.context("Failed to get entry")?;
-                            if entry.file_type().is_dir() {
-                                remove_dir_all(&entry.path())
-                                    .context("Failed to recursively delete the entry")?;
-                            } else {
-                                remove_file(&entry.path()).context("Failed to delete the entry")?;
-                            }
-                        }
-                        return Err(e.into());
-                    }
-                }
+                archive
+                    .unpack(&destination)
+                    .context("Failed to unpack archive to destination")?;
             }
             _ => {}
         }

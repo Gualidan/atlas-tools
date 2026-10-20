@@ -303,7 +303,6 @@ dependencies = [
  "tar",
  "tempfile",
  "users",
- "walkdir",
  "which",
  "zstd",
 ]
