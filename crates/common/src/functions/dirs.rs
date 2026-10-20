@@ -2,21 +2,37 @@ use std::{env, path::PathBuf};
 
 use anyhow::{Context, Ok, Result};
 use uzers::{get_user_by_name, os::unix::UserExt};
+use whoami::username;
 
 pub fn data_dir() -> Result<PathBuf> {
-    let username = env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?;
+    let username = if username()? == "root" {
+        env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?
+    } else {
+        username()?
+    };
+
     let user = get_user_by_name(&username).context("Failed to get user")?;
     Ok(user.home_dir().join(".local").join("share"))
 }
 
 pub fn cache_dir() -> Result<PathBuf> {
-    let username = env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?;
+    let username = if username()? == "root" {
+        env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?
+    } else {
+        username()?
+    };
+
     let user = get_user_by_name(&username).context("Failed to get user")?;
     Ok(user.home_dir().join(".cache"))
 }
 
 pub fn config_dir() -> Result<PathBuf> {
-    let username = env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?;
+    let username = if username()? == "root" {
+        env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?
+    } else {
+        username()?
+    };
+
     let user = get_user_by_name(&username).context("Failed to get user")?;
     Ok(user.home_dir().join(".config"))
 }

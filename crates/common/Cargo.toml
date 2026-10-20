@@ -17,3 +17,4 @@ rusqlite.workspace = true
 anyhow.workspace = true
 uzers = "0.12.2"
 tempfile.workspace = true
+whoami.workspace = true
