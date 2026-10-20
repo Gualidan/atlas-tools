@@ -23,7 +23,16 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
     let settings = load_config()?;
 
-    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n", vec![])?;
+    let sky_path = write_signed_sky(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec![],
+    )?;
     seed_repo_db(
         &config.repo_db,
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
@@ -127,7 +136,10 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     let chain = format!("{err:#}");
     assert!(chain.contains("depends on"), "error chain was: {chain}");
     assert!(chain.contains("A"), "error chain should mention A: {chain}");
-    assert!(chain.contains("B"), "error chain should mention B as the dependent: {chain}");
+    assert!(
+        chain.contains("B"),
+        "error chain should mention B as the dependent: {chain}"
+    );
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -214,8 +226,14 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
         0,
         "owned_files should be empty"
     );
-    assert!(!root.join("A-1.0.0-1").exists(), "A's install_dir should be gone");
-    assert!(!root.join("B-1.0.0-1").exists(), "B's install_dir should be gone");
+    assert!(
+        !root.join("A-1.0.0-1").exists(),
+        "A's install_dir should be gone"
+    );
+    assert!(
+        !root.join("B-1.0.0-1").exists(),
+        "B's install_dir should be gone"
+    );
 
     Ok(())
 }
@@ -224,7 +242,7 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
 fn uninstall_non_installed_package_fails() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;
-    let (keypair, pub_key) = generate_keypair()?;
+    let (_keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
     let settings = load_config()?;
 
