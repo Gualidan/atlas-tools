@@ -55,12 +55,10 @@ pub fn install(
     };
     let settings = load_config().context("Failed to load settings")?;
 
-    create_dir_all(
-        &install_dir
-            .parent()
-            .context("Failed to get install dir's parent")?,
-    )
-    .context("Failed to create install_dir's parents")?;
+    let install_dir_parent = install_dir
+        .parent()
+        .context("Failed to get install_dir's parent")?;
+    create_dir_all(install_dir_parent).context("Failed to create install_dir's parents")?;
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
         .tempdir_in(
