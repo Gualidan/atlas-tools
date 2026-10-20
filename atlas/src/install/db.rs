@@ -152,3 +152,46 @@ pub fn insert_installed_package(
 
     Ok(())
 }
+
+pub fn remove_uninstalled_package(
+    conn: &mut Connection,
+    package_id: &PackageIdentity,
+) -> Result<()> {
+    let transaction = conn
+        .transaction()
+        .context("Failed to get transaction from database connection")?;
+
+    transaction
+        .execute(
+            "DELETE FROM owned_files WHERE name = ? AND architecture = ?",
+            params![package_id.name, package_id.architecture.to_string()],
+        )
+        .context("Failed to execute database query")?;
+
+    transaction
+        .execute(
+            "DELETE FROM package_dependencies WHERE package_name = ? AND architecture = ?",
+            params![package_id.name, package_id.architecture.to_string()],
+        )
+        .context("Failed to execute database query")?;
+
+    transaction
+        .execute(
+            "DELETE FROM package_dependencies WHERE dependency_name = ? AND architecture = ?",
+            params![package_id.name, package_id.architecture.to_string()],
+        )
+        .context("Failed to execute database query")?;
+
+    transaction
+        .execute(
+            "DELETE FROM installed_packages WHERE name = ? AND architecture = ?",
+            params![package_id.name, package_id.architecture.to_string()],
+        )
+        .context("Failed to execute database query")?;
+
+    transaction
+        .commit()
+        .context("Failed to commit database transaction")?;
+
+    Ok(())
+}

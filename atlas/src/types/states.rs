@@ -170,9 +170,24 @@ impl State for Staged {
 
 impl State for Installed {
     fn remove(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
-        fs::remove_dir_all(ctx.install_dir.clone())
-            .context("Failed to recursively remove the install directory")?;
-        Ok(Box::new(NotInstalled))
+        let mut stmt  = ctx.install_conn.prepare("SELECT package_name FROM package_dependencies WHERE dependency_name = ? AND architecture = ?").context("Failed to prepare datatbase query")?;
+        let Some(dependent): Option<String> = stmt
+            .query_row(
+                params![ctx.package_id.name, ctx.package_id.architecture.to_string()],
+                |row| row.get(0),
+            )
+            .optional()?
+        else {
+            fs::remove_dir_all(ctx.install_dir.clone())
+                .context("Failed to recursively remove the install directory")?;
+            return Ok(Box::new(NotInstalled));
+        };
+
+        Err(anyhow!(
+            "Not allowed to remove package {}, it depends on {}",
+            dependent,
+            ctx.package_id.name
+        ))
     }
 
     fn update(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {

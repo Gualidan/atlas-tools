@@ -45,9 +45,9 @@ pub struct VerifyArgs {
 }
 
 #[derive(Args)]
-struct UninstallArgs {
+pub struct UninstallArgs {
     /// The package to uninstall
-    package: String,
+    pub package: String,
 }
 
 #[derive(Args)]
