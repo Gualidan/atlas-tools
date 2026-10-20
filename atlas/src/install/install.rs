@@ -84,7 +84,7 @@ pub fn install(
         sky_path: PathBuf::from(sky_path),
         sky_repo: runtime_config.sky_repo.to_owned(),
         install_dir: install_dir.to_owned(),
-        temp_dir: temp_dir,
+        temp_dir: Some(temp_dir),
         settings: &settings,
         dependencies: vec![],
         repo_conn: &conn,

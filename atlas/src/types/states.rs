@@ -77,6 +77,9 @@ impl State for Verified {
     }
 
     fn stage(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
+        let Some(ref mut temp_dir) = ctx.temp_dir else {
+            return Err(anyhow!("No temp dir"));
+        };
         let mut stmt = ctx
             .install_conn
             .prepare(
@@ -109,7 +112,7 @@ impl State for Verified {
             ));
         }
 
-        unpack_payload(&ctx.sky_path, &ctx.temp_dir)?;
+        unpack_payload(&ctx.sky_path, &temp_dir)?;
 
         Ok(Box::new(Staged))
     }
@@ -121,23 +124,26 @@ impl State for Staged {
     }
 
     fn commit(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
+        let Some(ref mut temp_dir) = ctx.temp_dir else {
+            return Err(anyhow!("No temp dir"));
+        };
         fs::create_dir_all(&ctx.install_dir).context("Failed to create the install directory")?;
-        ctx.temp_dir.disable_cleanup(true);
+        temp_dir.disable_cleanup(true);
 
         match renameat_with(
             CWD,
-            ctx.temp_dir.path(),
+            temp_dir.path(),
             CWD,
             ctx.install_dir.clone(),
             RenameFlags::EXCHANGE,
         ) {
             Ok(_) => {
-                remove_dir_all(ctx.temp_dir.path())
+                remove_dir_all(temp_dir.path())
                     .context("Failed to recursively delete the temporary directory")?;
                 Ok(Box::new(Installed))
             }
             Err(e) => {
-                for entry in WalkDir::new(&ctx.temp_dir) {
+                for entry in WalkDir::new(&temp_dir) {
                     let entry = entry.context("Failed to get entry")?;
                     if entry.file_type().is_dir() {
                         remove_dir_all(&entry.path())
@@ -152,8 +158,12 @@ impl State for Staged {
     }
 
     fn remove(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
-        fs::remove_dir_all(ctx.temp_dir.path())
+        let Some(ref mut temp_dir) = ctx.temp_dir else {
+            return Err(anyhow!("No temp dir"));
+        };
+        fs::remove_dir_all(temp_dir.path())
             .context("Failed to recursively delete the temporary directory")?;
+
         Ok(Box::new(NotInstalled))
     }
 }

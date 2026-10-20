@@ -13,7 +13,7 @@ pub struct Context<'a> {
     pub sky_path: PathBuf,
     pub sky_repo: PathBuf,
     pub install_dir: PathBuf,
-    pub temp_dir: TempDir,
+    pub temp_dir: Option<TempDir>,
     pub settings: &'a SisyphusConfig,
     pub dependencies: Vec<String>,
     pub repo_conn: &'a Connection,
