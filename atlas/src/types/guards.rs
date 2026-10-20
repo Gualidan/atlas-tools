@@ -29,7 +29,7 @@ impl Drop for SwapBackGuard {
         {
             match renameat_with(CWD, install_dir, CWD, tempdir, RenameFlags::EXCHANGE) {
                 Ok(_) => {}
-                Err(_) => eprint!("Swap back exchange failed"),
+                Err(_) => eprintln!("Swap back exchange failed"),
             }
             if !self.install_dir_existed {
                 match remove_dir_all(install_dir) {
