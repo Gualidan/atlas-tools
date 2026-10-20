@@ -24,7 +24,16 @@ fn fresh_install_populates_owned_files() -> Result<()> {
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n", vec![])?;
+    let sky_path = write_signed_sky(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec![],
+    )?;
     seed_repo_db(
         &config.repo_db,
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
@@ -40,8 +49,8 @@ fn fresh_install_populates_owned_files() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        2,
-        "expected one owned_files row per manifest path"
+        1,
+        "expected one owned_files row per manifest file"
     );
     assert_eq!(
         count(
@@ -93,7 +102,16 @@ fn idempotent_install_does_not_conflict_with_itself() -> Result<()> {
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let sky_path = write_signed_sky(&tmp, &keypair, "foo.sky", "foo", "1.0.0", 1, b"foo\n", vec![])?;
+    let sky_path = write_signed_sky(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec![],
+    )?;
     seed_repo_db(
         &config.repo_db,
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
@@ -110,7 +128,7 @@ fn idempotent_install_does_not_conflict_with_itself() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        2,
+        1,
         "re-installing must not duplicate owned_files rows"
     );
 

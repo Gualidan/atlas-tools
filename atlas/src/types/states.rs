@@ -9,6 +9,7 @@ use common::{
         sky_verify::{read_sky, sky_verify},
         unpack_payload::unpack_payload,
     },
+    types::manifest::FileType,
 };
 
 use rusqlite::{OptionalExtension, params};
@@ -91,6 +92,10 @@ impl State for Verified {
 
         // File conflict check
         for line in manifest_paths {
+            if matches!(line.file_type, FileType::Dir) {
+                continue;
+            }
+
             let Some(owner) = stmt
                 .query_row(
                     params![

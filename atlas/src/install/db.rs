@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use anyhow::{Context, Result};
 use common::{
     functions::sky_verify::read_sky,
-    types::{metadata::Metadata, package::PackageIdentity},
+    types::{manifest::FileType, metadata::Metadata, package::PackageIdentity},
 };
 use rusqlite::{Connection, params};
 
@@ -113,7 +113,10 @@ pub fn insert_installed_package(
     let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
     let manifest_lines = parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
 
-    for line in manifest_lines {
+    for line in manifest_lines
+        .iter()
+        .filter(|l| matches!(l.file_type, FileType::File))
+    {
         transaction.execute(
             "INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
             params![line.path.to_str().context("Failed to get the path as a string")?, package.name, package.architecture.to_string()],
