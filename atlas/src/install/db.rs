@@ -141,7 +141,13 @@ pub fn insert_installed_package(
                 format!("Failed to look up dependency `{dep}` in repository database")
             })?;
 
-        transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![name, version, release, architecture, sky_path, install_dir]).context("Failed to insert dependency into install database")?;
+        transaction
+            .execute(
+                "INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(name, architecture) DO UPDATE SET version = excluded.version, release = excluded.release, sky_path = excluded.sky_path",
+                params![name, version, release, architecture, sky_path, install_dir],
+            )
+            .context("Failed to insert dependency into install database")?;
 
         transaction.execute("INSERT OR REPLACE INTO package_dependencies (package_name, architecture, dependency_name) VALUES (?, ?, ?)", params![package.name, package.architecture.to_string(), dep]).context("Failed to insert dependency edge into install database")?;
     }
