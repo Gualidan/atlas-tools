@@ -10,7 +10,8 @@ use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
 use crate::{
-    install::unpack_payload::unpack_payload, types::context::Context,
+    install::unpack_payload::unpack_payload,
+    types::{context::Context, guards::InstallGuard},
     verify::parse_metadata_lines::parse_metadata_lines,
 };
 
@@ -125,6 +126,7 @@ impl State for Staged {
             return Err(anyhow!("No temp dir"));
         };
         fs::create_dir_all(&ctx.install_dir).context("Failed to create the install directory")?;
+        let mut guard = InstallGuard::new(ctx.install_dir.clone());
 
         match renameat_with(
             CWD,
@@ -133,7 +135,10 @@ impl State for Staged {
             ctx.install_dir.clone(),
             RenameFlags::EXCHANGE,
         ) {
-            Ok(_) => Ok(Box::new(Installed)),
+            Ok(_) => {
+                guard.disarm();
+                Ok(Box::new(Installed))
+            }
             Err(e) => Err(e.into()),
         }
     }
