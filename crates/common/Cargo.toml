@@ -15,5 +15,5 @@ which.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
 anyhow.workspace = true
-users.workspace = true
+uzers = "0.12.2"
 tempfile.workspace = true

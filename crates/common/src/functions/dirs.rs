@@ -1,7 +1,7 @@
 use std::{env, path::PathBuf};
 
 use anyhow::{Context, Ok, Result};
-use users::{get_user_by_name, os::unix::UserExt};
+use uzers::{get_user_by_name, os::unix::UserExt};
 
 pub fn data_dir() -> Result<PathBuf> {
     let username = env::var("SUDO_USER").context("Failed to read SUDO_USER variable")?;
