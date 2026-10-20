@@ -60,7 +60,7 @@ pub fn install(
             .parent()
             .context("Failed to get install dir's parent")?,
     )
-    .context("Failed to create install_dir and its parents")?;
+    .context("Failed to create install_dir's parents")?;
     let temp_dir = Builder::new()
         .prefix("sisyphus_install_tmp_dir_")
         .tempdir_in(
