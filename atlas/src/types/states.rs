@@ -26,11 +26,21 @@ pub struct Staged;
 pub struct Installed;
 
 pub trait State {
-    fn verify(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>>;
-    fn stage(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>>;
-    fn commit(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>>;
-    fn remove(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>>;
-    fn update(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>>;
+    fn verify(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
+        return Err(anyhow!("Illegal transaction cannot verify from this state"));
+    }
+    fn stage(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
+        return Err(anyhow!("Illegal transaction cannot stage from this state"));
+    }
+    fn commit(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
+        return Err(anyhow!("Illegal transaction cannot commit from this state"));
+    }
+    fn remove(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
+        return Err(anyhow!("Illegal transaction cannot remove from this state"));
+    }
+    fn update(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
+        return Err(anyhow!("Illegal transaction cannot update from this state"));
+    }
 }
 
 impl State for NotInstalled {
@@ -58,22 +68,6 @@ impl State for NotInstalled {
             Some(parse_metadata_lines(files).context("Failed to parse manifest's lines")?);
 
         Ok(Box::new(Verified))
-    }
-
-    fn stage(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not verified not allowed to stage it"))
-    }
-
-    fn commit(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not staged not allowed to commit it"))
-    }
-
-    fn remove(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not installed not allowed to remove it"))
-    }
-
-    fn update(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not installed not allowed to update it"))
     }
 }
 
@@ -119,25 +113,9 @@ impl State for Verified {
 
         Ok(Box::new(Staged))
     }
-
-    fn commit(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not staged not allowed to commit it"))
-    }
-
-    fn remove(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not installed not allowed to remove it"))
-    }
-
-    fn update(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not installed not allowed to update it"))
-    }
 }
 
 impl State for Staged {
-    fn verify(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is staged not allowed to verify it"))
-    }
-
     fn stage(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
         Ok(self)
     }
@@ -178,25 +156,9 @@ impl State for Staged {
             .context("Failed to recursively delete the temporary directory")?;
         Ok(Box::new(NotInstalled))
     }
-
-    fn update(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is not installed not allowed to update it"))
-    }
 }
 
 impl State for Installed {
-    fn verify(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is installed not allowed to verify it"))
-    }
-
-    fn stage(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is installed not allowed to stage it"))
-    }
-
-    fn commit(self: Box<Self>, _ctx: &mut Context) -> Result<Box<dyn State>> {
-        Err(anyhow!("Package is installed not allowed to commit it"))
-    }
-
     fn remove(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
         fs::remove_dir_all(ctx.install_dir.clone())
             .context("Failed to recursively remove the install directory")?;
