@@ -4,8 +4,11 @@ use std::{fs::File, path::PathBuf};
 use tar::{Builder, Header};
 use zstd::Encoder;
 
-use crate::{package::db::insert_package, types::runtime_config::RuntimeConfig};
-use common::types::{metadata::Metadata, package::Package};
+use crate::{
+    package::db::insert_package,
+    types::{package::Package, runtime_config::RuntimeConfig},
+};
+use common::types::metadata::Metadata;
 
 pub fn sky_gen(
     metadata: &Metadata,

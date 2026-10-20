@@ -4,9 +4,9 @@ use anyhow::{Context, Result};
 
 use crate::{
     package::{metadata::metadata_gen, payload::payload_gen, sign::sign_artifacts, sky::sky_gen},
-    types::runtime_config::RuntimeConfig,
+    types::{package::Package, runtime_config::RuntimeConfig},
 };
-use common::{functions::dirs::data_dir, types::package::Package};
+use common::functions::dirs::data_dir;
 
 pub fn package_gen(
     recipe: &PathBuf,

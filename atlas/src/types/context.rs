@@ -5,11 +5,11 @@ use common::types::metadata::Metadata;
 use rusqlite::Connection;
 
 use common::types::config::SisyphusConfig;
-use common::types::package::Package;
+use common::types::package::PackageIdentity;
 use tempfile::TempDir;
 
 pub struct Context<'a> {
-    pub package: &'a Package,
+    pub package_id: &'a PackageIdentity,
     pub sky_path: PathBuf,
     pub sky_repo: PathBuf,
     pub install_dir: PathBuf,

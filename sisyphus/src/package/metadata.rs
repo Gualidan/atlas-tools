@@ -5,11 +5,10 @@ use chrono::Utc;
 
 use common::{
     functions::hash::hash,
-    types::{
-        metadata::{Build, Metadata},
-        package::Package,
-    },
+    types::metadata::{Build, Metadata},
 };
+
+use crate::types::package::Package;
 
 pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata> {
     let reader = File::open(recipe).context("Failed to open recipe file")?;

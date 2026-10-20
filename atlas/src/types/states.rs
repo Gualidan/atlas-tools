@@ -48,10 +48,10 @@ impl State for NotInstalled {
         let mut stmt = ctx.repo_conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
         let rows: bool = stmt.query_row(
             params![
-                ctx.package.name,
-                ctx.package.version,
-                ctx.package.release,
-                ctx.package.architecture.to_string()
+                ctx.package_id.name,
+                ctx.package_id.version,
+                ctx.package_id.release,
+                ctx.package_id.architecture.to_string()
             ],
             |row| row.get(0),
         )?;
@@ -60,7 +60,7 @@ impl State for NotInstalled {
             return Err(anyhow!("Verification failed"));
         }
 
-        let metadata = sky_verify(&ctx.sky_path, &ctx.package, &ctx.settings)?;
+        let metadata = sky_verify(&ctx.sky_path, &ctx.package_id, &ctx.settings)?;
         ctx.metadata = Some(metadata);
         let (_, _, files, _) =
             read_sky(&PathBuf::from(&ctx.sky_path)).context("Failed to read sky file")?;
@@ -96,8 +96,8 @@ impl State for Verified {
                 .query_row(
                     params![
                         line.path.to_string_lossy(),
-                        ctx.package.name,
-                        ctx.package.architecture.to_string(),
+                        ctx.package_id.name,
+                        ctx.package_id.architecture.to_string(),
                     ],
                     |row| row.get::<_, String>(0),
                 )
@@ -179,8 +179,8 @@ impl State for Installed {
         let mut stmt = ctx.repo_conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? ORDER BY version DESC, release DESC LIMIT 1").context("Failed to prepare database query")?;
         let sky_path: String = stmt.query_row(
             params![
-                ctx.package.name.as_str(),
-                ctx.package.architecture.to_string()
+                ctx.package_id.name.as_str(),
+                ctx.package_id.architecture.to_string()
             ],
             |row| row.get(0),
         )?;

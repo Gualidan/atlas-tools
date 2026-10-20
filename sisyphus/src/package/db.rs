@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
-use common::types::{metadata::Metadata, package::Package};
+use common::types::metadata::Metadata;
 use rusqlite::{Connection, params};
 
-use crate::types::runtime_config::RuntimeConfig;
+use crate::types::{package::Package, runtime_config::RuntimeConfig};
 
 pub fn insert_package(
     runtime_config: &RuntimeConfig,

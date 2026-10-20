@@ -4,39 +4,30 @@ use anyhow::Result;
 use atlas::install::db::insert_installed_package;
 use common::types::{
     metadata::{Build, Metadata},
-    package::{Package, Source},
+    package::{PackageIdentity, Source},
 };
 use fixtures::{ARCH, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky};
 use rusqlite::Connection;
 
-fn package(name: &str, deps: &[&str]) -> Package {
-    Package {
-        schema: 1,
+fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
+    let identity = PackageIdentity {
         name: name.to_string(),
         version: "1.0.0".to_string(),
         release: 1,
         architecture: ARCH,
-        source: Source {
-            url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: None,
-        },
-        makedeps: Vec::new(),
-        deps: deps.iter().map(|dep| dep.to_string()).collect(),
-        prepare: None,
-        build: None,
-        check: None,
-        package: "true".to_string(),
-    }
+    };
+    let deps: Vec<String> = deps.iter().map(|dep| dep.to_string()).collect();
+    (identity, deps)
 }
 
-fn metadata(package: &Package) -> Metadata {
+fn metadata(identity: &PackageIdentity, deps: &[String]) -> Metadata {
     Metadata {
         format: 1,
-        name: package.name.clone(),
-        version: package.version.clone(),
-        release: package.release,
-        architecture: package.architecture,
-        deps: package.deps.clone(),
+        name: identity.name.clone(),
+        version: identity.version.clone(),
+        release: identity.release,
+        architecture: identity.architecture,
+        deps: deps.to_vec(),
         source: Source {
             url: "https://example.invalid/src.tar.gz".to_string(),
             sha256: None,
@@ -72,10 +63,15 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         ],
     );
 
-    let package = package("root", &["dep-a", "dep-b"]);
+    let (package, deps) = package_identity("root", &["dep-a", "dep-b"]);
 
-    insert_installed_package(&config, metadata(&package), &package, "/usr".to_string())
-        .expect("first install should succeed");
+    insert_installed_package(
+        &config,
+        metadata(&package, &deps),
+        &package,
+        "/usr".to_string(),
+    )
+    .expect("first install should succeed");
 
     let conn = Connection::open(&config.install_db).unwrap();
 
@@ -128,8 +124,13 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
 
     // Idempotence: a second run must still succeed and leave row counts stable
     // thanks to `INSERT OR REPLACE`.
-    insert_installed_package(&config, metadata(&package), &package, "/usr".to_string())
-        .expect("second install should succeed");
+    insert_installed_package(
+        &config,
+        metadata(&package, &deps),
+        &package,
+        "/usr".to_string(),
+    )
+    .expect("second install should succeed");
 
     let conn = Connection::open(&config.install_db).unwrap();
     assert_eq!(

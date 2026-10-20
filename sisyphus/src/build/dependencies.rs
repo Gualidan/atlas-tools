@@ -5,13 +5,13 @@
 //! deterministic, cycle-free build plan. The executor will later consume that
 //! plan, build missing packages, and assemble a Bubblewrap build root.
 
-use crate::types::{recipe::Recipe, runtime_config::RuntimeConfig};
+use crate::types::{package::Package, recipe::Recipe, runtime_config::RuntimeConfig};
 use anyhow::{Context, Result, anyhow};
 use common::{
     functions::sky_verify::sky_verify,
     types::{
         config::SisyphusConfig,
-        package::{Architectures, Package},
+        package::{Architectures, PackageIdentity},
     },
 };
 use rusqlite::Connection;
@@ -218,8 +218,14 @@ impl<'a> Resolver<'a> {
             )
             .context("Failed to query artifact from repository database")?;
 
+        let package_id = PackageIdentity {
+            name: package.name.clone(),
+            version: package.version.clone(),
+            release: package.release,
+            architecture: package.architecture,
+        };
         if let Some(path) = rows {
-            let metadata = sky_verify(&PathBuf::from(&path), package, settings)
+            let metadata = sky_verify(&PathBuf::from(&path), &package_id, settings)
                 .context("Failed to verify reusable artifact")?;
             return Ok(Some(ReusableArtifact {
                 name: metadata.name,

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use common::types::package::Package;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
@@ -9,6 +8,7 @@ use crate::{
     fetch::{db::insert_source, git::GitFetcher, http::HttpFetcher},
     types::{
         fetcher::{FetchedSource, Fetcher},
+        package::Package,
         runtime_config::RuntimeConfig,
     },
 };

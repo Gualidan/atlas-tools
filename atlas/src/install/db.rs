@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use anyhow::{Context, Result};
 use common::{
     functions::{parse_metadata_lines::parse_metadata_lines, sky_verify::read_sky},
-    types::{metadata::Metadata, package::Package},
+    types::{metadata::Metadata, package::PackageIdentity},
 };
 use rusqlite::{Connection, params};
 
@@ -59,7 +59,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: Metadata,
-    package: &Package,
+    package: &PackageIdentity,
     install_dir: String,
 ) -> Result<()> {
     if !runtime_config

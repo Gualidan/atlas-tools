@@ -1,8 +1,8 @@
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::types::package::{Architectures, Source};
+use common::types::package::{Architectures, PackageIdentity};
 use std::{env::consts::ARCH, path::PathBuf};
 
-use common::types::{config::load_config, package::Package};
+use common::types::config::load_config;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use tempfile::Builder;
@@ -44,22 +44,11 @@ pub fn install(
 
     let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
 
-    let package = Package {
-        schema: 1,
+    let package_id = PackageIdentity {
         name,
         version,
         release,
         architecture: Architectures::try_from(architecture)?,
-        source: Source {
-            url: String::new(),
-            sha256: None,
-        },
-        makedeps: vec![],
-        deps: vec![],
-        prepare: None,
-        build: None,
-        check: None,
-        package: String::new(),
     };
     let settings = load_config().context("Failed to load settings")?;
 
@@ -80,10 +69,10 @@ pub fn install(
     ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
 
     let mut ctx = Context {
-        package: &package,
+        package_id: &package_id,
         sky_path: PathBuf::from(sky_path),
-        sky_repo: runtime_config.sky_repo.to_owned(),
-        install_dir: install_dir.to_owned(),
+        sky_repo: runtime_config.sky_repo.clone(),
+        install_dir: install_dir.clone(),
         temp_dir: Some(temp_dir),
         settings: &settings,
         dependencies: vec![],
@@ -102,7 +91,7 @@ pub fn install(
     insert_installed_package(
         runtime_config,
         ctx.metadata.context("Metadata should not be empty.")?,
-        &package,
+        &package_id,
         install_dir.to_string_lossy().to_string(),
     )?;
 

@@ -11,7 +11,7 @@ use zstd::Decoder;
 
 use crate::{
     functions::hash::hash,
-    types::{config::SisyphusConfig, metadata::Metadata, package::Package},
+    types::{config::SisyphusConfig, metadata::Metadata, package::PackageIdentity},
 };
 
 pub fn get_sky_archive<P: AsRef<Path>>(path: &P) -> Result<Archive<Decoder<'_, BufReader<File>>>> {
@@ -92,7 +92,7 @@ pub fn verify_signature(
     Ok(())
 }
 
-pub fn verify_metadata(metadata_bytes: &Vec<u8>, package: &Package) -> Result<Metadata> {
+pub fn verify_metadata(metadata_bytes: &Vec<u8>, package: &PackageIdentity) -> Result<Metadata> {
     let metadata: Metadata =
         serde_saphyr::from_slice(&metadata_bytes).context("Failed to deserialize metadata")?;
 
@@ -129,7 +129,7 @@ pub fn data_to_sign(
 }
 pub fn sky_verify(
     file_name: &PathBuf,
-    package: &Package,
+    package: &PackageIdentity,
     settings: &SisyphusConfig,
 ) -> Result<Metadata> {
     let (metadata_bytes, payload_bytes, files_bytes, signature_bytes) =

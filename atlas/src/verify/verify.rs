@@ -19,7 +19,7 @@ use common::{
     types::{
         config::SisyphusConfig,
         manifest::FileType,
-        package::{Architectures, Package, Source},
+        package::{Architectures, PackageIdentity},
     },
 };
 use rusqlite::{Connection, OptionalExtension, params};
@@ -64,22 +64,11 @@ pub fn verify(
             return Err(anyhow!("Package {name} not found"));
         };
 
-        package = Some(Package {
-            schema: 1,
+        package = Some(PackageIdentity {
             name: name.clone(),
             version,
             release,
             architecture: Architectures::try_from(architecture)?,
-            source: Source {
-                url: String::new(),
-                sha256: None,
-            },
-            makedeps: vec![],
-            deps: vec![],
-            prepare: None,
-            build: None,
-            check: None,
-            package: String::new(),
         });
 
         sky_path = s;

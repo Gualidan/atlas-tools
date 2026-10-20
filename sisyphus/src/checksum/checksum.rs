@@ -1,6 +1,6 @@
+use crate::types::package::Package;
 use anyhow::{Context, Result};
 use common::functions::hash::hash;
-use common::types::package::Package;
 use ring::digest::Digest;
 use std::fs::File;
 use std::path::PathBuf;
