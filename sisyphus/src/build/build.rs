@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -88,6 +89,7 @@ pub fn build_package(
 }
 
 pub fn extract_artifacts(artifacts: &[PathBuf], temp_root: &TempDir) -> Result<()> {
+    fs::create_dir_all(temp_root.path().join("usr"))?;
     for artifact in artifacts {
         unpack_payload(artifact, temp_root).context("Failed to unpack payload")?;
     }
