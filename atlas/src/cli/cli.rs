@@ -5,7 +5,8 @@ use clap::{Args, Parser, Subcommand};
 use common::types::config::load_config;
 
 use crate::{
-    install::install::install, types::runtime_config::RuntimeConfig, verify::verify::verify,
+    install::install::install, types::runtime_config::RuntimeConfig,
+    uninstall::uninstall::uninstall, verify::verify::verify,
 };
 
 #[derive(Parser)]
@@ -75,7 +76,13 @@ pub fn run() -> Result<()> {
             let settings = load_config().context("Failed to load config")?;
             verify(args, &runtime_config, settings)?;
         }
-        Commands::Uninstall(_args) => {}
+        Commands::Uninstall(args) => {
+            let runtime_config =
+                RuntimeConfig::build().context("Failed to build runtime config")?;
+            let settings = load_config().context("Failed to load config")?;
+
+            uninstall(&runtime_config, args, &settings)?;
+        }
         Commands::Update(_args) => {}
     }
     Ok(())
