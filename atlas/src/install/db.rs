@@ -2,12 +2,14 @@ use std::fs::{self, File};
 
 use anyhow::{Context, Result};
 use common::{
-    functions::{parse_metadata_lines::parse_metadata_lines, sky_verify::read_sky},
+    functions::sky_verify::read_sky,
     types::{metadata::Metadata, package::PackageIdentity},
 };
 use rusqlite::{Connection, params};
 
-use crate::types::runtime_config::RuntimeConfig;
+use crate::{
+    types::runtime_config::RuntimeConfig, verify::parse_metadata_lines::parse_metadata_lines,
+};
 
 pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
     conn.execute(

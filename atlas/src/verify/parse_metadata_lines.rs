@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::types::manifest::{FileType, ManifestLine};
+use common::types::manifest::{FileType, ManifestLine};
 
 /// From the string corresponding to the content of the "files" file of a sky archive parse the manifest and return all of its lines
 pub fn parse_metadata_lines(files: String) -> Result<Vec<ManifestLine>> {

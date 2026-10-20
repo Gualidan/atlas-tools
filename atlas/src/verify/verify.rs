@@ -10,11 +10,7 @@ use anyhow::{Context, Result, anyhow};
 use common::{
     functions::{
         hash::hash,
-        parse_metadata_lines::parse_metadata_lines,
         sky_verify::{data_to_sign, read_sky, verify_metadata, verify_signature},
-        unpack_payload::unpack_payload,
-        validate_archive::validate_archive_paths,
-        validate_payload::validate_payload_paths,
     },
     types::{
         config::SisyphusConfig,
@@ -26,7 +22,15 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tempfile::Builder;
 use walkdir::WalkDir;
 
-use crate::{cli::cli::VerifyArgs, types::runtime_config::RuntimeConfig};
+use crate::{
+    cli::cli::VerifyArgs,
+    install::unpack_payload::unpack_payload,
+    types::runtime_config::RuntimeConfig,
+    verify::{
+        parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
+        validate_payload::validate_payload_paths,
+    },
+};
 
 pub fn verify(
     args: VerifyArgs,

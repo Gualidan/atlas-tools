@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use tar::Archive;
 use zstd::Decoder;
 
-use crate::functions::sky_verify::get_sky_archive;
+use common::functions::sky_verify::get_sky_archive;
 
 pub fn validate_payload_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
     let mut archive = get_sky_archive(&sky_path).context("Failed to get the sky archive")?;

@@ -4,16 +4,15 @@ use std::{
 };
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::functions::{
-    parse_metadata_lines::parse_metadata_lines,
-    sky_verify::{read_sky, sky_verify},
-    unpack_payload::unpack_payload,
-};
+use common::functions::sky_verify::{read_sky, sky_verify};
 
 use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
-use crate::types::context::Context;
+use crate::{
+    install::unpack_payload::unpack_payload, types::context::Context,
+    verify::parse_metadata_lines::parse_metadata_lines,
+};
 
 pub struct NotInstalled;
 

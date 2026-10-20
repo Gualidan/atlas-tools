@@ -7,10 +7,7 @@ use anyhow::Result;
 use atlas::cli::cli::VerifyArgs;
 use atlas::types::runtime_config::RuntimeConfig;
 use atlas::verify::verify::verify;
-use common::functions::{
-    hash::hash, sky_verify::data_to_sign, validate_archive::validate_archive_paths,
-    validate_payload::validate_payload_paths,
-};
+use common::functions::{hash::hash, sky_verify::data_to_sign};
 use common::types::{
     config::SisyphusConfig,
     metadata::{Build, Metadata},
@@ -507,6 +504,8 @@ fn payload_contains_path_not_in_manifest() -> Result<()> {
 }
 
 mod outer_archive_validation {
+    use atlas::verify::validate_archive::validate_archive_paths;
+
     use super::*;
 
     fn canonical_members<'a>(
@@ -633,6 +632,8 @@ mod outer_archive_validation {
 }
 
 mod payload_archive_validation {
+    use atlas::verify::validate_payload::validate_payload_paths;
+
     use super::*;
 
     #[test]

@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::functions::sky_verify::get_sky_archive;
+use common::functions::sky_verify::get_sky_archive;
 
 pub fn validate_archive_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
     let mut archive = get_sky_archive(&sky_path)?;
