@@ -26,6 +26,8 @@ pub fn install(
     if args.package.is_none() {
         return Err(anyhow!("You must provide a package name to install"));
     }
+
+    let install_dir_existed = install_dir.exists();
     let conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
 
@@ -100,7 +102,7 @@ pub fn install(
     let state = state.stage(&mut ctx)?;
     state.commit(&mut ctx)?;
 
-    let mut guard = SwapBackGuard::new(install_dir.clone(), staging_dir, true);
+    let mut guard = SwapBackGuard::new(install_dir.clone(), staging_dir, install_dir_existed);
 
     insert_installed_package(
         runtime_config,
