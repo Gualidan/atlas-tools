@@ -115,7 +115,7 @@ pub fn insert_installed_package(
 
     for line in manifest_lines
         .iter()
-        .filter(|l| matches!(l.file_type, FileType::File))
+        .filter(|l| !matches!(l.file_type, FileType::Dir))
     {
         transaction.execute(
             "INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
