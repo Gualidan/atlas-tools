@@ -184,8 +184,7 @@ impl State for Installed {
         };
 
         Err(anyhow!(
-            "Not allowed to remove package {}, it depends on {}",
-            dependent,
+            "Cannot remove package {}: {dependent} depends on it",
             ctx.package_id.name
         ))
     }
