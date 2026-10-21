@@ -68,7 +68,11 @@ fn republishing_replaces_the_previous_row() -> Result<()> {
 
     let conn = Connection::open(&config.repo_db_path)?;
     assert_eq!(
-        count(&conn, "SELECT COUNT(*) FROM packages WHERE name = ?1", &[&"foo"]),
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM packages WHERE name = ?1",
+            &[&"foo"]
+        ),
         1,
         "a republished package must occupy exactly one repository row"
     );
@@ -98,7 +102,11 @@ fn publishing_the_same_name_for_two_architectures_keeps_both_rows() -> Result<()
 
     let conn = Connection::open(&config.repo_db_path)?;
     assert_eq!(
-        count(&conn, "SELECT COUNT(*) FROM packages WHERE name = ?1", &[&"foo"]),
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM packages WHERE name = ?1",
+            &[&"foo"]
+        ),
         2,
         "the same package must be publishable for each architecture"
     );
