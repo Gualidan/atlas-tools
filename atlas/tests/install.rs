@@ -4,14 +4,16 @@ use anyhow::Result;
 use atlas::{
     cli::cli::{InstallArgs, UninstallArgs},
     install::install::install,
+    types::runtime_config::RuntimeConfig,
     uninstall::uninstall::uninstall,
 };
 use common::types::config::load_config;
 use fixtures::{
     ConfigEnv, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
-    write_signed_sky_with_file, write_signed_sky_with_symlink,
+    write_signed_sky_with_file, write_signed_sky_with_raw_entry, write_signed_sky_with_symlink,
 };
 use rusqlite::Connection;
+use tar::EntryType;
 
 fn install_args(package: &str) -> InstallArgs {
     InstallArgs {
@@ -27,6 +29,246 @@ fn uninstall_args(package: &str) -> UninstallArgs {
 
 fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
     conn.query_row(sql, params, |row| row.get(0)).unwrap()
+}
+
+/// Asserts `install` fails with `crime` in its error chain and that the
+/// transaction left nothing behind: the package's install dir must not exist
+/// and the install database must have no rows for the package.
+fn assert_install_rejects(
+    config: &RuntimeConfig,
+    root: &std::path::Path,
+    package_name: &str,
+    result: anyhow::Result<()>,
+    crime: &str,
+) {
+    let err = result.expect_err("install should have been rejected");
+    let chain = format!("{err:#}");
+    assert!(chain.contains(crime), "error chain was: {chain}");
+
+    assert!(
+        !root.join(format!("{package_name}-1.0.0-1")).exists(),
+        "nothing may land on disk for a rejected install"
+    );
+
+    let conn = Connection::open(&config.install_db).unwrap();
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
+            &[&package_name],
+        ),
+        0,
+        "a rejected install must not leave owned_files rows behind"
+    );
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+            &[&package_name],
+        ),
+        0,
+        "a rejected install must not leave an installed_packages row behind"
+    );
+}
+
+#[test]
+fn install_rejects_setuid_file() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        "dir/evil.bin",
+        0o4755,
+        EntryType::file(),
+        b"evil\n",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+    let result = install(install_args("foo"), &config, root.clone());
+    assert_install_rejects(&config, &root, "foo", result, "setuid");
+
+    Ok(())
+}
+
+#[test]
+fn install_rejects_setgid_file() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        "dir/evil.bin",
+        0o2755,
+        EntryType::file(),
+        b"evil\n",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+    let result = install(install_args("foo"), &config, root.clone());
+    assert_install_rejects(&config, &root, "foo", result, "setgid");
+
+    Ok(())
+}
+
+#[test]
+fn install_rejects_absolute_path() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        "/etc/evil",
+        0o644,
+        EntryType::file(),
+        b"evil\n",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+    let result = install(install_args("foo"), &config, root.clone());
+    assert_install_rejects(&config, &root, "foo", result, "absolute");
+
+    Ok(())
+}
+
+#[test]
+fn install_rejects_parent_dir_path() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        "dir/../../evil",
+        0o644,
+        EntryType::file(),
+        b"evil\n",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+    let result = install(install_args("foo"), &config, root.clone());
+    assert_install_rejects(&config, &root, "foo", result, "ParentDir");
+
+    Ok(())
+}
+
+#[test]
+fn install_rejects_fifo_entry() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        "dir/pipe",
+        0o644,
+        EntryType::fifo(),
+        b"",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+    let result = install(install_args("foo"), &config, root.clone());
+    assert_install_rejects(&config, &root, "foo", result, "Fifo");
+
+    Ok(())
+}
+
+/// Insurance: the raw fixture builder must be able to produce a sky that
+/// installs cleanly, otherwise the rejection tests above could all be passing
+/// because the fixture itself is broken rather than because a gate fired.
+#[test]
+fn raw_fixture_with_clean_entry_installs() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        "dir/file.txt",
+        0o644,
+        EntryType::file(),
+        b"benign\n",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+    install(install_args("foo"), &config, root.clone())
+        .expect("the clean raw fixture must install successfully");
+
+    let conn = Connection::open(&config.install_db)?;
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+            &[&"foo"],
+        ),
+        1,
+        "the clean install must be recorded"
+    );
+
+    Ok(())
 }
 
 #[test]
