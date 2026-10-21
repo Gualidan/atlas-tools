@@ -2,9 +2,18 @@ use std::{fs::remove_dir_all, path::PathBuf};
 
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
+/// Undoes the state machine's commit-exchange when the DatabaseRecord step
+/// fails: an armed drop swaps the previous install's content back into
+/// `install_dir`. `SwapBackGuard::new` captures the world *before* the
+/// exchange runs, so both paths and `install_dir_existed` describe the
+/// pre-install world, not what the directories look like at commit time.
 pub struct SwapBackGuard {
     install_dir: Option<PathBuf>,
     staging_dir: Option<PathBuf>,
+    /// Whether `install_dir` existed before the exchange took place. A
+    /// directory that never existed is a placeholder; one that did holds the
+    /// previous install's content after the swap-back and must never be
+    /// deleted.
     install_dir_existed: bool,
 }
 
@@ -17,20 +26,32 @@ impl SwapBackGuard {
         }
     }
     pub fn disarm(&mut self) {
+        // Only called after the install is fully recorded; dropping a
+        // disarmed guard must touch neither directory (the commit must
+        // survive).
         self.install_dir.take();
         self.staging_dir.take();
     }
 }
 
 impl Drop for SwapBackGuard {
+    /// Restores the pre-install world when the armed guard is dropped, so the
+    /// caller must keep it armed across the whole DatabaseRecord step.
     fn drop(&mut self) {
         if let Some(install_dir) = &self.install_dir
             && let Some(tempdir) = &self.staging_dir
         {
+            // Installs and staging both live under the same parent, so the
+            // exchange is same-filesystem and must not fail in practice.
             match renameat_with(CWD, install_dir, CWD, tempdir, RenameFlags::EXCHANGE) {
                 Ok(_) => {}
                 Err(_) => eprintln!("Swap back exchange failed"),
             }
+            // The exchange put the previous install's content back into
+            // `install_dir`. Deleting that unconditionally is what destroys
+            // reinstalled packages' data: the removal is only correct when
+            // this install created the directory and thus nothing of the
+            // user's lives behind this path.
             if !self.install_dir_existed {
                 match remove_dir_all(install_dir) {
                     Ok(_) => {}
