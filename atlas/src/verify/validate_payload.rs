@@ -5,7 +5,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use tar::Archive;
+use tar::{
+    Archive,
+    EntryType::{Link, Regular, Symlink},
+};
 use zstd::Decoder;
 
 use common::functions::sky_verify::get_sky_archive;
@@ -44,6 +47,22 @@ pub fn validate_payload_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
                 {
                     let entry = entry.context("Failed to get entry")?;
                     let path = entry.path().context("Failed to get entry's path")?;
+                    let entry_type = entry.header().entry_type();
+                    let mode = entry
+                        .header()
+                        .mode()
+                        .context("Failed to get entry's mode")?;
+
+                    match (entry_type, mode) {
+                        (Regular | Link | tar::EntryType::Directory | Symlink, mode)
+                            if mode & 0o6000 == 0 => {}
+                        _ => {
+                            return Err(anyhow!(
+                                "Entry at path {} has an invalid type {entry_type:?} or mode {mode:04o}",
+                                path.display(),
+                            ));
+                        }
+                    }
 
                     if path.is_absolute() {
                         return Err(anyhow!("Path {} is absolute", path.display()));
