@@ -53,15 +53,28 @@ pub fn validate_payload_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
                         .mode()
                         .context("Failed to get entry's mode")?;
 
-                    match (entry_type, mode) {
-                        (Regular | Link | tar::EntryType::Directory | Symlink, mode)
-                            if mode & 0o6000 == 0 => {}
+                    match entry_type {
+                        Regular | Link | tar::EntryType::Directory | Symlink => {}
                         _ => {
                             return Err(anyhow!(
-                                "Entry at path {} has an invalid type {entry_type:?} or mode {mode:04o}",
-                                path.display(),
+                                "Entry at path {} has an invalid type {entry_type:?}",
+                                path.display()
                             ));
                         }
+                    }
+
+                    if mode & 0o4000 != 0 {
+                        return Err(anyhow!(
+                            "Entry at path {} has the setuid bit set (mode {mode:04o})",
+                            path.display()
+                        ));
+                    }
+
+                    if mode & 0o2000 != 0 {
+                        return Err(anyhow!(
+                            "Entry at path {} has the setgid bit set (mode {mode:04o})",
+                            path.display()
+                        ));
                     }
 
                     if path.is_absolute() {
