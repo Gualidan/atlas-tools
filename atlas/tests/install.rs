@@ -484,9 +484,10 @@ fn reinstall_rollback_preserves_the_previous_version() -> Result<()> {
         "the first install should have written the payload to disk"
     );
 
-    // Drop the seeded row so that the failing sky is the only candidate for
-    // this package: the repo lookup is unordered, and two rows for the same
-    // name would make this test nondeterministic.
+    // Clear the seeded row before re-seeding: the packages table UNIQUEs
+    // (name, architecture) and seed_repo_db's INSERT OR REPLACE already
+    // overwrites the row, so the failing sky ends up the package's only
+    // candidate either way — the delete just makes that intent explicit.
     let repo_conn = Connection::open(&config.repo_db)?;
     repo_conn.execute("DELETE FROM packages WHERE name = ?1", [&"foo"])?;
 
