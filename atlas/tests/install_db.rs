@@ -1,13 +1,13 @@
 mod fixtures;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use atlas::install::db::insert_installed_package;
 use common::types::{
     metadata::{Build, Metadata},
     package::{PackageIdentity, Source},
 };
 use fixtures::{ARCH, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky};
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
     let identity = PackageIdentity {
@@ -92,11 +92,25 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
 
     let (package, deps) = package_identity("root", &["dep-a", "dep-b"]);
 
+    let conn = Connection::open(&config.repo_db)
+        .context("Failed to open connection to repository database")?;
+
+    let mut stmt = conn
+        .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
+        .context("Failed to prepare repository lookup query")?;
+    let sky_path: String = stmt
+        .query_row(
+            params![package.name, package.architecture.to_string()],
+            |row| row.get(0),
+        )
+        .context("Failed to look up package in repository database")?;
+
     insert_installed_package(
         &config,
         metadata(&package, &deps),
         &package,
         "/usr".to_string(),
+        &sky_path,
     )
     .expect("first install should succeed");
 
@@ -113,7 +127,8 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         "root installed row missing"
     );
 
-    // Dependency rows exist.
+    // Dependency rows do not exist: installing a package records the edge but
+    // does not materialize the dependency in the ledger.
     for dep in ["dep-a", "dep-b"] {
         assert_eq!(
             count(
@@ -121,13 +136,13 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
                 "SELECT COUNT(*) FROM installed_packages WHERE name = ?1 AND architecture = ?2",
                 &[&dep, &ARCH.to_string()],
             ),
-            1,
-            "installed row for dependency `{dep}` missing"
+            0,
+            "dependency `{dep}` must not get a phantom installed row"
         );
     }
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
-        3,
+        1,
         "unexpected number of installed packages"
     );
 
@@ -156,13 +171,14 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         metadata(&package, &deps),
         &package,
         "/usr".to_string(),
+        &sky_path,
     )
     .expect("second install should succeed");
 
     let conn = Connection::open(&config.install_db).unwrap();
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
-        3,
+        1,
         "idempotent run changed installed package count"
     );
     assert_eq!(
