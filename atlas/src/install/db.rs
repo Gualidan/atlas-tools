@@ -1,11 +1,11 @@
 use std::fs::{self, File};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use common::{
     functions::sky_verify::read_sky,
     types::{manifest::FileType, metadata::Metadata, package::PackageIdentity},
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     types::runtime_config::RuntimeConfig, verify::parse_metadata_lines::parse_metadata_lines,
@@ -35,8 +35,6 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
         PRIMARY KEY (package_name, architecture, dependency_name),
         FOREIGN KEY (package_name, architecture)
             REFERENCES installed_packages(name, architecture),
-        FOREIGN KEY (dependency_name, architecture)
-            REFERENCES installed_packages(name, architecture),
         CHECK (package_name != dependency_name)
     )",
         [],
@@ -63,6 +61,7 @@ pub fn insert_installed_package(
     metadata: Metadata,
     package: &PackageIdentity,
     install_dir: String,
+    sky_path: &str,
 ) -> Result<()> {
     if !runtime_config
         .install_db
@@ -94,19 +93,6 @@ pub fn insert_installed_package(
 
     ensure_install_schema(&transaction)?;
 
-    // First insert dependencies into the installed_packages table
-    let repo_db_conn = Connection::open(&runtime_config.repo_db)
-        .context("Failed to open connection to the repository database")?;
-    // Insert the root package into installed_packages
-    let mut stmt = repo_db_conn
-        .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
-        .context("Failed to prepare repository lookup query")?;
-    let sky_path: String = stmt
-        .query_row(
-            params![package.name, package.architecture.to_string()],
-            |row| row.get(0),
-        )
-        .context("Failed to look up package in repository database")?;
     transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir]).context("Failed to insert root package into install database")?;
 
     // Insert root package's paths into "owned files"
@@ -123,36 +109,23 @@ pub fn insert_installed_package(
         ).context("Failed to insert owned files into install database")?;
     }
 
-    for dep in &metadata.deps {
-        let mut stmt = repo_db_conn
-            .prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
-            .with_context(|| format!("Failed to prepare repository lookup query for dependency `{dep}`"))?;
-        let (name, version, release, architecture, sky_path): (
-            String,
-            String,
-            u32,
-            String,
-            String,
-        ) = stmt
-            .query_row(params![dep, package.architecture.to_string()], |row| {
-                let name: String = row.get(0)?;
-                let version: String = row.get(1)?;
-                let release: u32 = row.get(2)?;
-                let architecture: String = row.get(3)?;
-                let sky_path: String = row.get(4)?;
-                Ok((name, version, release, architecture, sky_path))
-            })
-            .with_context(|| {
-                format!("Failed to look up dependency `{dep}` in repository database")
-            })?;
+    let repo_conn = Connection::open(&runtime_config.repo_db)
+        .context("Failed to open connection to the repository database")?;
 
-        transaction
-            .execute(
-                "INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)
-                 ON CONFLICT(name, architecture) DO UPDATE SET version = excluded.version, release = excluded.release, sky_path = excluded.sky_path",
-                params![name, version, release, architecture, sky_path, install_dir],
+    for dep in &metadata.deps {
+        let exists: Option<()> = repo_conn
+            .query_row(
+                "SELECT 1 FROM packages WHERE name = ? AND architecture = ? LIMIT 1",
+                params![dep, package.architecture.to_string()],
+                |_| Ok(()),
             )
-            .context("Failed to insert dependency into install database")?;
+            .optional()?;
+        if exists.is_none() {
+            return Err(anyhow!(
+                "Dependency `{dep}` not found in repository for package `{}`",
+                package.name
+            ));
+        }
 
         transaction.execute("INSERT OR REPLACE INTO package_dependencies (package_name, architecture, dependency_name) VALUES (?, ?, ?)", params![package.name, package.architecture.to_string(), dep]).context("Failed to insert dependency edge into install database")?;
     }

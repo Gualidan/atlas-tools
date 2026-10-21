@@ -82,7 +82,7 @@ pub fn install(
 
     let mut ctx = Context {
         package_id: &package_id,
-        sky_path: PathBuf::from(sky_path),
+        sky_path: PathBuf::from(&sky_path),
         sky_repo: runtime_config.sky_repo.clone(),
         install_dir: install_dir.clone(),
         temp_dir: Some(temp_dir),
@@ -107,6 +107,7 @@ pub fn install(
         ctx.metadata.context("Metadata should not be empty.")?,
         &package_id,
         install_dir.to_string_lossy().to_string(),
+        &sky_path,
     )?;
 
     guard.disarm();
