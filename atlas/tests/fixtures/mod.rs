@@ -11,6 +11,7 @@ use std::{
 use anyhow::Result;
 use atlas::types::runtime_config::RuntimeConfig;
 use common::{
+    db::db::create_packages_table,
     functions::{hash::hash, sky_verify::data_to_sign},
     types::{
         metadata::{Build, Metadata},
@@ -44,12 +45,8 @@ pub fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i
 }
 
 pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
-    let conn = Connection::open(path).unwrap();
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS packages (name TEXT NOT NULL, version TEXT NOT NULL, release INTEGER NOT NULL, architecture TEXT NOT NULL, sky_path TEXT PRIMARY KEY, recipe_sha256 TEXT NOT NULL, built_at TEXT NOT NULL, builder TEXT NOT NULL, deps TEXT NOT NULL, makedeps TEXT NOT NULL)",
-        [],
-    )
-    .unwrap();
+    let mut conn = Connection::open(path).unwrap();
+    create_packages_table(&mut conn).unwrap();
 
     for (name, version, release, sky_path) in packages {
         conn.execute(
