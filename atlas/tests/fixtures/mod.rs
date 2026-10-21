@@ -69,14 +69,75 @@ pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
 }
 
 pub fn raw_header(name: &str, mode: u32, size: u64) -> Header {
+    raw_entry_header(name, mode, size, EntryType::file())
+}
+
+pub fn raw_entry_header(name: &str, mode: u32, size: u64, entry_type: EntryType) -> Header {
     let mut header = Header::new_gnu();
     header.set_mode(mode);
     header.set_size(size);
-    header.set_entry_type(EntryType::file());
+    header.set_entry_type(entry_type);
     let bytes = name.as_bytes();
     header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
     header.set_cksum();
     header
+}
+
+/// Builds a zstd'd tar payload containing exactly one entry whose name, mode
+/// and type are all copied into the raw header, bypassing tar's path
+/// sanitization. This is what lets evil paths (`/etc/evil`, `dir/../..`) and
+/// forbidden entry types into a payload at all.
+pub fn build_payload_with_raw_entry(
+    path: &str,
+    mode: u32,
+    entry_type: EntryType,
+    contents: &[u8],
+) -> Result<Vec<u8>> {
+    let mut payload = Vec::new();
+    let encoder = Encoder::new(&mut payload, 3)?;
+    let mut builder = Builder::new(encoder);
+
+    let header = raw_entry_header(path, mode, contents.len() as u64, entry_type);
+    builder.append(&header, contents)?;
+    builder.append_data(
+        &mut raw_entry_header("dir", 0o755, 0, EntryType::dir()),
+        "dir",
+        std::io::empty(),
+    )?;
+
+    builder.into_inner()?.finish()?;
+    Ok(payload)
+}
+
+/// Like [`write_signed_sky`] but the payload holds one fully-controlled raw
+/// entry instead of the sanitized `dir/file.txt` pair. The manifest is kept to
+/// a single uniform `dir` line: the payload gates in `NotInstalled::verify`
+/// fire before manifest parsing, so its content is unconstrained, and every
+/// sky stays valid-if-ever-parsed while each test commits exactly one crime.
+#[allow(clippy::too_many_arguments)]
+pub fn write_signed_sky_with_raw_entry(
+    tmp: &TempDir,
+    keypair: &Ed25519KeyPair,
+    sky_name: &str,
+    package_name: &str,
+    version: &str,
+    release: u32,
+    path: &str,
+    mode: u32,
+    entry_type: EntryType,
+    contents: &[u8],
+) -> Result<PathBuf> {
+    let payload = build_payload_with_raw_entry(path, mode, entry_type, contents)?;
+    let files = "d\t0755\t-\tdir\n".to_string();
+    let metadata_bytes =
+        serde_saphyr::to_string(&metadata_for(package_name, version, release, vec![]))?
+            .into_bytes();
+    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let signature = keypair.sign(&data).as_ref().to_vec();
+
+    let sky_path = tmp.path().join(sky_name);
+    write_sky(&sky_path, &payload, &metadata_bytes, &files, &signature)?;
+    Ok(sky_path)
 }
 
 pub fn write_sky(

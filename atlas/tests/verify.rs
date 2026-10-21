@@ -53,10 +53,14 @@ fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
 }
 
 fn raw_header(name: &str, mode: u32, size: u64) -> Header {
+    raw_entry_header(name, mode, size, EntryType::file())
+}
+
+fn raw_entry_header(name: &str, mode: u32, size: u64, entry_type: EntryType) -> Header {
     let mut header = Header::new_gnu();
     header.set_mode(mode);
     header.set_size(size);
-    header.set_entry_type(EntryType::file());
+    header.set_entry_type(entry_type);
     let bytes = name.as_bytes();
     header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
     header.set_cksum();
@@ -94,6 +98,31 @@ fn payload_tar_with_entries(entries: &[(&str, &[u8])]) -> Result<Vec<u8>> {
 
 fn build_payload_with_path(path: &str, contents: &[u8]) -> Result<Vec<u8>> {
     payload_tar_with_entries(&[(path, contents)])
+}
+
+/// Like [`payload_tar_with_entries`], but each entry = (name, mode, type, contents),
+/// so mode bits and forbidden entry types reach the reader.
+fn payload_tar_with_typed_entries(entries: &[(&str, u32, EntryType, &[u8])]) -> Result<Vec<u8>> {
+    let mut payload = Vec::new();
+    let encoder = Encoder::new(&mut payload, 3)?;
+    let mut builder = Builder::new(encoder);
+
+    for (entry_name, mode, entry_type, contents) in entries {
+        let header = raw_entry_header(entry_name, *mode, contents.len() as u64, *entry_type);
+        builder.append(&header, *contents)?;
+    }
+
+    builder.into_inner()?.finish()?;
+    Ok(payload)
+}
+
+fn build_payload_with_typed_entry(
+    path: &str,
+    mode: u32,
+    entry_type: EntryType,
+    contents: &[u8],
+) -> Result<Vec<u8>> {
+    payload_tar_with_typed_entries(&[(path, mode, entry_type, contents)])
 }
 
 fn build_payload_with_duplicate(path: &str, contents1: &[u8], contents2: &[u8]) -> Result<Vec<u8>> {
@@ -668,6 +697,61 @@ mod payload_archive_validation {
         let result = validate_payload_paths(&sky_path);
         assert_chain(&result, "Duplicate");
         assert_chain(&result, "dir/file.txt");
+        Ok(())
+    }
+
+    #[test]
+    fn setuid_bit_in_payload() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload =
+            build_payload_with_typed_entry("dir/evil.bin", 0o4755, EntryType::file(), b"x\n")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_setuid.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "setuid");
+        assert_chain(&result, "4755");
+        assert_chain(&result, "dir/evil.bin");
+        Ok(())
+    }
+
+    #[test]
+    fn setgid_bit_in_payload() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload =
+            build_payload_with_typed_entry("dir/evil.bin", 0o2755, EntryType::file(), b"x\n")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_setgid.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "setgid");
+        assert_chain(&result, "2755");
+        assert_chain(&result, "dir/evil.bin");
+        Ok(())
+    }
+
+    #[test]
+    fn fifo_entry_in_payload() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload = build_payload_with_typed_entry("dir/pipe", 0o644, EntryType::fifo(), b"")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_fifo.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "invalid type");
+        assert_chain(&result, "Fifo");
+        assert_chain(&result, "dir/pipe");
+        Ok(())
+    }
+
+    #[test]
+    fn device_entry_in_payload() -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let payload =
+            build_payload_with_typed_entry("dir/dev", 0o644, EntryType::block_special(), b"")?;
+        let sky_path = write_sky_with_payload(&tmp, "payload_device.sky", &payload)?;
+
+        let result = validate_payload_paths(&sky_path);
+        assert_chain(&result, "invalid type");
+        assert_chain(&result, "Block");
+        assert_chain(&result, "dir/dev");
         Ok(())
     }
 }
