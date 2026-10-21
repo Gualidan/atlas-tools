@@ -9,7 +9,7 @@ use atlas::{
 };
 use common::types::config::load_config;
 use fixtures::{
-    ConfigEnv, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
+    ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
     write_signed_sky_with_file, write_signed_sky_with_raw_entry, write_signed_sky_with_symlink,
 };
 use rusqlite::Connection;
@@ -25,10 +25,6 @@ fn uninstall_args(package: &str) -> UninstallArgs {
     UninstallArgs {
         package: package.to_string(),
     }
-}
-
-fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
-    conn.query_row(sql, params, |row| row.get(0)).unwrap()
 }
 
 /// Asserts `install` fails with `crime` in its error chain and that the

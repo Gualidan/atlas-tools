@@ -6,7 +6,9 @@ use common::types::{
     metadata::{Build, Metadata},
     package::{PackageIdentity, Source},
 };
-use fixtures::{ARCH, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky};
+use fixtures::{
+    ARCH, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
+};
 use rusqlite::{Connection, params};
 
 fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
@@ -38,10 +40,6 @@ fn metadata(identity: &PackageIdentity, deps: &[String]) -> Metadata {
             builder: "tester".to_string(),
         },
     }
-}
-
-fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
-    conn.query_row(sql, params, |row| row.get(0)).unwrap()
 }
 
 #[test]
