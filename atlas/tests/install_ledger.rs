@@ -152,8 +152,7 @@ fn uninstalling_an_uninstalled_dependency_reports_not_found() -> Result<()> {
         "bar's phantom row must not trigger the dependent guard: {chain}"
     );
 
-    uninstall(&config, uninstall_args("foo"), &settings)
-        .expect("uninstalling foo should succeed");
+    uninstall(&config, uninstall_args("foo"), &settings).expect("uninstalling foo should succeed");
 
     let err = uninstall(&config, uninstall_args("bar"), &settings)
         .expect_err("bar still was never installed");
