@@ -15,7 +15,13 @@ use common::{
 use rusqlite::{OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
-use crate::{types::context::Context, verify::parse_metadata_lines::parse_metadata_lines};
+use crate::{
+    types::context::Context,
+    verify::{
+        parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
+        validate_payload::validate_payload_paths,
+    },
+};
 
 pub struct NotInstalled;
 
@@ -61,6 +67,9 @@ impl State for NotInstalled {
         }
 
         let metadata = sky_verify(&ctx.sky_path, &ctx.package_id, &ctx.settings)?;
+        validate_archive_paths(&ctx.sky_path).context("Failed to validate archive's paths")?;
+        validate_payload_paths(&ctx.sky_path).context("Failed to validate payload's paths")?;
+
         ctx.metadata = Some(metadata);
         let (_, _, files, _) =
             read_sky(&PathBuf::from(&ctx.sky_path)).context("Failed to read sky file")?;
