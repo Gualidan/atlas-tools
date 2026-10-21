@@ -52,4 +52,16 @@ impl RuntimeConfig {
                 .with_extension("db"),
         })
     }
+
+    pub fn build_at(path: &PathBuf) -> Result<RuntimeConfig> {
+        Ok(RuntimeConfig {
+            recipe_repo: path.join("recipes"),
+            sky_repo: path.join("repo"),
+            srcdir: path.join("src"),
+            repo_db_path: path.join("repo").with_extension("db"),
+            fetch_cache: path.join("sources"),
+            cache_db_path: path.join("cache").with_extension("db"),
+            install_db_path: path.join("installed").with_extension("db"),
+        })
+    }
 }
