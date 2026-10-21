@@ -189,7 +189,10 @@ impl State for Installed {
     fn update(self: Box<Self>, ctx: &mut Context) -> Result<Box<dyn State>> {
         // Repo is truth — update goes to whatever the repo holds, even if older;
         // refusing downgrades needs real version ordering later.
-        let mut stmt = ctx.repo_conn.prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1").context("Failed to prepare database query")?;
+        let mut stmt = ctx
+            .repo_conn
+            .prepare("SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1")
+            .context("Failed to prepare database query")?;
         let sky_path: String = stmt.query_row(
             params![
                 ctx.package_id.name.as_str(),
