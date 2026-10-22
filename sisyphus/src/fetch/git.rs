@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
-use std::{path::PathBuf, process::Command};
+use std::{fs::create_dir_all, path::PathBuf, process::Command};
 use which::which;
 
 use crate::types::fetcher::{FetchedSource, Fetcher};
@@ -13,6 +13,7 @@ pub struct GitFetcher {
 impl Fetcher for GitFetcher {
     fn fetch(self: Box<Self>) -> Result<(FetchedSource, String)> {
         which("git").context("Git not found")?;
+        create_dir_all(&self.destination).context("Failed to create destination")?;
 
         let output = Command::new("git")
             .arg("clone")
