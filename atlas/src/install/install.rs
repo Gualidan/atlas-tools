@@ -9,7 +9,10 @@ use tempfile::Builder;
 
 use crate::{
     cli::cli::InstallArgs,
-    install::db::{ensure_install_schema, insert_installed_package},
+    install::{
+        db::{ensure_install_schema, insert_installed_package},
+        resolve::resolve_install_order,
+    },
     types::{
         context::Context,
         guards::SwapBackGuard,
@@ -47,11 +50,12 @@ pub fn install(
     let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
     let install_dir_existed = install_dir.exists();
 
+    let architecture = Architectures::try_from(architecture)?;
     let package_id = PackageIdentity {
-        name,
+        name: name.clone(),
         version,
         release,
-        architecture: Architectures::try_from(architecture)?,
+        architecture: architecture,
     };
     let settings = load_config().context("Failed to load settings")?;
 
@@ -93,15 +97,26 @@ pub fn install(
         manifest_paths: None,
     };
 
-    install_one(
-        &mut ctx,
-        runtime_config,
-        &package_id,
-        install_dir.to_string_lossy().to_string(),
-        &sky_path.as_str(),
-        install_dir_existed,
-        staging_dir,
-    )?;
+    let to_install = resolve_install_order(&conn, name, architecture)?;
+
+    for package in to_install {
+        let package_id = PackageIdentity {
+            name: package.name,
+            version: package.version,
+            release: package.release,
+            architecture: package.architecture,
+        };
+
+        install_one(
+            &mut ctx,
+            runtime_config,
+            &package_id,
+            install_dir.to_string_lossy().to_string(),
+            &sky_path,
+            install_dir_existed,
+            &staging_dir,
+        )?;
+    }
 
     Ok(())
 }
@@ -113,7 +128,7 @@ pub fn install_one(
     install_dir: String,
     sky_path: &str,
     install_dir_existed: bool,
-    staging_dir: PathBuf,
+    staging_dir: &PathBuf,
 ) -> Result<()> {
     let state = Box::new(NotInstalled) as Box<dyn State>;
 
@@ -123,7 +138,7 @@ pub fn install_one(
 
     let mut guard = SwapBackGuard::new(
         PathBuf::from(&install_dir),
-        staging_dir,
+        staging_dir.to_path_buf(),
         install_dir_existed,
     );
 
