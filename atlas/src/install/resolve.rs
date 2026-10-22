@@ -46,7 +46,10 @@ pub fn visit<'a>(
         return Ok(());
     }
     if stack.contains(&name) {
-        return Err(anyhow!("Dependency cycle detected"));
+        let start = stack.iter().position(|entry| entry == &name).unwrap_or(0);
+        let mut cycle = stack[start..].to_vec();
+        cycle.push(name.clone());
+        return Err(anyhow!("dependency cycle: {}", cycle.join(" -> ")));
     }
 
     let mut stmt  = conn.prepare("SELECT version, release, sky_path, deps FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
@@ -61,7 +64,10 @@ pub fn visit<'a>(
         })
         .optional()?
     else {
-        return Err(anyhow!("Package {name} not found"));
+        return Err(match stack.last() {
+            Some(parent) => anyhow!("Dependency `{name}` of package `{parent}` not found"),
+            None => anyhow!("Package {name} not found"),
+        });
     };
 
     let deps: Vec<&str> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
