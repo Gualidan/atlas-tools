@@ -21,7 +21,7 @@ impl Fetcher for HttpFetcher {
             ("http" | "https", false) => {}
             (scheme @ _, _) => {
                 return Err(anyhow!(
-                    "Invalid url scheme {scheme} only file and https are supported"
+                    "Invalid url scheme {scheme} only http and https are supported"
                 ));
             }
         }
