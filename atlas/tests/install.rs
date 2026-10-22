@@ -9,8 +9,9 @@ use atlas::{
 };
 use common::types::config::load_config;
 use fixtures::{
-    ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
-    write_signed_sky_with_file, write_signed_sky_with_raw_entry, write_signed_sky_with_symlink,
+    ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, seed_repo_db_with_deps,
+    tempdir, write_signed_sky, write_signed_sky_in_dir, write_signed_sky_with_file,
+    write_signed_sky_with_raw_entry, write_signed_sky_with_symlink,
 };
 use rusqlite::Connection;
 use tar::EntryType;
@@ -753,6 +754,475 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
         "b\n",
         "B's files must still be on disk"
     );
+
+    Ok(())
+}
+
+#[test]
+fn installing_a_package_installs_its_dependencies() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let baz_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "baz.sky",
+        "baz",
+        "1.0.0",
+        1,
+        b"baz\n",
+        vec![],
+        "bazdir",
+    )?;
+    let bar_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"bar\n",
+        vec!["baz".to_string()],
+        "bardir",
+    )?;
+    let foo_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec!["bar".to_string()],
+        "foodir",
+    )?;
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[
+            ("foo", "1.0.0", 1, foo_sky.to_str().unwrap(), &["bar"]),
+            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap(), &["baz"]),
+            ("baz", "1.0.0", 1, baz_sky.to_str().unwrap(), &[]),
+        ],
+    );
+
+    let root = tmp.path().join("root");
+    install(install_args("foo"), &config, root.clone())?;
+
+    let conn = Connection::open(&config.install_db)?;
+    for (name, sky_path, dir) in [
+        ("baz", &baz_sky, "bazdir"),
+        ("bar", &bar_sky, "bardir"),
+        ("foo", &foo_sky, "foodir"),
+    ] {
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+                &[&name],
+            ),
+            1,
+            "{name} must be recorded in the ledger"
+        );
+
+        let recorded_sky_path: String = conn.query_row(
+            "SELECT sky_path FROM installed_packages WHERE name = ?1",
+            [&name],
+            |row| row.get(0),
+        )?;
+        assert_eq!(
+            recorded_sky_path,
+            sky_path.to_str().unwrap(),
+            "{name} must point at its own sky"
+        );
+
+        let installed_file = root
+            .join(format!("{name}-1.0.0-1"))
+            .join(dir)
+            .join("file.txt");
+        assert_eq!(
+            std::fs::read_to_string(&installed_file)?,
+            format!("{name}\n"),
+            "{name} must have its own payload on disk"
+        );
+    }
+
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM package_dependencies WHERE package_name = ?1 AND dependency_name = ?2",
+            &[&"foo", &"bar"],
+        ),
+        1,
+        "the foo -> bar edge must be recorded"
+    );
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM package_dependencies WHERE package_name = ?1 AND dependency_name = ?2",
+            &[&"bar", &"baz"],
+        ),
+        1,
+        "the bar -> baz edge must be recorded"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn install_works_on_a_fresh_install_root() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let sky_path = write_signed_sky(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec![],
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("missing").join("root");
+    assert!(!root.exists(), "the install root must not exist yet");
+
+    install(install_args("foo"), &config, root.clone())
+        .expect("installing into a fresh root must work");
+
+    assert_eq!(
+        std::fs::read_to_string(root.join("foo-1.0.0-1").join("dir").join("file.txt"))?,
+        "foo\n",
+        "the payload must land under the freshly created root"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn skipped_deps_stay_put_but_root_reinstalls() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let bar_old = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar-old.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"old-bar\n",
+        vec![],
+        "bardir",
+    )?;
+    let foo_old = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo-old.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"old-foo\n",
+        vec!["bar".to_string()],
+        "foodir",
+    )?;
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[
+            ("foo", "1.0.0", 1, foo_old.to_str().unwrap(), &["bar"]),
+            ("bar", "1.0.0", 1, bar_old.to_str().unwrap(), &[]),
+        ],
+    );
+
+    let root = tmp.path().join("root");
+    install(install_args("foo"), &config, root.clone())?;
+
+    let bar_file = root.join("bar-1.0.0-1").join("bardir").join("file.txt");
+    let foo_file = root.join("foo-1.0.0-1").join("foodir").join("file.txt");
+    assert_eq!(std::fs::read_to_string(&bar_file)?, "old-bar\n");
+    assert_eq!(std::fs::read_to_string(&foo_file)?, "old-foo\n");
+
+    let conn = Connection::open(&config.install_db)?;
+    let bar_row_before: (String, u32, String, String) = conn.query_row(
+        "SELECT version, release, sky_path, install_dir FROM installed_packages WHERE name = ?1",
+        [&"bar"],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+
+    let bar_new = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar-new.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"new-bar\n",
+        vec![],
+        "bardir",
+    )?;
+    let foo_new = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo-new.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"new-foo\n",
+        vec!["bar".to_string()],
+        "foodir",
+    )?;
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[
+            ("foo", "1.0.0", 1, foo_new.to_str().unwrap(), &["bar"]),
+            ("bar", "1.0.0", 1, bar_new.to_str().unwrap(), &[]),
+        ],
+    );
+
+    install(install_args("foo"), &config, root.clone())?;
+
+    assert_eq!(
+        std::fs::read_to_string(&bar_file)?,
+        "old-bar\n",
+        "an installed dependency must be skipped, not reinstalled"
+    );
+    let bar_row_after: (String, u32, String, String) = conn.query_row(
+        "SELECT version, release, sky_path, install_dir FROM installed_packages WHERE name = ?1",
+        [&"bar"],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    assert_eq!(
+        bar_row_before, bar_row_after,
+        "a skipped dependency's ledger row must be untouched"
+    );
+
+    assert_eq!(
+        std::fs::read_to_string(&foo_file)?,
+        "new-foo\n",
+        "the root package must be reinstalled from the republished sky"
+    );
+    let foo_sky_path: String = conn.query_row(
+        "SELECT sky_path FROM installed_packages WHERE name = ?1",
+        [&"foo"],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        foo_sky_path,
+        foo_new.to_str().unwrap(),
+        "the root's ledger row must point at the republished sky"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn cycles_leave_nothing_behind() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let foo_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec!["bar".to_string()],
+        "foodir",
+    )?;
+    let bar_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"bar\n",
+        vec!["foo".to_string()],
+        "bardir",
+    )?;
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[
+            ("foo", "1.0.0", 1, foo_sky.to_str().unwrap(), &["bar"]),
+            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap(), &["foo"]),
+        ],
+    );
+
+    let root = tmp.path().join("root");
+    let err = install(install_args("foo"), &config, root.clone())
+        .expect_err("a dependency cycle must abort the install");
+    let chain = format!("{err:#}");
+    assert!(
+        chain.contains("dependency cycle: foo -> bar -> foo"),
+        "error chain was: {chain}"
+    );
+
+    assert!(
+        !config.install_db.exists(),
+        "a failed resolution must not create the install database"
+    );
+    for name in ["foo", "bar"] {
+        assert!(
+            !root.join(format!("{name}-1.0.0-1")).exists(),
+            "a failed resolution must not create {name}'s install dir"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn ghost_deps_fail_before_any_install() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let foo_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec!["ghost".to_string()],
+        "foodir",
+    )?;
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, foo_sky.to_str().unwrap(), &["ghost"])],
+    );
+
+    let root = tmp.path().join("root");
+    let err = install(install_args("foo"), &config, root.clone())
+        .expect_err("a missing dependency must abort the install");
+    let chain = format!("{err:#}");
+    assert!(chain.contains("ghost"), "error chain was: {chain}");
+
+    assert!(
+        !config.install_db.exists(),
+        "a failed resolution must not create the install database"
+    );
+    assert!(
+        !root.join("foo-1.0.0-1").exists(),
+        "a failed resolution must not create an install dir"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn mid_chain_failure_keeps_earlier_deps() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    // `bar` and `evil` are both direct dependencies of `foo`, listed in
+    // install order. A strictly dependency-first traversal of a chain would
+    // hit the deepest package first, so the failure is placed after a sibling
+    // dependency that must survive it.
+    let bar_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"bar\n",
+        vec![],
+        "bardir",
+    )?;
+    let evil_sky = write_signed_sky_with_raw_entry(
+        &tmp,
+        &keypair,
+        "evil.sky",
+        "evil",
+        "1.0.0",
+        1,
+        "dir/evil.bin",
+        0o4755,
+        EntryType::file(),
+        b"evil\n",
+    )?;
+    let foo_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec!["bar".to_string(), "evil".to_string()],
+        "foodir",
+    )?;
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[
+            (
+                "foo",
+                "1.0.0",
+                1,
+                foo_sky.to_str().unwrap(),
+                &["bar", "evil"],
+            ),
+            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap(), &[]),
+            ("evil", "1.0.0", 1, evil_sky.to_str().unwrap(), &[]),
+        ],
+    );
+
+    let root = tmp.path().join("root");
+    let err = install(install_args("foo"), &config, root.clone())
+        .expect_err("the setuid dependency must be rejected");
+    let chain = format!("{err:#}");
+    assert!(chain.contains("setuid"), "error chain was: {chain}");
+
+    let bar_dir = root.join("bar-1.0.0-1");
+    assert!(
+        bar_dir.join("bardir").join("file.txt").is_file(),
+        "the dependency installed before the failure must survive"
+    );
+    let conn = Connection::open(&config.install_db)?;
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+            &[&"bar"],
+        ),
+        1,
+        "bar must stay in the ledger"
+    );
+
+    for name in ["evil", "foo"] {
+        assert!(
+            !root.join(format!("{name}-1.0.0-1")).exists(),
+            "{name} must not leave an install dir behind"
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+                &[&name],
+            ),
+            0,
+            "{name} must not be recorded in the ledger"
+        );
+    }
 
     Ok(())
 }
