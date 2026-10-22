@@ -1,3 +1,10 @@
+//! Dependency resolution reads only the repo database's `deps` column and
+//! must never peek into the sky's own metadata, because the two sources are
+//! allowed to disagree: the rollback tests publish lying repos whose rows
+//! declare no dependencies while the sky metadata declares one, and a
+//! resolver that trusted the skys would silently defuse those tests by
+//! treating such packages as dependency-free.
+
 use std::collections::HashSet;
 
 use anyhow::{Context, Result, anyhow};
