@@ -103,6 +103,30 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         )
         .context("Failed to look up package in repository database")?;
 
+    fn dep_sky_path(conn: &Connection, name: &str) -> String {
+        conn.query_row(
+            "SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1",
+            params![name, ARCH.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    // The dependency-side foreign key on package_dependencies references the
+    // ledger, so each dependency needs its own installed row before the root
+    // records edges pointing at it — mirrors the real post-order install.
+    for dep_name in ["dep-a", "dep-b"] {
+        let (dep_package, dep_deps) = package_identity(dep_name, &[]);
+        insert_installed_package(
+            &config,
+            &metadata(&dep_package, &dep_deps),
+            &dep_package,
+            "/usr".to_string(),
+            &dep_sky_path(&conn, dep_name),
+        )
+        .expect("installing the dependency should succeed");
+    }
+
     insert_installed_package(
         &config,
         &metadata(&package, &deps),
@@ -125,8 +149,8 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         "root installed row missing"
     );
 
-    // Dependency rows do not exist: installing a package records the edge but
-    // does not materialize the dependency in the ledger.
+    // Dependency rows exist: the edge foreign key references the ledger, so
+    // the dependencies must have been recorded before the root's edges.
     for dep in ["dep-a", "dep-b"] {
         assert_eq!(
             count(
@@ -134,13 +158,13 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
                 "SELECT COUNT(*) FROM installed_packages WHERE name = ?1 AND architecture = ?2",
                 &[&dep, &ARCH.to_string()],
             ),
-            0,
-            "dependency `{dep}` must not get a phantom installed row"
+            1,
+            "dependency `{dep}` must have a ledger row for the edge to reference"
         );
     }
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
-        1,
+        3,
         "unexpected number of installed packages"
     );
 
@@ -176,7 +200,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
     let conn = Connection::open(&config.install_db).unwrap();
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
-        1,
+        3,
         "idempotent run changed installed package count"
     );
     assert_eq!(

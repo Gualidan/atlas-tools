@@ -33,6 +33,8 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
         architecture TEXT NOT NULL,
         dependency_name TEXT NOT NULL,
         PRIMARY KEY (package_name, architecture, dependency_name),
+        FOREIGN KEY (dependency_name, architecture)
+                    REFERENCES installed_packages(name, architecture),
         FOREIGN KEY (package_name, architecture)
             REFERENCES installed_packages(name, architecture),
         CHECK (package_name != dependency_name)
