@@ -9,8 +9,8 @@ use atlas::{
 };
 use common::types::config::load_config;
 use fixtures::{
-    ARCH, ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir,
-    write_signed_sky, write_signed_sky_in_dir,
+    ARCH, ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, seed_repo_db_with_deps,
+    tempdir, write_signed_sky, write_signed_sky_in_dir,
 };
 use ring::signature::Ed25519KeyPair;
 use rusqlite::{Connection, params};
@@ -29,7 +29,7 @@ fn uninstall_args(package: &str) -> UninstallArgs {
     }
 }
 
-fn seed_foo_with_uninstalled_bar(
+fn seed_foo_depends_on_bar(
     tmp: &TempDir,
     config: &RuntimeConfig,
     keypair: &Ed25519KeyPair,
@@ -56,26 +56,26 @@ fn seed_foo_with_uninstalled_bar(
         vec!["bar".to_string()],
         "foodir",
     )?;
-    seed_repo_db(
+    seed_repo_db_with_deps(
         &config.repo_db,
         &[
-            ("foo", "1.0.0", 1, foo_sky.to_str().unwrap()),
-            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap()),
+            ("foo", "1.0.0", 1, foo_sky.to_str().unwrap(), &["bar"]),
+            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap(), &[]),
         ],
     );
     Ok((foo_sky, bar_sky))
 }
 
 #[test]
-fn installing_a_package_does_not_install_its_dependencies() -> Result<()> {
+fn installing_a_package_records_edges_backed_by_ledger_rows() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
-    let (foo_sky, _bar_sky) = seed_foo_with_uninstalled_bar(&tmp, &config, &keypair)?;
+    let (foo_sky, _bar_sky) = seed_foo_depends_on_bar(&tmp, &config, &keypair)?;
 
     install(install_args("foo"), &config, tmp.path().join("root"))
-        .expect("installing foo should succeed even though bar is not installed");
+        .expect("installing foo should install bar first and then foo");
 
     let conn = Connection::open(&config.install_db)?;
 
@@ -94,13 +94,13 @@ fn installing_a_package_does_not_install_its_dependencies() -> Result<()> {
             "SELECT COUNT(*) FROM installed_packages WHERE name = ?1 AND architecture = ?2",
             &[&"bar", &ARCH.to_string()],
         ),
-        0,
-        "bar must not get a phantom installed row"
+        1,
+        "bar must be installed before foo so the edge can reference it"
     );
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
-        1,
-        "only the explicitly installed package may be in the ledger"
+        2,
+        "only foo and bar may be in the ledger"
     );
     assert_eq!(
         count(
@@ -115,6 +115,19 @@ fn installing_a_package_does_not_install_its_dependencies() -> Result<()> {
         count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
         1,
         "exactly one dependency edge is expected"
+    );
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM package_dependencies WHERE NOT EXISTS (
+            SELECT 1 FROM installed_packages
+            WHERE name = package_dependencies.dependency_name
+              AND architecture = package_dependencies.architecture
+        )",
+            &[],
+        ),
+        0,
+        "every recorded edge must point at an installed dependency"
     );
 
     let ledger_sky_path: String = conn.query_row(
@@ -132,16 +145,13 @@ fn installing_a_package_does_not_install_its_dependencies() -> Result<()> {
 }
 
 #[test]
-fn uninstalling_an_uninstalled_dependency_reports_not_found() -> Result<()> {
+fn uninstalling_a_never_installed_package_reports_not_found() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
     let settings = load_config()?;
-    seed_foo_with_uninstalled_bar(&tmp, &config, &keypair)?;
-
-    let root = tmp.path().join("root");
-    install(install_args("foo"), &config, root.clone()).expect("installing foo should succeed");
+    seed_foo_depends_on_bar(&tmp, &config, &keypair)?;
 
     let err = uninstall(&config, uninstall_args("bar"), &settings)
         .expect_err("bar was never installed, so uninstalling it must fail");
@@ -149,13 +159,11 @@ fn uninstalling_an_uninstalled_dependency_reports_not_found() -> Result<()> {
     assert!(chain.contains("not found"), "error chain was: {chain}");
     assert!(
         !chain.contains("depends on"),
-        "bar's phantom row must not trigger the dependent guard: {chain}"
+        "a package with no ledger row must not trigger the dependent guard: {chain}"
     );
 
-    uninstall(&config, uninstall_args("foo"), &settings).expect("uninstalling foo should succeed");
-
-    let err = uninstall(&config, uninstall_args("bar"), &settings)
-        .expect_err("bar still was never installed");
+    let err = uninstall(&config, uninstall_args("foo"), &settings)
+        .expect_err("foo was never installed either");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
 
@@ -163,7 +171,12 @@ fn uninstalling_an_uninstalled_dependency_reports_not_found() -> Result<()> {
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
         0,
-        "foo's uninstall must not leave bar's phantom row behind"
+        "failed uninstalls must not have created ledger rows"
+    );
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
+        0,
+        "failed uninstalls must not have created dependency edges"
     );
 
     Ok(())
