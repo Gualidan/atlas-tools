@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+use std::{fs::set_permissions, os::unix::fs::PermissionsExt};
 
 use anyhow::{Context, Result};
 use common::types::package::{Architectures, Source};
@@ -11,8 +12,9 @@ use sisyphus::types::package::Package;
 use sisyphus::types::runtime_config::RuntimeConfig;
 use tempfile::{Builder as TempBuilder, TempDir};
 
-/// Builds a local git repository acting as the fetch remote: one commit with a
-/// single file, whose path is returned for use as the package source URL.
+/// Builds a local git repository acting as the fetch remote: one commit
+/// containing a file, an executable and a symlink, whose path is returned for
+/// use as the package source URL.
 fn seed_remote(keypair_dir: &TempDir) -> Result<PathBuf> {
     let remote = TempBuilder::new()
         .prefix("sisyphus_remote_")
@@ -38,6 +40,19 @@ fn seed_remote(keypair_dir: &TempDir) -> Result<PathBuf> {
     run(&["init", "--initial-branch", "main"])?;
     std::fs::write(remote.path().join("file.txt"), "hello\n")?;
     run(&["add", "file.txt"])?;
+
+    // Real recipes ship executables and symlinks; exercising both here pins
+    // that extraction preserves their permissions and types.
+    std::fs::write(remote.path().join("build.sh"), "#!/bin/sh\necho built\n")?;
+    set_permissions(
+        remote.path().join("build.sh"),
+        PermissionsExt::from_mode(0o755),
+    )?;
+    run(&["add", "build.sh"])?;
+
+    std::os::unix::fs::symlink("file.txt", remote.path().join("link.txt"))?;
+    run(&["add", "link.txt"])?;
+
     run(&["commit", "-m", "seed"])?;
 
     Ok(remote.keep())
@@ -114,6 +129,30 @@ fn the_fetch_cache_preserves_the_cloned_git_source() -> Result<()> {
     assert_eq!(
         cached, cloned,
         "the fetched Dir must point at the clone in the cache, not at the remote"
+    );
+
+    // Extraction must faithfully reproduce the source tree: the executable's
+    // mode and the symlink's type and target must survive the copy.
+    use std::os::unix::fs::PermissionsExt;
+    let build_sh = std::fs::metadata(source_root.join("build.sh"))
+        .expect("the extracted tree must contain build.sh");
+    assert_eq!(
+        build_sh.permissions().mode() & 0o777,
+        0o755,
+        "build.sh must keep its executable bit after extraction"
+    );
+    let link_txt = source_root
+        .join("link.txt")
+        .symlink_metadata()
+        .expect("the extracted tree must contain link.txt");
+    assert!(
+        link_txt.file_type().is_symlink(),
+        "link.txt must still be a symlink after extraction"
+    );
+    assert_eq!(
+        std::fs::read_link(source_root.join("link.txt"))?,
+        std::path::Path::new("file.txt"),
+        "the extracted symlink must still point at file.txt"
     );
 
     // Cache hit: the second fetch serves the same path from the cache.
