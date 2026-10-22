@@ -22,3 +22,4 @@ ring.workspace = true
 common.workspace = true
 rusqlite.workspace = true
 anyhow.workspace = true
+url = "2.5.8"

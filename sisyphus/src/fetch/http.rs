@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
+use url::Url;
 
 use crate::types::fetcher::Fetcher;
 use std::{
@@ -14,8 +15,18 @@ pub struct HttpFetcher {
 
 impl Fetcher for HttpFetcher {
     fn fetch(self: Box<Self>) -> Result<(PathBuf, String)> {
-        let response =
-            reqwest::blocking::get(&self.url).context("Failed to perform HTTP request")?;
+        let url = Url::parse(&self.url).context("Failed to parse url")?;
+
+        match (url.scheme(), url.to_string().ends_with(".git")) {
+            ("http" | "https", false) => {}
+            (scheme @ _, _) => {
+                return Err(anyhow!(
+                    "Invalid url scheme {scheme} only file and https are supported"
+                ));
+            }
+        }
+
+        let response = reqwest::blocking::get(url).context("Failed to perform HTTP request")?;
         let response = response
             .error_for_status()
             .context("HTTP request returned an error status")?;
