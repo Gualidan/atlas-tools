@@ -62,13 +62,14 @@ pub fn install(
         .context("Failed to enable foreign key enforcement")?;
     ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
 
+    let mut stmt = install_conn
+        .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
+        .context("Failed to prepare database query")?;
+
     for package in to_install {
         let is_root = package.name == name;
 
         if !is_root {
-            let mut stmt = install_conn
-                .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
-                .context("Failed to prepare database query")?;
             let installed = stmt
                 .query_row(
                     params![package.name, package.architecture.to_string()],
@@ -119,15 +120,7 @@ pub fn install(
             manifest_paths: None,
         };
 
-        install_one(
-            &mut ctx,
-            runtime_config,
-            &package_id,
-            install_dir.to_string_lossy().to_string(),
-            &package.sky_path,
-            install_dir_existed,
-            &staging_dir,
-        )?;
+        install_one(&mut ctx, runtime_config, install_dir_existed, &staging_dir)?;
     }
 
     Ok(())
@@ -136,9 +129,6 @@ pub fn install(
 pub fn install_one(
     ctx: &mut Context,
     runtime_config: &RuntimeConfig,
-    package_id: &PackageIdentity,
-    install_dir: String,
-    sky_path: &str,
     install_dir_existed: bool,
     staging_dir: &PathBuf,
 ) -> Result<()> {
@@ -149,19 +139,19 @@ pub fn install_one(
     state.commit(ctx)?;
 
     let mut guard = SwapBackGuard::new(
-        PathBuf::from(&install_dir),
+        PathBuf::from(&ctx.install_dir),
         staging_dir.to_path_buf(),
         install_dir_existed,
     );
 
     insert_installed_package(
         runtime_config,
-        &ctx.metadata
-            .clone()
+        ctx.metadata
+            .as_ref()
             .context("Metadata should not be empty.")?,
-        &package_id,
-        install_dir,
-        &sky_path,
+        &ctx.package_id,
+        ctx.install_dir.to_string_lossy().to_string(),
+        &ctx.sky_path.to_str().unwrap(),
     )?;
 
     guard.disarm();
