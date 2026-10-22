@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 
-use crate::types::fetcher::{FetchedSource, Fetcher};
+use crate::types::fetcher::Fetcher;
 use std::{
     fs::{self, File},
     path::PathBuf,
@@ -13,7 +13,7 @@ pub struct HttpFetcher {
 }
 
 impl Fetcher for HttpFetcher {
-    fn fetch(self: Box<Self>) -> Result<(FetchedSource, String)> {
+    fn fetch(self: Box<Self>) -> Result<(PathBuf, String)> {
         let response =
             reqwest::blocking::get(&self.url).context("Failed to perform HTTP request")?;
         let response = response
@@ -40,6 +40,6 @@ impl Fetcher for HttpFetcher {
         // ensure it's flushed/closed before reopening
         drop(dest);
 
-        Ok((FetchedSource::Archive(fname), fetched_at))
+        Ok((fname, fetched_at))
     }
 }

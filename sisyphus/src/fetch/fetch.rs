@@ -6,18 +6,14 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::{
     checksum::verify::verify,
     fetch::{db::insert_source, http::HttpFetcher},
-    types::{
-        fetcher::{FetchedSource, Fetcher},
-        package::Package,
-        runtime_config::RuntimeConfig,
-    },
+    types::{fetcher::Fetcher, package::Package, runtime_config::RuntimeConfig},
 };
 
 pub fn fetch(
     package: &Package,
     verify_checksum: bool,
     runtime_config: &RuntimeConfig,
-) -> Result<FetchedSource> {
+) -> Result<PathBuf> {
     let download_path = runtime_config.fetch_cache.clone();
 
     if runtime_config.cache_db_path.exists() {
@@ -35,13 +31,13 @@ pub fn fetch(
             .optional()
             .context("Failed to query the cache database")?;
 
-        if let Some(path) = source_path
-            && PathBuf::from(&path).exists()
-        {
-            println!("Cache hit: {}", path);
-
-            verify(&PathBuf::from(&path), package).context("Failed to verify cached source")?;
-            return Ok(FetchedSource::Archive(PathBuf::from(path)));
+        if let Some(path) = source_path {
+            let path = PathBuf::from(&path);
+            if path.exists() {
+                println!("Cache hit: {}", path.display());
+                verify(&path, package).context("Failed to verify cached source")?;
+                return Ok(path);
+            }
         }
     }
 
@@ -51,21 +47,17 @@ pub fn fetch(
     }) as Box<dyn Fetcher>;
 
     let (fetched, fetched_at) = fetcher.fetch().context("Failed to fetch source")?;
-    match fetched {
-        FetchedSource::Archive(ref path) => {
-            if verify_checksum {
-                verify(path, package).context("Failed to verify fetched source")?;
-            }
-            insert_source(
-                &package.source.url,
-                &package.source.sha256,
-                &path.to_string_lossy().into_owned(),
-                &fetched_at,
-                runtime_config,
-            )
-            .context("Failed to record source in the cache database")?;
-        }
+    if verify_checksum {
+        verify(&fetched, package).context("Failed to verify fetched source")?;
     }
+    insert_source(
+        &package.source.url,
+        &package.source.sha256,
+        &fetched.to_string_lossy().into_owned(),
+        &fetched_at,
+        runtime_config,
+    )
+    .context("Failed to record source in the cache database")?;
 
     Ok(fetched)
 }
