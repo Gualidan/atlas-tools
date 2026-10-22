@@ -46,13 +46,9 @@ pub fn install(
     let architecture = Architectures::try_from(ARCH.to_string())?;
     let settings = load_config().context("Failed to load settings")?;
 
-    let install_dir_parent = install_dir
-        .parent()
-        .context("Failed to get install_dir's parent")?;
-
     let to_install = resolve_install_order(&conn, name.clone(), architecture)?;
 
-    create_dir_all(install_dir_parent).context("Failed to create install_dir's parents")?;
+    create_dir_all(&install_dir).context("Failed to create install_dir's parents")?;
 
     if let Some(parent) = runtime_config.install_db.parent() {
         std::fs::create_dir_all(parent)
