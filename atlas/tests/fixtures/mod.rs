@@ -199,7 +199,7 @@ pub fn metadata_for(name: &str, version: &str, release: u32, deps: Vec<String>) 
         deps,
         source: Source {
             url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: None,
+            sha256: "unused".to_string(),
         },
         build: Build {
             recipe_sha256: "deadbeef".to_string(),

@@ -17,7 +17,7 @@ pub struct PackageIdentity {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Source {
     pub url: String,
-    pub sha256: Option<String>,
+    pub sha256: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]

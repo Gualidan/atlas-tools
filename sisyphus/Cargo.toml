@@ -22,4 +22,3 @@ ring.workspace = true
 common.workspace = true
 rusqlite.workspace = true
 anyhow.workspace = true
-dircpy = "0.3.21"

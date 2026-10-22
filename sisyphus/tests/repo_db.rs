@@ -19,7 +19,7 @@ fn package(name: &str, version: &str, architecture: Architectures) -> Package {
         architecture,
         source: Source {
             url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: None,
+            sha256: "unused".to_string(),
         },
         makedeps: vec![],
         deps: vec![],
@@ -40,7 +40,7 @@ fn metadata() -> Metadata {
         deps: vec![],
         source: Source {
             url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: None,
+            sha256: "unused".to_string(),
         },
         build: Build {
             recipe_sha256: "deadbeef".to_string(),

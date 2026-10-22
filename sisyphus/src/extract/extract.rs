@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use compress_tools::{Ownership, uncompress_archive};
-use dircpy::CopyBuilder;
 
 use std::fs::File;
 use std::path::PathBuf;
@@ -20,14 +19,6 @@ pub fn extract(fetched: FetchedSource) -> Result<(TempDir, PathBuf)> {
             uncompress_archive(reader, destination.path(), Ownership::Ignore)
                 .context("Failed to uncompress archive")?;
             let source_root = find_source_root(&destination.path().to_path_buf())?;
-            Ok((destination, source_root))
-        }
-        FetchedSource::Dir(dir) => {
-            let destination_path = destination.path().join("git");
-            CopyBuilder::new(dir, &destination_path)
-                .run_par()
-                .context("Failed to copy directory to destination")?;
-            let source_root = find_source_root(&destination_path)?;
             Ok((destination, source_root))
         }
     }

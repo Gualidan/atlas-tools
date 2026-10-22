@@ -5,7 +5,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     checksum::verify::verify,
-    fetch::{db::insert_source, git::GitFetcher, http::HttpFetcher},
+    fetch::{db::insert_source, http::HttpFetcher},
     types::{
         fetcher::{FetchedSource, Fetcher},
         package::Package,
@@ -23,45 +23,32 @@ pub fn fetch(
     if runtime_config.cache_db_path.exists() {
         let conn = Connection::open(&runtime_config.cache_db_path)
             .context("Failed to open connection to the cache database")?;
-        let mut stmt = if let Some(_) = &package.source.sha256 {
-            conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")
-                .context("Failed to prepare cache lookup query")?
-        } else {
-            conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 IS NULL")
-                .context("Failed to prepare cache lookup query")?
-        };
+        let mut stmt = conn
+            .prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")
+            .context("Failed to prepare cache lookup query")?;
 
-        let source_path: Option<String> = match &package.source.sha256 {
-            Some(sha) => stmt.query_row(params![&package.source.url, sha], |row| row.get(0)),
-            None => stmt.query_row(params![&package.source.url], |row| row.get(0)),
-        }
-        .optional()
-        .context("Failed to query the cache database")?;
+        let source_path: Option<String> = stmt
+            .query_row(
+                params![&package.source.url, &package.source.sha256],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Failed to query the cache database")?;
 
         if let Some(path) = source_path
             && PathBuf::from(&path).exists()
         {
             println!("Cache hit: {}", path);
-            if PathBuf::from(&path).is_dir() {
-                return Ok(FetchedSource::Dir(PathBuf::from(path)));
-            }
 
             verify(&PathBuf::from(&path), package).context("Failed to verify cached source")?;
             return Ok(FetchedSource::Archive(PathBuf::from(path)));
         }
     }
 
-    let fetcher = if package.source.url.ends_with("git") {
-        Box::new(GitFetcher {
-            url: package.source.url.clone(),
-            destination: download_path.join(&package.name),
-        }) as Box<dyn Fetcher>
-    } else {
-        Box::new(HttpFetcher {
-            url: package.source.url.clone(),
-            destination: download_path.join(&package.name),
-        }) as Box<dyn Fetcher>
-    };
+    let fetcher = Box::new(HttpFetcher {
+        url: package.source.url.clone(),
+        destination: download_path.join(&package.name),
+    }) as Box<dyn Fetcher>;
 
     let (fetched, fetched_at) = fetcher.fetch().context("Failed to fetch source")?;
     match fetched {
@@ -78,14 +65,6 @@ pub fn fetch(
             )
             .context("Failed to record source in the cache database")?;
         }
-        FetchedSource::Dir(ref path) => insert_source(
-            &package.source.url,
-            &package.source.sha256,
-            &path.to_string_lossy().into_owned(),
-            &fetched_at,
-            runtime_config,
-        )
-        .context("Failed to record source in the cache database")?,
     }
 
     Ok(fetched)

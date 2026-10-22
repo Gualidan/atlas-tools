@@ -3,7 +3,6 @@ use anyhow::{Context, Result};
 use common::functions::hash::hash;
 use ring::digest::Digest;
 use std::fs::File;
-use std::path::PathBuf;
 
 use crate::fetch::fetch::fetch;
 use crate::types::fetcher::FetchedSource;
@@ -11,7 +10,6 @@ use crate::types::runtime_config::RuntimeConfig;
 
 pub enum ChecksumResult {
     Hashed(Digest),
-    Dir(PathBuf),
 }
 
 pub fn checksum_gen(package: &Package, runtime_config: &RuntimeConfig) -> Result<ChecksumResult> {
@@ -32,10 +30,6 @@ pub fn checksum_gen(package: &Package, runtime_config: &RuntimeConfig) -> Result
                     .collect::<String>()
             );
             Ok(ChecksumResult::Hashed(hasher))
-        }
-        FetchedSource::Dir(dir) => {
-            println!("Git source detected, skipping checksum generation");
-            Ok(ChecksumResult::Dir(dir))
         }
     }
 }

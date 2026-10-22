@@ -4,7 +4,6 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub enum FetchedSource {
     Archive(PathBuf),
-    Dir(PathBuf),
 }
 
 pub trait Fetcher {

@@ -5,7 +5,7 @@ use crate::types::runtime_config::RuntimeConfig;
 
 pub fn insert_source(
     url: &String,
-    sha256: &Option<String>,
+    sha256: &String,
     path: &String,
     fetched_at: &String,
     runtime_config: &RuntimeConfig,
@@ -16,7 +16,7 @@ pub fn insert_source(
         .transaction()
         .context("Failed to start a cache database transaction")?;
 
-    transaction.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT, path TEXT NOT NULL, fetched_at TEXT NOT NULL)", []).context("Failed to create sources table in cache database")?;
+    transaction.execute("CREATE TABLE IF NOT EXISTS sources (url TEXT PRIMARY KEY, sha256 TEXT NOT NULL, path TEXT NOT NULL, fetched_at TEXT NOT NULL)", []).context("Failed to create sources table in cache database")?;
 
     transaction
         .execute(

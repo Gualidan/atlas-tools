@@ -32,7 +32,7 @@ fn metadata(identity: &PackageIdentity, deps: &[String]) -> Metadata {
         deps: deps.to_vec(),
         source: Source {
             url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: None,
+            sha256: "unused".to_string(),
         },
         build: Build {
             recipe_sha256: "deadbeef".to_string(),
