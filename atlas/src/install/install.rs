@@ -87,26 +87,51 @@ pub fn install(
         install_dir: install_dir.clone(),
         temp_dir: Some(temp_dir),
         settings: &settings,
-        dependencies: vec![],
         repo_conn: &conn,
         install_conn: &install_conn,
         metadata: None,
         manifest_paths: None,
     };
 
+    install_one(
+        &mut ctx,
+        runtime_config,
+        &package_id,
+        install_dir.to_string_lossy().to_string(),
+        &sky_path.as_str(),
+        install_dir_existed,
+        staging_dir,
+    )?;
+
+    Ok(())
+}
+
+pub fn install_one(
+    ctx: &mut Context,
+    runtime_config: &RuntimeConfig,
+    package_id: &PackageIdentity,
+    install_dir: String,
+    sky_path: &str,
+    install_dir_existed: bool,
+    staging_dir: PathBuf,
+) -> Result<()> {
     let state = Box::new(NotInstalled) as Box<dyn State>;
 
-    let state = state.verify(&mut ctx)?;
-    let state = state.stage(&mut ctx)?;
-    state.commit(&mut ctx)?;
+    let state = state.verify(ctx)?;
+    let state = state.stage(ctx)?;
+    state.commit(ctx)?;
 
-    let mut guard = SwapBackGuard::new(install_dir.clone(), staging_dir, install_dir_existed);
+    let mut guard = SwapBackGuard::new(
+        PathBuf::from(&install_dir),
+        staging_dir,
+        install_dir_existed,
+    );
 
     insert_installed_package(
         runtime_config,
         ctx.metadata.context("Metadata should not be empty.")?,
         &package_id,
-        install_dir.to_string_lossy().to_string(),
+        install_dir,
         &sky_path,
     )?;
 

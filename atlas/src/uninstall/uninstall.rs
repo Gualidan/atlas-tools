@@ -44,7 +44,6 @@ pub fn uninstall(
         install_dir: PathBuf::from(install_dir),
         temp_dir: None,
         settings,
-        dependencies: vec![],
         repo_conn: &repo_conn,
         install_conn: &install_conn,
         metadata: None,

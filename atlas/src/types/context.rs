@@ -15,7 +15,6 @@ pub struct Context<'a> {
     pub install_dir: PathBuf,
     pub temp_dir: Option<TempDir>,
     pub settings: &'a SisyphusConfig,
-    pub dependencies: Vec<String>,
     pub repo_conn: &'a Connection,
     pub install_conn: &'a Connection,
     pub metadata: Option<Metadata>,
