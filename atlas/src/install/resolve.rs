@@ -41,12 +41,12 @@ pub fn resolve_install_order(
     Ok(resolved_packages)
 }
 
-pub fn visit<'a>(
+fn visit(
     conn: &Connection,
     name: String,
     stack: &mut Vec<String>,
     resolved: &mut HashSet<String>,
-    resolved_packages: &'a mut Vec<ResolvedPackage>,
+    resolved_packages: &mut Vec<ResolvedPackage>,
     arch: Architectures,
 ) -> Result<()> {
     if resolved.contains(&name) {
