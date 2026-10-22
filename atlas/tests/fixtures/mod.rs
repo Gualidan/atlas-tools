@@ -45,10 +45,25 @@ pub fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i
 }
 
 pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
+    let packages_without_deps: Vec<(&str, &str, u32, &str, &[&str])> = packages
+        .iter()
+        .map(|(name, version, release, sky_path)| (*name, *version, *release, *sky_path, &[][..]))
+        .collect();
+
+    seed_repo_db_with_deps(path, &packages_without_deps);
+}
+
+/// Seeds the repository database with runtime dependency lists exactly the way
+/// Sisyphus publishes them: the `deps` column is serialized with
+/// `serde_saphyr`, never hand-written YAML.
+pub fn seed_repo_db_with_deps(path: &Path, packages: &[(&str, &str, u32, &str, &[&str])]) {
     let mut conn = Connection::open(path).unwrap();
     create_packages_table(&mut conn).unwrap();
 
-    for (name, version, release, sky_path) in packages {
+    for (name, version, release, sky_path, deps) in packages {
+        let deps: Vec<String> = deps.iter().map(|dep| dep.to_string()).collect();
+        let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
+
         conn.execute(
             "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
@@ -60,7 +75,7 @@ pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
                 "deadbeef",
                 "2026-01-01T00:00:00Z",
                 "tester",
-                "[]",
+                deps,
                 "[]"
             ],
         )
