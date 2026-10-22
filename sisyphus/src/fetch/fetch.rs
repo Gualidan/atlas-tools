@@ -23,7 +23,7 @@ pub fn fetch(
     if runtime_config.cache_db_path.exists() {
         let conn = Connection::open(&runtime_config.cache_db_path)
             .context("Failed to open connection to the cache database")?;
-        let mut stmt = if let Some(_sha) = &package.source.sha256 {
+        let mut stmt = if let Some(_) = &package.source.sha256 {
             conn.prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")
                 .context("Failed to prepare cache lookup query")?
         } else {
