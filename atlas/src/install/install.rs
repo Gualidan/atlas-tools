@@ -33,50 +33,32 @@ pub fn install(
     let conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
 
-    let mut stmt = conn.prepare("SELECT name, version, release, architecture, sky_path FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-    let (name, version, release, architecture, sky_path): (String, String, u32, String, String) =
-        stmt.query_row(params![&args.package, ARCH], |row| {
-            let name: String = row.get(0)?;
-            let version: String = row.get(1)?;
-            let release: u32 = row.get(2)?;
-            let architecture: String = row.get(3)?;
-            let sky_path: String = row.get(4)?;
-
-            Ok((name, version, release, architecture, sky_path))
-        })
+    let mut stmt = conn
+        .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
+        .context("Failed to prepare database query")?;
+    let Some(name): Option<String> = stmt
+        .query_row(params![&args.package, ARCH], |row| row.get(0))
         .optional()?
-        .with_context(|| format!("Package {} not found", args.package.unwrap()))?;
-
-    let install_dir = install_dir.join(format!("{}-{}-{}", &name, &version, release));
-    let install_dir_existed = install_dir.exists();
-
-    let architecture = Architectures::try_from(architecture)?;
-    let package_id = PackageIdentity {
-        name: name.clone(),
-        version,
-        release,
-        architecture: architecture,
+    else {
+        return Err(anyhow!("Package {} not found", &args.package.unwrap()));
     };
+
+    let architecture = Architectures::try_from(ARCH.to_string())?;
     let settings = load_config().context("Failed to load settings")?;
 
     let install_dir_parent = install_dir
         .parent()
         .context("Failed to get install_dir's parent")?;
+
+    let to_install = resolve_install_order(&conn, name.clone(), architecture)?;
+
     create_dir_all(install_dir_parent).context("Failed to create install_dir's parents")?;
-    let temp_dir = Builder::new()
-        .prefix("sisyphus_install_tmp_dir_")
-        .tempdir_in(
-            install_dir
-                .parent()
-                .context("Failed to get install dir's parent")?,
-        )
-        .context("Failed to create temporary directory")?;
-    let staging_dir = temp_dir.path().to_path_buf();
 
     if let Some(parent) = runtime_config.install_db.parent() {
         std::fs::create_dir_all(parent)
             .context("Failed to create the install database directory")?;
     }
+
     let install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
     install_conn
@@ -84,22 +66,32 @@ pub fn install(
         .context("Failed to enable foreign key enforcement")?;
     ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
 
-    let mut ctx = Context {
-        package_id: &package_id,
-        sky_path: PathBuf::from(&sky_path),
-        sky_repo: runtime_config.sky_repo.clone(),
-        install_dir: install_dir.clone(),
-        temp_dir: Some(temp_dir),
-        settings: &settings,
-        repo_conn: &conn,
-        install_conn: &install_conn,
-        metadata: None,
-        manifest_paths: None,
-    };
-
-    let to_install = resolve_install_order(&conn, name, architecture)?;
-
     for package in to_install {
+        let is_root = package.name == name;
+
+        if !is_root {
+            let mut stmt = install_conn
+                .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
+                .context("Failed to prepare database query")?;
+            let installed = stmt
+                .query_row(
+                    params![package.name, package.architecture.to_string()],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .is_some();
+
+            if installed {
+                continue;
+            }
+        };
+
+        let install_dir = install_dir.join(format!(
+            "{}-{}-{}",
+            &package.name, &package.version, package.release
+        ));
+        let install_dir_existed = install_dir.exists();
+
         let package_id = PackageIdentity {
             name: package.name,
             version: package.version,
@@ -107,12 +99,36 @@ pub fn install(
             architecture: package.architecture,
         };
 
+        let temp_dir = Builder::new()
+            .prefix("sisyphus_install_tmp_dir_")
+            .tempdir_in(
+                install_dir
+                    .parent()
+                    .context("Failed to get install dir's parent")?,
+            )
+            .context("Failed to create temporary directory")?;
+
+        let staging_dir = temp_dir.path().to_path_buf();
+
+        let mut ctx = Context {
+            package_id: &package_id,
+            sky_path: PathBuf::from(&package.sky_path),
+            sky_repo: runtime_config.sky_repo.clone(),
+            install_dir: install_dir.clone(),
+            temp_dir: Some(temp_dir),
+            settings: &settings,
+            repo_conn: &conn,
+            install_conn: &install_conn,
+            metadata: None,
+            manifest_paths: None,
+        };
+
         install_one(
             &mut ctx,
             runtime_config,
             &package_id,
             install_dir.to_string_lossy().to_string(),
-            &sky_path,
+            &package.sky_path,
             install_dir_existed,
             &staging_dir,
         )?;
