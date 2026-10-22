@@ -58,7 +58,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
 
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
-    metadata: Metadata,
+    metadata: &Metadata,
     package: &PackageIdentity,
     install_dir: String,
     sky_path: &str,

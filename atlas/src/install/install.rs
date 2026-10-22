@@ -129,7 +129,9 @@ pub fn install_one(
 
     insert_installed_package(
         runtime_config,
-        ctx.metadata.context("Metadata should not be empty.")?,
+        &ctx.metadata
+            .clone()
+            .context("Metadata should not be empty.")?,
         &package_id,
         install_dir,
         &sky_path,

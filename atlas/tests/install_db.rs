@@ -105,7 +105,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
 
     insert_installed_package(
         &config,
-        metadata(&package, &deps),
+        &metadata(&package, &deps),
         &package,
         "/usr".to_string(),
         &sky_path,
@@ -166,7 +166,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
     // thanks to `INSERT OR REPLACE`.
     insert_installed_package(
         &config,
-        metadata(&package, &deps),
+        &metadata(&package, &deps),
         &package,
         "/usr".to_string(),
         &sky_path,
