@@ -13,30 +13,33 @@ pub fn fetch(
     package: &Package,
     verify_checksum: bool,
     runtime_config: &RuntimeConfig,
+    check_cache: bool,
 ) -> Result<PathBuf> {
     let download_path = runtime_config.fetch_cache.clone();
 
-    if runtime_config.cache_db_path.exists() {
-        let conn = Connection::open(&runtime_config.cache_db_path)
-            .context("Failed to open connection to the cache database")?;
-        let mut stmt = conn
-            .prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")
-            .context("Failed to prepare cache lookup query")?;
+    if check_cache {
+        if runtime_config.cache_db_path.exists() {
+            let conn = Connection::open(&runtime_config.cache_db_path)
+                .context("Failed to open connection to the cache database")?;
+            let mut stmt = conn
+                .prepare("SELECT path FROM sources WHERE url = ? AND sha256 = ?")
+                .context("Failed to prepare cache lookup query")?;
 
-        let source_path: Option<String> = stmt
-            .query_row(
-                params![&package.source.url, &package.source.sha256],
-                |row| row.get(0),
-            )
-            .optional()
-            .context("Failed to query the cache database")?;
+            let source_path: Option<String> = stmt
+                .query_row(
+                    params![&package.source.url, &package.source.sha256],
+                    |row| row.get(0),
+                )
+                .optional()
+                .context("Failed to query the cache database")?;
 
-        if let Some(path) = source_path {
-            let path = PathBuf::from(&path);
-            if path.exists() {
-                println!("Cache hit: {}", path.display());
-                verify(&path, package).context("Failed to verify cached source")?;
-                return Ok(path);
+            if let Some(path) = source_path {
+                let path = PathBuf::from(&path);
+                if path.exists() {
+                    println!("Cache hit: {}", path.display());
+                    verify(&path, package).context("Failed to verify cached source")?;
+                    return Ok(path);
+                }
             }
         }
     }
