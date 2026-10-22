@@ -182,6 +182,73 @@ fn uninstalling_a_never_installed_package_reports_not_found() -> Result<()> {
     Ok(())
 }
 
+/// Pins the dependency-side foreign key: the resolver consults only the repo's
+/// `deps` column, so a repo that lies — "foo has no deps" while foo's sky
+/// declares `bar` — reaches the ledger with bar absent. The FK on
+/// `package_dependencies(dependency_name, architecture)` must veto the edge
+/// and roll the whole install back.
+#[test]
+fn install_fails_and_rolls_back_when_the_repo_lies_about_dependencies() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+
+    let bar_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"bar\n",
+        vec![],
+        "bardir",
+    )?;
+    let foo_sky = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec!["bar".to_string()],
+        "foodir",
+    )?;
+    // The repo DB claims foo has no dependencies, contradicting foo's sky.
+    seed_repo_db_with_deps(
+        &config.repo_db,
+        &[
+            ("foo", "1.0.0", 1, foo_sky.to_str().unwrap(), &[]),
+            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap(), &[]),
+        ],
+    );
+
+    let root = tmp.path().join("root");
+    install(install_args("foo"), &config, root.clone())
+        .expect_err("installing foo must fail: the foo -> bar edge cannot reference bar's ledger row");
+
+    assert!(
+        !root.join("foo-1.0.0-1").exists(),
+        "the failed install must not leave foo's directory behind"
+    );
+
+    let conn = Connection::open(&config.install_db)?;
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
+        0,
+        "the failed install must not leave ledger rows"
+    );
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
+        0,
+        "the failed install must not leave dependency edges"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()> {
     let tmp = tempdir();
