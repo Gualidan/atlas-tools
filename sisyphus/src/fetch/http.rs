@@ -17,13 +17,17 @@ impl Fetcher for HttpFetcher {
     fn fetch(self: Box<Self>) -> Result<(PathBuf, String)> {
         let url = Url::parse(&self.url).context("Failed to parse url")?;
 
-        match (url.scheme(), url.to_string().ends_with(".git")) {
-            ("http" | "https", false) => {}
-            (scheme @ _, _) => {
+        match url.scheme() {
+            "http" | "https" => {}
+            scheme @ _ => {
                 return Err(anyhow!(
                     "Invalid url scheme {scheme} only http and https are supported"
                 ));
             }
+        }
+
+        if url.path().ends_with(".git") {
+            return Err(anyhow!("Git sources are not supported"));
         }
 
         let response = reqwest::blocking::get(url).context("Failed to perform HTTP request")?;
