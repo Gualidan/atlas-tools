@@ -8,7 +8,7 @@ use common::functions::hash::hash;
 use common::types::package::{Architectures, Source};
 use rusqlite::Connection;
 use sisyphus::checksum::checksum::checksum_gen;
-use sisyphus::fetch::fetch::fetch;
+use sisyphus::fetch::fetch::{FetchMode, fetch};
 use sisyphus::types::package::Package;
 use sisyphus::types::runtime_config::RuntimeConfig;
 use tempfile::{Builder as TempBuilder, TempDir};
@@ -79,9 +79,14 @@ fn config(tmp: &TempDir) -> Result<RuntimeConfig> {
 }
 
 fn source_rows(config: &RuntimeConfig) -> i64 {
+    // Checksum mode never touches the cache db, so the db or table may not
+    // exist: a missing table counts as zero rows.
+    if !config.cache_db_path.exists() {
+        return 0;
+    }
     let conn = Connection::open(&config.cache_db_path).unwrap();
     conn.query_row("SELECT COUNT(*) FROM sources", [], |row| row.get(0))
-        .unwrap()
+        .unwrap_or(0)
 }
 
 fn cached_sha(config: &RuntimeConfig, url: &str) -> Option<String> {
@@ -106,7 +111,7 @@ fn a_miss_downloads_and_a_second_build_hits_the_cache() -> Result<()> {
     let url = start_payload_server(vec![contents.to_vec()])?;
     let pkg = package(&url, &sha256(contents));
 
-    let fetched = fetch(&pkg, true, &runtime_config, true)
+    let fetched = fetch(&pkg, FetchMode::Build, &runtime_config)
         .expect("a cache miss must download and verify the source");
     assert!(fetched.exists(), "the downloaded file must exist");
     assert_eq!(
@@ -120,8 +125,8 @@ fn a_miss_downloads_and_a_second_build_hits_the_cache() -> Result<()> {
         "the miss must record one row"
     );
 
-    let hit =
-        fetch(&pkg, true, &runtime_config, true).expect("the second build must hit the cache");
+    let hit = fetch(&pkg, FetchMode::Build, &runtime_config)
+        .expect("the second build must hit the cache");
     assert_eq!(hit, fetched, "the cache hit must serve the same file");
     assert_eq!(
         source_rows(&runtime_config),
@@ -132,8 +137,8 @@ fn a_miss_downloads_and_a_second_build_hits_the_cache() -> Result<()> {
     Ok(())
 }
 
-/// Arc 2: checksum_gen end-to-end — it fetches without cache and without
-/// verification and prints nothing fatal, leaving the fetched archive on disk.
+/// Arc 2: checksum_gen end-to-end — it fetches without touching the cache db
+/// and without verification, leaving no row behind.
 #[test]
 fn checksum_gen_end_to_end() -> Result<()> {
     let tmp = TempBuilder::new()
@@ -146,20 +151,19 @@ fn checksum_gen_end_to_end() -> Result<()> {
     let pkg = package(&url, "");
 
     checksum_gen(&pkg, &runtime_config).expect("checksum_gen must fetch and hash the archive");
-    // checksum_gen fetches with check_cache = false, so it bypasses the cache
-    // db but still writes the row for later builds.
+    // checksum_gen uses FetchMode::Checksum, which never touches the cache db.
     assert_eq!(
         source_rows(&runtime_config),
-        1,
-        "checksum_gen must record the source"
+        0,
+        "checksum_gen must not insert the source into a row"
     );
 
     Ok(())
 }
 
 /// Arc 3: checksum_gen run twice — the regression pin. A second run must not
-/// crash on an existing cache row (the sources table keys on url, so the
-/// insert must be an INSERT OR REPLACE).
+/// crash and must not touch the cache db: Checksum mode only downloads and
+/// hashes, so the table stays empty.
 #[test]
 fn checksum_gen_twice() -> Result<()> {
     let tmp = TempBuilder::new()
@@ -177,8 +181,8 @@ fn checksum_gen_twice() -> Result<()> {
 
     assert_eq!(
         source_rows(&runtime_config),
-        1,
-        "the same url must keep a single cache row"
+        0,
+        "no row is inserted during checksum"
     );
 
     Ok(())
@@ -198,7 +202,7 @@ fn a_new_sha_for_the_same_url_replaces_the_cached_row() -> Result<()> {
     let url = start_payload_server(vec![first.to_vec(), second.to_vec()])?;
 
     let pkg_one = package(&url, &sha256(first));
-    fetch(&pkg_one, true, &runtime_config, true).expect("the first fetch must succeed");
+    fetch(&pkg_one, FetchMode::Build, &runtime_config).expect("the first fetch must succeed");
     assert_eq!(
         cached_sha(&runtime_config, &url).as_deref(),
         Some(sha256(first).as_str()),
@@ -206,7 +210,7 @@ fn a_new_sha_for_the_same_url_replaces_the_cached_row() -> Result<()> {
     );
 
     let pkg_two = package(&url, &sha256(second));
-    let fetched = fetch(&pkg_two, true, &runtime_config, true)
+    let fetched = fetch(&pkg_two, FetchMode::Build, &runtime_config)
         .expect("a new sha for the same url must miss the cache and re-download");
     assert_eq!(
         std::fs::read(&fetched)?,
@@ -220,7 +224,7 @@ fn a_new_sha_for_the_same_url_replaces_the_cached_row() -> Result<()> {
     );
 
     // The entry now serves the second release, not the first.
-    let hit = fetch(&pkg_two, true, &runtime_config, true)
+    let hit = fetch(&pkg_two, FetchMode::Build, &runtime_config)
         .expect("the replaced row must serve the new file");
     assert_eq!(
         std::fs::read(&hit)?,

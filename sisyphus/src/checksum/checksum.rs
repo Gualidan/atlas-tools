@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use common::functions::hash::hash;
 use std::fs::File;
 
-use crate::fetch::fetch::fetch;
+use crate::fetch::fetch::{FetchMode, fetch};
 use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
 
 pub fn checksum_gen(package: &Package, runtime_config: &RuntimeConfig) -> Result<()> {
-    let fetched = fetch(package, false, runtime_config, false)?;
+    let fetched = fetch(package, FetchMode::Checksum, runtime_config)?;
 
     // Generate checksum and print it to the user
     let file = File::open(fetched).context("Failed to open fetched archive")?;

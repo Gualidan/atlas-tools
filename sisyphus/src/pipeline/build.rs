@@ -8,7 +8,7 @@ use crate::{
         dependencies::resolve,
     },
     extract::extract::extract,
-    fetch::fetch::fetch,
+    fetch::fetch::{FetchMode, fetch},
     package::package::package_gen,
     types::{recipe::Recipe, runtime_config::RuntimeConfig},
 };
@@ -63,7 +63,8 @@ pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Re
     }
 
     // Phase 1: Fetch
-    let fetched = fetch(&package, true, runtime_config, true).context("Failed to fetch package")?;
+    let fetched =
+        fetch(&package, FetchMode::Build, runtime_config).context("Failed to fetch package")?;
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
@@ -97,7 +98,8 @@ pub fn run_planned_build(
     let config = load_config().context("Failed to load config")?;
 
     // Phase 1: Fetch
-    let fetched = fetch(&package, true, runtime_config, true).context("Failed to fetch package")?;
+    let fetched =
+        fetch(&package, FetchMode::Build, runtime_config).context("Failed to fetch package")?;
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
