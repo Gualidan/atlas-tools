@@ -9,7 +9,9 @@ use crate::{
     types::{fetcher::Fetcher, package::Package, runtime_config::RuntimeConfig},
 };
 
-/// In checksum mode, skips inserting information into the database and checking the cache.
+/// Contracts by mode:
+/// - `Build`: cache read + verify + insert into the cache database.
+/// - `Checksum`: download only, touches nothing (no cache, no database).
 pub enum FetchMode {
     Build,
     Checksum,
