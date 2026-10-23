@@ -68,7 +68,7 @@ pub fn fetch(
         }
         FetchMode::Checksum => {
             let (fetched, _fetched_at) = fetch_payload(
-                package.source.url.to_string(),
+                package.source.url.clone(),
                 download_path.join(&package.name),
             )?;
 
@@ -79,7 +79,7 @@ pub fn fetch(
 
 fn fetch_payload(url: String, download_path: PathBuf) -> Result<(PathBuf, String)> {
     let fetcher = Box::new(HttpFetcher {
-        url: url,
+        url,
         destination: download_path,
     }) as Box<dyn Fetcher>;
 
