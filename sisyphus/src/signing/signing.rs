@@ -2,9 +2,10 @@ use anyhow::{Context, Result, anyhow};
 use common::functions::dirs::config_dir;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions, Permissions};
+use std::io::ErrorKind::AlreadyExists;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -49,9 +50,14 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
     let mut pub_file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o644)
         .open(&pub_key_path)
-        .context("Failed to open file at path")?;
+        .map_err(|e| match e.kind() {
+            AlreadyExists => anyhow!(
+                "Key at path {} already exists, not allowed to overwrite it",
+                &path.display()
+            ),
+            _ => anyhow!("Failed to open file at path {}", &path.display()),
+        })?;
     pub_file
         .write_all(pub_key)
         .context("Failed to write public key to disk")?;
@@ -61,9 +67,19 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
         .create_new(true)
         .mode(0o600)
         .open(&path)
-        .context("Failed to open file at path")?;
+        .map_err(|e| match e.kind() {
+            AlreadyExists => anyhow!(
+                "Key at path {} already exists, not allowed to overwrite it",
+                &path.display()
+            ),
+            _ => anyhow!("Failed to open file at path {}", &path.display()),
+        })?;
     file.write_all(priv_key)
         .context("Failed to write private key to disk")?;
+
+    // Set mode for public key file to ensure it is no affected by the private key file's mode
+    fs::set_permissions(&pub_key_path, Permissions::from_mode(0o644))
+        .context("Failed to set mode for public key file")?;
 
     Ok((path, pub_key_path))
 }
