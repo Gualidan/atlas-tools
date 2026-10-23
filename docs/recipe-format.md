@@ -80,7 +80,7 @@ sources:
     sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 ```
 
-`url` must use `https`. HTTP, local files, and Git sources are intentionally
+`url` must use `https`. HTTP is only allowed for testing purposes. Local files, and Git sources are intentionally
 out of scope for the first recipe schema; they can be added by a later schema
 version with explicit source types and immutable Git revisions.
 
