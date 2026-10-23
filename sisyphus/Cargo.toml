@@ -22,3 +22,8 @@ common.workspace = true
 rusqlite.workspace = true
 anyhow.workspace = true
 url = "2.5.8"
+
+[dev-dependencies]
+# Tests need libc::umask to force a strict mask on the test process; the
+# production code is std-only and must not link libc through sisyphus itself.
+libc = "0.2"
