@@ -27,7 +27,9 @@ impl Fetcher for HttpFetcher {
         }
 
         if url.path().ends_with(".git") {
-            return Err(anyhow!("Git sources are not supported"));
+            return Err(anyhow!(
+                "Git sources are not supported in v1 — build from a release tarball; devel packages are planned for v2"
+            ));
         }
 
         let response = reqwest::blocking::get(url).context("Failed to perform HTTP request")?;
@@ -56,5 +58,39 @@ impl Fetcher for HttpFetcher {
         drop(dest);
 
         Ok((fname, fetched_at))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fetcher(url: &str) -> HttpFetcher {
+        HttpFetcher {
+            url: url.to_string(),
+            destination: PathBuf::from("/tmp"),
+        }
+    }
+
+    #[test]
+    fn rejects_git_sources() {
+        let err = Box::new(fetcher("https://example.com/repo.git"))
+            .fetch()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("Git sources are not supported"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_file_scheme() {
+        let err = Box::new(fetcher("file:///tmp/pkg.tar.gz"))
+            .fetch()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid url scheme"),
+            "unexpected error: {err}"
+        );
     }
 }
