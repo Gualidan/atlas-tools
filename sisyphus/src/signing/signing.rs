@@ -1,8 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use common::functions::dirs::config_dir;
-use libc::umask;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -44,10 +46,24 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
 
     let pub_key_path = path.with_extension("pub");
 
-    std::fs::write(&pub_key_path, pub_key).context("Failed to write public key to disk")?;
+    let mut pub_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o644)
+        .open(&pub_key_path)
+        .context("Failed to open file at path")?;
+    pub_file
+        .write_all(pub_key)
+        .context("Failed to write public key to disk")?;
 
-    unsafe { umask(0o077) };
-    std::fs::write(&path, priv_key).context("Failed to write private key to disk")?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .context("Failed to open file at path")?;
+    file.write_all(priv_key)
+        .context("Failed to write private key to disk")?;
 
     Ok((path, pub_key_path))
 }

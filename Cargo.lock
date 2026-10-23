@@ -1739,7 +1739,6 @@ dependencies = [
  "common",
  "compress-tools",
  "hex",
- "libc",
  "reqwest",
  "ring",
  "rusqlite",
