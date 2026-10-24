@@ -226,8 +226,9 @@ fn install_fails_and_rolls_back_when_the_repo_lies_about_dependencies() -> Resul
     );
 
     let root = tmp.path().join("root");
-    install(install_args("foo"), &config, root.clone())
-        .expect_err("installing foo must fail: the foo -> bar edge cannot reference bar's ledger row");
+    install(install_args("foo"), &config, root.clone()).expect_err(
+        "installing foo must fail: the foo -> bar edge cannot reference bar's ledger row",
+    );
 
     assert!(
         !root.join("foo-1.0.0-1").exists(),
