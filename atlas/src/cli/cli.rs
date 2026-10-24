@@ -5,8 +5,11 @@ use clap::{Args, Parser, Subcommand};
 use common::types::config::load_config;
 
 use crate::{
-    install::install::install, types::runtime_config::RuntimeConfig,
-    uninstall::uninstall::uninstall, verify::verify::verify,
+    install::install::install,
+    types::runtime_config::RuntimeConfig,
+    uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
+    update::update::update,
+    verify::verify::verify,
 };
 
 #[derive(Parser)]
@@ -27,12 +30,13 @@ enum Commands {
     Verify(VerifyArgs),
     Uninstall(UninstallArgs),
     Update(UpdateArgs),
+    Clean(CleanArgs),
 }
 
 #[derive(Args)]
 pub struct InstallArgs {
     /// The name package to install
-    pub package: Option<String>,
+    pub package: String,
     // TODO add suport for installing a specific sky file
 }
 
@@ -52,10 +56,13 @@ pub struct UninstallArgs {
 }
 
 #[derive(Args)]
-struct UpdateArgs {
+pub struct UpdateArgs {
     /// The package to update
-    package: Option<String>,
+    pub package: String,
 }
+
+#[derive(Args)]
+pub struct CleanArgs {}
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -68,7 +75,7 @@ pub fn run() -> Result<()> {
             let install_dir =
                 env::var("ATLAS_INSTALL_DIR").unwrap_or(String::from("/var/lib/atlas/local"));
 
-            install(args, &runtime_config, PathBuf::from(install_dir))?;
+            install(&args.package, &runtime_config, PathBuf::from(install_dir))?;
         }
         Commands::Verify(args) => {
             let runtime_config =
@@ -79,11 +86,19 @@ pub fn run() -> Result<()> {
         Commands::Uninstall(args) => {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
-            let settings = load_config().context("Failed to load config")?;
 
-            uninstall(&runtime_config, args, &settings)?;
+            uninstall(&runtime_config, &args.package)?;
         }
-        Commands::Update(_args) => {}
+        Commands::Update(args) => {
+            let runtime_config =
+                RuntimeConfig::build().context("Failed to build runtime config")?;
+            update(&runtime_config, args)?;
+        }
+        Commands::Clean(_) => {
+            let runtime_config =
+                RuntimeConfig::build().context("Failed to build runtime config")?;
+            uninstall_orphans(&runtime_config)?;
+        }
     }
     Ok(())
 }
