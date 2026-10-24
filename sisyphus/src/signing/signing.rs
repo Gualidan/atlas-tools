@@ -77,7 +77,7 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
     file.write_all(priv_key)
         .context("Failed to write private key to disk")?;
 
-    // Set mode for public key file to ensure it is no affected by the private key file's mode
+    // Set mode for public key file to ensure it is no affected by any umask
     fs::set_permissions(&pub_key_path, Permissions::from_mode(0o644))
         .context("Failed to set mode for public key file")?;
 
