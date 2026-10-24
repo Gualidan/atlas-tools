@@ -14,10 +14,8 @@ use crate::{
         resolve::resolve_install_order,
     },
     types::{
-        context::Context,
-        guards::SwapBackGuard,
+        context::Context, guards::SwapBackGuard, package_state::PackageState,
         runtime_config::RuntimeConfig,
-        states::{NotInstalled, State},
     },
 };
 
@@ -116,8 +114,6 @@ pub fn install(
             settings: &settings,
             repo_conn: &conn,
             install_conn: &install_conn,
-            metadata: None,
-            manifest_paths: None,
         };
 
         install_one(&mut ctx, runtime_config, install_dir_existed, &staging_dir)?;
@@ -132,12 +128,11 @@ pub fn install_one(
     install_dir_existed: bool,
     staging_dir: &PathBuf,
 ) -> Result<()> {
-    let state = Box::new(NotInstalled) as Box<dyn State>;
+    let state = PackageState::NotInstalled;
 
     let state = state.verify(ctx)?;
     let state = state.stage(ctx)?;
-    state.commit(ctx)?;
-
+    let (_state, metadata) = state.commit(ctx)?;
     let mut guard = SwapBackGuard::new(
         PathBuf::from(&ctx.install_dir),
         staging_dir.to_path_buf(),
@@ -146,9 +141,7 @@ pub fn install_one(
 
     insert_installed_package(
         runtime_config,
-        ctx.metadata
-            .as_ref()
-            .context("Metadata should not be empty.")?,
+        &metadata,
         &ctx.package_id,
         ctx.install_dir.to_string_lossy().to_string(),
         &ctx.sky_path.to_str().unwrap(),

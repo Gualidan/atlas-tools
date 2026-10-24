@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use common::types::manifest::ManifestLine;
-use common::types::metadata::Metadata;
 use rusqlite::Connection;
 
 use common::types::config::SisyphusConfig;
@@ -17,6 +15,4 @@ pub struct Context<'a> {
     pub settings: &'a SisyphusConfig,
     pub repo_conn: &'a Connection,
     pub install_conn: &'a Connection,
-    pub metadata: Option<Metadata>,
-    pub manifest_paths: Option<Vec<ManifestLine>>,
 }

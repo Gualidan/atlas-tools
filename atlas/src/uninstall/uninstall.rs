@@ -10,11 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::{
     cli::cli::UninstallArgs,
     install::db::{ensure_install_schema, remove_uninstalled_package},
-    types::{
-        context::Context,
-        runtime_config::RuntimeConfig,
-        states::{Installed, State},
-    },
+    types::{context::Context, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
 pub fn uninstall(
@@ -46,11 +42,10 @@ pub fn uninstall(
         settings,
         repo_conn: &repo_conn,
         install_conn: &install_conn,
-        metadata: None,
-        manifest_paths: None,
     };
 
-    let state = Box::new(Installed) as Box<dyn State>;
+    let state = PackageState::Installed;
+
     state.remove(&mut ctx)?;
 
     remove_uninstalled_package(&mut install_conn, &package_id)?;
