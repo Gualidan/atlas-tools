@@ -3,8 +3,6 @@ resolver = "3"
 members = ["atlas", "crates/common","sisyphus"]
 
 [workspace.package]
-name = "atlas-tools"
-version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
