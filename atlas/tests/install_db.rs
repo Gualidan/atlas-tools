@@ -1,7 +1,7 @@
 mod fixtures;
 
 use anyhow::{Context, Result};
-use atlas::install::db::insert_installed_package;
+use atlas::install::db::{InstallReason, insert_installed_package};
 use common::types::{
     metadata::{Build, Metadata},
     package::{PackageIdentity, Source},
@@ -123,6 +123,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
             &dep_package,
             "/usr".to_string(),
             &dep_sky_path(&conn, dep_name),
+            InstallReason::Dependency,
         )
         .expect("installing the dependency should succeed");
     }
@@ -133,6 +134,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         &package,
         "/usr".to_string(),
         &sky_path,
+        InstallReason::Explicit,
     )
     .expect("first install should succeed");
 
@@ -194,6 +196,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         &package,
         "/usr".to_string(),
         &sky_path,
+        InstallReason::Explicit,
     )
     .expect("second install should succeed");
 

@@ -1,19 +1,12 @@
 mod fixtures;
 
 use anyhow::Result;
-use atlas::{cli::cli::UninstallArgs, install::install::install, uninstall::uninstall::uninstall};
-use common::types::config::load_config;
+use atlas::{install::install::install, uninstall::uninstall::uninstall};
 use fixtures::{
     ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
     write_signed_sky_in_dir,
 };
 use rusqlite::Connection;
-
-fn uninstall_args(package: &str) -> UninstallArgs {
-    UninstallArgs {
-        package: package.to_string(),
-    }
-}
 
 #[test]
 fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
@@ -21,7 +14,6 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
-    let settings = load_config()?;
 
     let sky_path = write_signed_sky(
         &tmp,
@@ -38,16 +30,9 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    install(
-        atlas::cli::cli::InstallArgs {
-            package: Some("foo".to_string()),
-        },
-        &config,
-        tmp.path().join("root"),
-    )
-    .expect("install should succeed");
+    install(&"foo".to_string(), &config, tmp.path().join("root")).expect("install should succeed");
 
-    uninstall(&config, uninstall_args("foo"), &settings).expect("uninstall should succeed");
+    uninstall(&config, &"foo".to_string()).expect("uninstall should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -91,7 +76,6 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
-    let settings = load_config()?;
 
     let a_sky = write_signed_sky(&tmp, &keypair, "a.sky", "A", "1.0.0", 1, b"a\n", vec![])?;
     let b_sky = write_signed_sky_in_dir(
@@ -114,24 +98,10 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(
-        atlas::cli::cli::InstallArgs {
-            package: Some("A".to_string()),
-        },
-        &config,
-        root.clone(),
-    )
-    .expect("installing A should succeed");
-    install(
-        atlas::cli::cli::InstallArgs {
-            package: Some("B".to_string()),
-        },
-        &config,
-        root.clone(),
-    )
-    .expect("installing B should succeed");
+    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
+    install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    let result = uninstall(&config, uninstall_args("A"), &settings);
+    let result = uninstall(&config, &"A".to_string());
     let err = result.expect_err("uninstalling A should fail because B depends on it");
     let chain = format!("{err:#}");
     assert!(chain.contains("depends on"), "error chain was: {chain}");
@@ -165,7 +135,6 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
-    let settings = load_config()?;
 
     let a_sky = write_signed_sky(&tmp, &keypair, "a.sky", "A", "1.0.0", 1, b"a\n", vec![])?;
     let b_sky = write_signed_sky_in_dir(
@@ -188,27 +157,12 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(
-        atlas::cli::cli::InstallArgs {
-            package: Some("A".to_string()),
-        },
-        &config,
-        root.clone(),
-    )
-    .expect("installing A should succeed");
-    install(
-        atlas::cli::cli::InstallArgs {
-            package: Some("B".to_string()),
-        },
-        &config,
-        root.clone(),
-    )
-    .expect("installing B should succeed");
+    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
+    install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    uninstall(&config, uninstall_args("B"), &settings)
+    uninstall(&config, &"B".to_string())
         .expect("uninstalling B should succeed (nothing depends on B)");
-    uninstall(&config, uninstall_args("A"), &settings)
-        .expect("uninstalling A should now succeed (B is gone)");
+    uninstall(&config, &"A".to_string()).expect("uninstalling A should now succeed (B is gone)");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -244,9 +198,8 @@ fn uninstall_non_installed_package_fails() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (_keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
-    let settings = load_config()?;
 
-    let result = uninstall(&config, uninstall_args("ghost"), &settings);
+    let result = uninstall(&config, &"ghost".to_string());
     let err = result.expect_err("uninstalling a non-installed package should fail");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");

@@ -2,12 +2,9 @@ mod fixtures;
 
 use anyhow::Result;
 use atlas::{
-    cli::cli::{InstallArgs, UninstallArgs},
-    install::install::install,
-    types::runtime_config::RuntimeConfig,
+    install::install::install, types::runtime_config::RuntimeConfig,
     uninstall::uninstall::uninstall,
 };
-use common::types::config::load_config;
 use fixtures::{
     ARCH, ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, seed_repo_db_with_deps,
     tempdir, write_signed_sky, write_signed_sky_in_dir,
@@ -16,18 +13,6 @@ use ring::signature::Ed25519KeyPair;
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use tempfile::TempDir;
-
-fn install_args(package: &str) -> InstallArgs {
-    InstallArgs {
-        package: Some(package.to_string()),
-    }
-}
-
-fn uninstall_args(package: &str) -> UninstallArgs {
-    UninstallArgs {
-        package: package.to_string(),
-    }
-}
 
 fn seed_foo_depends_on_bar(
     tmp: &TempDir,
@@ -74,7 +59,7 @@ fn installing_a_package_records_edges_backed_by_ledger_rows() -> Result<()> {
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
     let (foo_sky, _bar_sky) = seed_foo_depends_on_bar(&tmp, &config, &keypair)?;
 
-    install(install_args("foo"), &config, tmp.path().join("root"))
+    install(&"foo".to_string(), &config, tmp.path().join("root"))
         .expect("installing foo should install bar first and then foo");
 
     let conn = Connection::open(&config.install_db)?;
@@ -150,10 +135,9 @@ fn uninstalling_a_never_installed_package_reports_not_found() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
-    let settings = load_config()?;
     seed_foo_depends_on_bar(&tmp, &config, &keypair)?;
 
-    let err = uninstall(&config, uninstall_args("bar"), &settings)
+    let err = uninstall(&config, &"bar".to_string())
         .expect_err("bar was never installed, so uninstalling it must fail");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
@@ -162,8 +146,7 @@ fn uninstalling_a_never_installed_package_reports_not_found() -> Result<()> {
         "a package with no ledger row must not trigger the dependent guard: {chain}"
     );
 
-    let err = uninstall(&config, uninstall_args("foo"), &settings)
-        .expect_err("foo was never installed either");
+    let err = uninstall(&config, &"foo".to_string()).expect_err("foo was never installed either");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
 
@@ -226,7 +209,7 @@ fn install_fails_and_rolls_back_when_the_repo_lies_about_dependencies() -> Resul
     );
 
     let root = tmp.path().join("root");
-    install(install_args("foo"), &config, root.clone()).expect_err(
+    install(&"foo".to_string(), &config, root.clone()).expect_err(
         "installing foo must fail: the foo -> bar edge cannot reference bar's ledger row",
     );
 
@@ -278,7 +261,7 @@ fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()
     );
 
     let root = tmp.path().join("root");
-    install(install_args("A"), &config, root.clone()).expect("installing A should succeed");
+    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
 
     let a_dir = root.join("A-1.0.0-1");
     let a_file = a_dir.join("dir").join("file.txt");
@@ -288,7 +271,7 @@ fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()
         "A's file must be installed before the failing install"
     );
 
-    let err = install(install_args("B"), &config, root.clone())
+    let err = install(&"B".to_string(), &config, root.clone())
         .expect_err("installing B must fail because its dependency is missing");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
