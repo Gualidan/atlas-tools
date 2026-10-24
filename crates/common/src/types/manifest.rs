@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+#[derive(Clone)]
 pub struct ManifestLine {
     pub file_type: FileType,
     pub mode: u32,
@@ -22,6 +23,7 @@ impl ManifestLine {
     }
 }
 
+#[derive(Clone)]
 pub enum FileType {
     File,
     Dir,
