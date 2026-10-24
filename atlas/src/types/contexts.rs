@@ -16,3 +16,9 @@ pub struct Context<'a> {
     pub repo_conn: &'a Connection,
     pub install_conn: &'a Connection,
 }
+
+pub struct RemoveContext<'a> {
+    pub package_id: &'a PackageIdentity,
+    pub install_conn: &'a Connection,
+    pub install_dir: PathBuf,
+}

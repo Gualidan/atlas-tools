@@ -11,6 +11,20 @@ use crate::{
     types::runtime_config::RuntimeConfig, verify::parse_metadata_lines::parse_metadata_lines,
 };
 
+pub enum InstallReason {
+    Dependency,
+    Explicit,
+}
+
+impl ToString for InstallReason {
+    fn to_string(&self) -> String {
+        match self {
+            InstallReason::Dependency => String::from("dependency"),
+            InstallReason::Explicit => String::from("explicit"),
+        }
+    }
+}
+
 pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS installed_packages (
@@ -21,6 +35,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
         sky_path TEXT NOT NULL,
         install_dir TEXT NOT NULL,
         installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        install_reason TEXT NOT NULL,
         PRIMARY KEY (name, architecture)
     )",
         [],
@@ -64,6 +79,7 @@ pub fn insert_installed_package(
     package: &PackageIdentity,
     install_dir: String,
     sky_path: &str,
+    install_reason: InstallReason,
 ) -> Result<()> {
     if !runtime_config
         .install_db
@@ -95,7 +111,7 @@ pub fn insert_installed_package(
 
     ensure_install_schema(&transaction)?;
 
-    transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir) VALUES (?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir]).context("Failed to insert root package into install database")?;
+    transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason) VALUES (?, ?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir, install_reason.to_string()]).context("Failed to insert root package into install database")?;
 
     // Insert root package's paths into "owned files"
     let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
@@ -143,6 +159,9 @@ pub fn remove_uninstalled_package(
     conn: &mut Connection,
     package_id: &PackageIdentity,
 ) -> Result<()> {
+    conn.execute("PRAGMA foreign_keys = ON", [])
+        .context("Failed to enable foreign key enforcement")?;
+
     let transaction = conn
         .transaction()
         .context("Failed to get transaction from database connection")?;

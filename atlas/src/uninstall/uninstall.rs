@@ -1,46 +1,30 @@
 use std::{env::consts::ARCH, path::PathBuf};
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::types::{
-    config::SisyphusConfig,
-    package::{Architectures, PackageIdentity},
-};
+use common::types::package::{Architectures, PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
-    cli::cli::UninstallArgs,
     install::db::{ensure_install_schema, remove_uninstalled_package},
-    types::{context::Context, package_state::PackageState, runtime_config::RuntimeConfig},
+    types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
-pub fn uninstall(
-    runtime_config: &RuntimeConfig,
-    args: UninstallArgs,
-    settings: &SisyphusConfig,
-) -> Result<()> {
-    let repo_conn = Connection::open(&runtime_config.repo_db)
-        .context("Failed to open connection to repository database")?;
+pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
-    let (install_dir, version, release, sky_path) =
-        look_up_installed_package(&install_conn, &args.package)
-            .context("Failed to look up installed package")?;
+    let (install_dir, version, release) = look_up_installed_package(&install_conn, &name)
+        .context("Failed to look up installed package")?;
 
     let package_id = PackageIdentity {
-        name: args.package,
+        name: name.clone(),
         version,
         release,
         architecture: Architectures::try_from(ARCH.to_string())?,
     };
 
-    let mut ctx = Context {
+    let mut ctx = RemoveContext {
         package_id: &package_id,
-        sky_path: PathBuf::from(sky_path),
-        sky_repo: runtime_config.sky_repo.clone(),
         install_dir: PathBuf::from(install_dir),
-        temp_dir: None,
-        settings,
-        repo_conn: &repo_conn,
         install_conn: &install_conn,
     };
 
@@ -56,22 +40,21 @@ pub fn uninstall(
 pub fn look_up_installed_package(
     conn: &Connection,
     name: &String,
-) -> Result<(String, String, u32, String)> {
+) -> Result<(String, String, u32)> {
     ensure_install_schema(conn)?;
-    let mut stmt  = conn.prepare("SELECT install_dir, version, release, sky_path FROM installed_packages WHERE name = ? AND architecture = ?")?;
-    let Some((install_dir, version, release, sky_path)) = stmt
+    let mut stmt  = conn.prepare("SELECT install_dir, version, release FROM installed_packages WHERE name = ? AND architecture = ?")?;
+    let Some((install_dir, version, release)) = stmt
         .query_row(params![name, ARCH], |row| {
             let install_dir: String = row.get(0)?;
             let version: String = row.get(1)?;
             let release: u32 = row.get(2)?;
-            let sky_path: String = row.get(3)?;
 
-            Ok((install_dir, version, release, sky_path))
+            Ok((install_dir, version, release))
         })
         .optional()?
     else {
         return Err(anyhow!("Package {name} not found"));
     };
 
-    Ok((install_dir, version, release, sky_path))
+    Ok((install_dir, version, release))
 }

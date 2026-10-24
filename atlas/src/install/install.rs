@@ -8,26 +8,21 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tempfile::Builder;
 
 use crate::{
-    cli::cli::InstallArgs,
     install::{
-        db::{ensure_install_schema, insert_installed_package},
+        db::{InstallReason, ensure_install_schema, insert_installed_package},
         resolve::resolve_install_order,
     },
     types::{
-        context::Context, guards::SwapBackGuard, package_state::PackageState,
+        contexts::Context, guards::SwapBackGuard, package_state::PackageState,
         runtime_config::RuntimeConfig,
     },
 };
 
 pub fn install(
-    args: InstallArgs,
+    package_name: &String,
     runtime_config: &RuntimeConfig,
     install_dir: PathBuf,
 ) -> Result<()> {
-    if args.package.is_none() {
-        return Err(anyhow!("You must provide a package name to install"));
-    }
-
     let conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
 
@@ -35,10 +30,10 @@ pub fn install(
         .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
         .context("Failed to prepare database query")?;
     let Some(name): Option<String> = stmt
-        .query_row(params![&args.package, ARCH], |row| row.get(0))
+        .query_row(params![package_name, ARCH], |row| row.get(0))
         .optional()?
     else {
-        return Err(anyhow!("Package {} not found", &args.package.unwrap()));
+        return Err(anyhow!("Package {} not found", package_name));
     };
 
     let architecture = Architectures::try_from(ARCH.to_string())?;
@@ -81,6 +76,12 @@ pub fn install(
             }
         };
 
+        let install_reason = if is_root {
+            InstallReason::Explicit
+        } else {
+            InstallReason::Dependency
+        };
+
         let install_dir = install_dir.join(format!(
             "{}-{}-{}",
             &package.name, &package.version, package.release
@@ -116,7 +117,13 @@ pub fn install(
             install_conn: &install_conn,
         };
 
-        install_one(&mut ctx, runtime_config, install_dir_existed, &staging_dir)?;
+        install_one(
+            &mut ctx,
+            runtime_config,
+            install_dir_existed,
+            &staging_dir,
+            install_reason,
+        )?;
     }
 
     Ok(())
@@ -127,6 +134,7 @@ pub fn install_one(
     runtime_config: &RuntimeConfig,
     install_dir_existed: bool,
     staging_dir: &PathBuf,
+    install_reason: InstallReason,
 ) -> Result<()> {
     let state = PackageState::NotInstalled;
 
@@ -145,6 +153,7 @@ pub fn install_one(
         &ctx.package_id,
         ctx.install_dir.to_string_lossy().to_string(),
         &ctx.sky_path.to_str().unwrap(),
+        install_reason,
     )?;
 
     guard.disarm();

@@ -1,5 +1,6 @@
 use std::{
     fs::{self},
+    io::ErrorKind::NotFound,
     path::PathBuf,
 };
 
@@ -20,7 +21,7 @@ use rustix::fs::{CWD, RenameFlags, renameat_with};
 use tempfile::TempDir;
 
 use crate::{
-    types::context::Context,
+    types::contexts::{Context, RemoveContext},
     verify::{
         parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
         validate_payload::validate_payload_paths,
@@ -163,7 +164,7 @@ impl PackageState {
         }
     }
 
-    pub fn remove(self, ctx: &mut Context) -> Result<PackageState> {
+    pub fn remove(self, ctx: &mut RemoveContext) -> Result<PackageState> {
         match self {
             PackageState::Installed => {
                 let mut stmt  = ctx.install_conn.prepare("SELECT package_name FROM package_dependencies WHERE dependency_name = ? AND architecture = ?").context("Failed to prepare database query")?;
@@ -174,9 +175,19 @@ impl PackageState {
                     )
                     .optional()?
                 else {
-                    fs::remove_dir_all(ctx.install_dir.clone())
-                        .context("Failed to recursively remove the install directory")?;
-                    return Ok(PackageState::NotInstalled);
+                    match fs::remove_dir_all(ctx.install_dir.clone()) {
+                        Ok(_) => {
+                            return Ok(PackageState::NotInstalled);
+                        }
+                        Err(e) => {
+                            // Treat the fact that the dir is not there as something that means its already be done
+                            //  and tolerate it to avoid a scenario where updating a package bricks uninstall
+                            if e.kind() == NotFound {
+                                return Ok(PackageState::NotInstalled);
+                            }
+                            return Err(anyhow!(e));
+                        }
+                    }
                 };
 
                 Err(anyhow!(
@@ -188,39 +199,6 @@ impl PackageState {
             _ => {
                 return Err(anyhow!(
                     "Invalid transaction not allowed to remove from this state"
-                ));
-            }
-        }
-    }
-
-    fn update(self, ctx: &mut Context) -> Result<PackageState> {
-        match self {
-            PackageState::Installed {} => {
-                // Repo is truth — update goes to whatever the repo holds, even if older;
-                // refusing downgrades needs real version ordering later.
-                let mut stmt = ctx
-                    .repo_conn
-                    .prepare(
-                        "SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1",
-                    )
-                    .context("Failed to prepare database query")?;
-                let sky_path: String = stmt.query_row(
-                    params![
-                        ctx.package_id.name.as_str(),
-                        ctx.package_id.architecture.to_string()
-                    ],
-                    |row| row.get(0),
-                )?;
-                if sky_path == ctx.sky_path {
-                    return Err(anyhow!("Package is already up to date"));
-                }
-
-                ctx.sky_path = PathBuf::from(sky_path);
-                Ok(PackageState::NotInstalled)
-            }
-            _ => {
-                return Err(anyhow!(
-                    "Invalid transaction not allowed to update from this state"
                 ));
             }
         }
