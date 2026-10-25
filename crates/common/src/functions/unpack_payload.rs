@@ -17,24 +17,21 @@ pub fn unpack_payload(path: &PathBuf, destination: &TempDir) -> Result<()> {
     for entry in archive.entries()? {
         let mut file = entry.context("Failed to get entry")?;
 
-        match file
+        if let Some("payload.tar.zst") = file
             .path()
             .context("Failed to get entry's path")?
             .file_name()
             .and_then(|n| n.to_str())
         {
-            Some("payload.tar.zst") => {
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer)
-                    .context("Failed to read entry")?;
-                let tar = Decoder::new(Cursor::new(&buffer))
-                    .context("Failed to decompress the sky file")?;
-                let mut archive = Archive::new(tar);
-                archive
-                    .unpack(&destination)
-                    .context("Failed to unpack archive to destination")?;
-            }
-            _ => {}
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)
+                .context("Failed to read entry")?;
+            let tar =
+                Decoder::new(Cursor::new(&buffer)).context("Failed to decompress the sky file")?;
+            let mut archive = Archive::new(tar);
+            archive
+                .unpack(destination)
+                .context("Failed to unpack archive to destination")?;
         }
     }
 

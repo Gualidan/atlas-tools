@@ -12,12 +12,11 @@ pub fn find_source_root(extracted_dir: &PathBuf) -> Result<PathBuf> {
         .collect();
 
     // If there's exactly one entry and it's a directory, return it
-    if entries.len() == 1 {
-        if let Ok(file_type) = entries[0].file_type() {
-            if file_type.is_dir() {
-                return Ok(entries[0].path());
-            }
-        }
+    if entries.len() == 1
+        && let Ok(file_type) = entries[0].file_type()
+        && file_type.is_dir()
+    {
+        return Ok(entries[0].path());
     }
 
     // Otherwise (multiple entries, or single file, or empty) return the parent
