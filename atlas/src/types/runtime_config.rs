@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use common::functions::dirs::data_dir;
@@ -29,7 +29,7 @@ impl RuntimeConfig {
                 .join("repo"),
         })
     }
-    pub fn build_at(path: &PathBuf) -> Result<Self> {
+    pub fn build_at(path: &Path) -> Result<Self> {
         Ok(RuntimeConfig {
             repo_db: path.join("repo").with_extension("db"),
             install_db: path.join("installed").with_extension("db"),

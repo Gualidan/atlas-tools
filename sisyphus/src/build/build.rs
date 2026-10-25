@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use common::functions::unpack_payload::unpack_payload;
@@ -35,11 +35,7 @@ pub fn build(
     Ok(pkgdir)
 }
 
-pub fn build_package(
-    package: &Package,
-    srcdir: &PathBuf,
-    artifacts: &[PathBuf],
-) -> Result<TempDir> {
+pub fn build_package(package: &Package, srcdir: &Path, artifacts: &[PathBuf]) -> Result<TempDir> {
     let builddir = Builder::new()
         .prefix("sisyphus_builddir")
         .tempdir()
@@ -64,7 +60,7 @@ pub fn build_package(
         version: package.version.clone(),
         release: package.release.to_string(),
         arch: package.architecture,
-        srcdir: srcdir.clone(),
+        srcdir: srcdir.to_path_buf(),
         builddir,
         pkgdir: pkgdir_path,
         usr_root: usr_root_path,
