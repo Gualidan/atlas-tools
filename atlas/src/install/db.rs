@@ -19,11 +19,11 @@ pub enum InstallReason {
     Explicit,
 }
 
-impl ToString for InstallReason {
-    fn to_string(&self) -> String {
+impl Display for InstallReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            InstallReason::Dependency => String::from("dependency"),
-            InstallReason::Explicit => String::from("explicit"),
+            InstallReason::Dependency => write!(f, "dependency"),
+            InstallReason::Explicit => write!(f, "explicit"),
         }
     }
 }
@@ -91,7 +91,7 @@ pub fn insert_installed_package(
         .exists()
     {
         fs::create_dir(
-            &runtime_config
+            runtime_config
                 .install_db
                 .parent()
                 .context("Failed to get path's parent")?,

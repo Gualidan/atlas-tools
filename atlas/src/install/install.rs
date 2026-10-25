@@ -84,7 +84,7 @@ pub fn install(
 
         let install_dir = install_dir.join(format!(
             "{}-{}-{}",
-            &package.name, &package.version, package.release
+            package.name, package.version, package.release
         ));
         let install_dir_existed = install_dir.exists();
 
@@ -140,7 +140,7 @@ pub fn install_one(
         tempdir,
         config,
         repo_conn: conn,
-        install_conn: &install_conn,
+        install_conn,
     };
     let state = state.verify()?;
     let state = state.stage()?;

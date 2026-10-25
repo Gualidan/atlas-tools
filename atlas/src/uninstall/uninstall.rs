@@ -12,7 +12,7 @@ use crate::{
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
-    let (install_dir, version, release) = look_up_installed_package(&install_conn, &name)
+    let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
 
     let package_id = PackageIdentity {

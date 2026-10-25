@@ -25,7 +25,7 @@ pub fn load_config() -> Result<SisyphusConfig> {
         Config::builder().add_source(File::from(config_dir.join("config.yaml")).required(true));
 
     let config = builder.build().context("Failed to build config")?;
-    Ok(config
+    config
         .try_deserialize()
-        .context("Failed to deserialize config")?)
+        .context("Failed to deserialize config")
 }

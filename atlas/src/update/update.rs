@@ -35,7 +35,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     else {
         return Err(anyhow!(
             "Package {} not found in installed packages",
-            &args.package
+            args.package
         ));
     };
 
@@ -56,7 +56,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         })
         .optional()?
     else {
-        return Err(anyhow!("Package {} not found", &args.package));
+        return Err(anyhow!("Package {} not found", args.package));
     };
 
     let installed_version =
@@ -65,14 +65,12 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         Version::parse(&repo_version).context("Failed to parse version number")?;
 
     match installed_version.cmp(&available_version) {
-        Greater => {
-            return Err(anyhow!(
-                "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
-            ));
-        }
+        Greater => Err(anyhow!(
+            "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
+        )),
         Equal => {
-            println!("Package {} is already up to date", &args.package);
-            return Ok(());
+            println!("Package {} is already up to date", args.package);
+            Ok(())
         }
         Less => {
             let package_id = PackageIdentity {
@@ -112,7 +110,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
 pub fn update_one(
     package_id: PackageIdentity,
     repo_conn: &Connection,
-    mut install_conn: &mut Connection,
+    install_conn: &mut Connection,
     sky_path: PathBuf,
     tempdir: TempDir,
     install_dir: PathBuf,
@@ -121,11 +119,11 @@ pub fn update_one(
 
     let state = PackageState::NotInstalled {
         package_id,
-        install_conn: &install_conn,
+        install_conn,
         sky_path: &sky_path,
         tempdir,
         config: &config,
-        repo_conn: &repo_conn,
+        repo_conn,
         install_dir: &install_dir,
     };
     let state = state.verify()?;
@@ -134,7 +132,7 @@ pub fn update_one(
     let mut guard = SwapBackGuard::new(&install_dir, &staging_dir, true);
 
     update_installed_package(
-        &mut install_conn,
+        install_conn,
         repo_conn,
         &metadata,
         &package_id,

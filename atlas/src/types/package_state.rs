@@ -84,12 +84,12 @@ impl<'a> PackageState<'a> {
                     return Err(anyhow!("Verification failed"));
                 }
 
-                let metadata = sky_verify(&sky_path, &package_id, &config)?;
-                validate_archive_paths(&sky_path).context("Failed to validate archive's paths")?;
-                validate_payload_paths(&sky_path).context("Failed to validate payload's paths")?;
+                let metadata = sky_verify(sky_path, &package_id, config)?;
+                validate_archive_paths(sky_path).context("Failed to validate archive's paths")?;
+                validate_payload_paths(sky_path).context("Failed to validate payload's paths")?;
 
                 let (_, _, files, _) =
-                    read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
+                    read_sky(PathBuf::from(&sky_path)).context("Failed to read sky file")?;
                 let manifest_paths =
                     parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
 
@@ -104,9 +104,9 @@ impl<'a> PackageState<'a> {
                 })
             }
             _ => {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Invalid transaction not allowed to verify from this state"
-                ));
+                ))
             }
         }
     }
@@ -154,7 +154,7 @@ impl<'a> PackageState<'a> {
                     ));
                 }
 
-                unpack_payload(&sky_path, &tempdir)?;
+                unpack_payload(sky_path, &tempdir)?;
 
                 Ok(PackageState::Staged {
                     tempdir,
@@ -163,9 +163,9 @@ impl<'a> PackageState<'a> {
                 })
             }
             _ => {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Invalid transaction not allowed to stage from this state"
-                ));
+                ))
             }
         }
     }
@@ -177,7 +177,7 @@ impl<'a> PackageState<'a> {
                 metadata,
                 install_dir,
             } => {
-                fs::create_dir_all(&install_dir)
+                fs::create_dir_all(install_dir)
                     .context("Failed to create the install directory")?;
 
                 match renameat_with(
@@ -192,9 +192,9 @@ impl<'a> PackageState<'a> {
                 }
             }
             _ => {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Invalid transaction not allowed to commit from this state"
-                ));
+                ))
             }
         }
     }
@@ -232,9 +232,9 @@ impl<'a> PackageState<'a> {
             }
 
             _ => {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Invalid transaction not allowed to remove from this state"
-                ));
+                ))
             }
         }
     }

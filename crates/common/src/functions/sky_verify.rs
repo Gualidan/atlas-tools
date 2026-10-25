@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub fn get_sky_archive<P: AsRef<Path>>(path: &P) -> Result<Archive<Decoder<'_, BufReader<File>>>> {
-    let tar_gz = File::open(&path).context("Failed to open sky file")?;
+    let tar_gz = File::open(path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
     let archive = Archive::new(tar);
 
@@ -92,9 +92,9 @@ pub fn verify_signature(
     Ok(())
 }
 
-pub fn verify_metadata(metadata_bytes: &Vec<u8>, package: &PackageIdentity) -> Result<Metadata> {
+pub fn verify_metadata(metadata_bytes: &[u8], package: &PackageIdentity) -> Result<Metadata> {
     let metadata: Metadata =
-        serde_saphyr::from_slice(&metadata_bytes).context("Failed to deserialize metadata")?;
+        serde_saphyr::from_slice(metadata_bytes).context("Failed to deserialize metadata")?;
 
     if metadata.name != package.name
         || metadata.version != package.version
@@ -141,7 +141,7 @@ pub fn sky_verify(
     verify_signature(&data, settings, signature_bytes).context("Failed to verify signature")?;
 
     let metadata =
-        verify_metadata(&metadata_bytes, &package).context("Failed to verify metadata")?;
+        verify_metadata(&metadata_bytes, package).context("Failed to verify metadata")?;
 
     Ok(metadata)
 }

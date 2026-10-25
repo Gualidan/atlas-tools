@@ -19,7 +19,7 @@ impl Fetcher for HttpFetcher {
 
         match url.scheme() {
             "http" | "https" => {}
-            scheme @ _ => {
+            scheme => {
                 return Err(anyhow!(
                     "Invalid url scheme {scheme} only http and https are supported"
                 ));

@@ -20,13 +20,13 @@ pub fn parse_metadata_lines(files: String) -> Result<Vec<ManifestLine>> {
                     "d" => FileType::Dir,
                     "f" => FileType::File,
                     "l" => FileType::Symlink,
-                    unknown @ _ => {
+                    unknown => {
                         return Err(anyhow!("Invalid file type: {}", unknown));
                     }
                 };
                 manifest_lines.push(ManifestLine {
                     file_type: kind,
-                    mode: mode,
+                    mode,
                     target_or_hash: target_or_hash.to_string(),
                     path: PathBuf::from(path),
                 });

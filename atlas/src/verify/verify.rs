@@ -85,7 +85,7 @@ pub fn verify(
     validate_archive_paths(&sky_path).context("Failed to validate archive's paths")?;
 
     let (metadata_bytes, payload_bytes, files, signature_bytes) =
-        read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
+        read_sky(PathBuf::from(&sky_path)).context("Failed to read sky file")?;
 
     match (args.package.as_ref(), args.sky_path.as_deref()) {
         (Some(name), None) => {
@@ -224,7 +224,7 @@ pub fn verify(
                         "Invalid record, mode mismatch expected {expected_mode:04o} got {computed_mode:04o}"
                     ));
                 }
-                if PathBuf::from(h) != read_link(path).context("Failed to read symlink")? {
+                if *h != read_link(path).context("Failed to read symlink")? {
                     return Err(anyhow!(
                         "Invalid record, symlink is pointing to the wrong file"
                     ));
