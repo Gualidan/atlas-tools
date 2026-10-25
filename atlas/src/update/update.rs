@@ -112,9 +112,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         }?
     } else {
         let mut install_stmt = install_db_conn
-            .prepare(
-                "SELECT name, version, release, architecture, install_dir FROM installed_packages ORDER BY name",
-            )
+            .prepare("SELECT name, version, install_dir FROM installed_packages ORDER BY name")
             .context("Failed to prepare database query")?;
         struct InstalledRow {
             name: String,
