@@ -1,4 +1,7 @@
-use std::fs::{self, File};
+use std::{
+    fmt::Display,
+    fs::{self, File},
+};
 
 use anyhow::{Context, Result, anyhow};
 use common::{
