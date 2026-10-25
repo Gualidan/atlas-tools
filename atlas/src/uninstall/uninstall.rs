@@ -16,8 +16,8 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
         .context("Failed to look up installed package")?;
 
     let package_id = PackageIdentity {
-        name: name.clone(),
-        version,
+        name: name.as_str(),
+        version: version.as_str(),
         release,
         architecture: Architectures::try_from(ARCH.to_string())?,
     };

@@ -5,16 +5,22 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
+use common::types::{
+    config::load_config,
+    package::{Architectures, PackageIdentity},
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use semver::Version;
+use tempfile::{Builder, TempDir};
 
 use crate::{
-    cli::cli::UpdateArgs, install::install::install, types::runtime_config::RuntimeConfig,
-    uninstall::uninstall::uninstall,
+    cli::cli::UpdateArgs,
+    install::db::update_installed_package,
+    types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
 pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
-    let install_db_conn = Connection::open(&runtime_config.install_db)
+    let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
 
     let mut install_stmt  = install_db_conn.prepare("SELECT version, install_dir FROM installed_packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
@@ -36,10 +42,17 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         .context("Failed to open connection to repository database")?;
 
     let mut repo_stmt = repo_db_conn
-        .prepare("SELECT version FROM packages WHERE name = ? AND architecture = ?")
+        .prepare(
+            "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+        )
         .context("Failed to prepare database statement")?;
-    let Some(repo_version): Option<String> = repo_stmt
-        .query_row(params![args.package, ARCH], |row| row.get(0))
+    let Some((repo_version, repo_release, sky_path)): Option<(String, u32, String)> = repo_stmt
+        .query_row(params![args.package, ARCH], |row| {
+            let version: String = row.get(0)?;
+            let release: u32 = row.get(1)?;
+            let sky_path: String = row.get(2)?;
+            Ok((version, release, sky_path))
+        })
         .optional()?
     else {
         return Err(anyhow!("Package {} not found", &args.package));
@@ -61,16 +74,73 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
             return Ok(());
         }
         Less => {
-            uninstall(runtime_config, &args.package)?;
-            install(
-                &args.package,
-                runtime_config,
-                PathBuf::from(install_dir)
-                    .parent()
-                    .context("Failed to get path's parent")?
-                    .to_path_buf(),
+            let package_id = PackageIdentity {
+                name: args.package.as_str(),
+                version: &repo_version,
+                release: repo_release,
+                architecture: Architectures::try_from(ARCH.to_string())?,
+            };
+
+            let install_dir = PathBuf::from(install_dir);
+
+            let tempdir = Builder::new()
+                .prefix("sisyphus_install_tmp_dir_")
+                .tempdir_in(
+                    install_dir
+                        .parent()
+                        .context("Failed to get install dir's parent")?,
+                )
+                .context("Failed to create temporary directory")?;
+
+            drop(install_stmt);
+
+            update_one(
+                package_id,
+                &repo_db_conn,
+                &mut install_db_conn,
+                PathBuf::from(sky_path),
+                tempdir,
+                install_dir,
             )?;
+
             Ok(())
         }
     }
+}
+
+pub fn update_one(
+    package_id: PackageIdentity,
+    repo_conn: &Connection,
+    mut install_conn: &mut Connection,
+    sky_path: PathBuf,
+    tempdir: TempDir,
+    install_dir: PathBuf,
+) -> Result<()> {
+    let config = load_config().context("Failed to load configuration")?;
+
+    let state = PackageState::NotInstalled {
+        package_id,
+        install_conn: &install_conn,
+        sky_path: &sky_path,
+        tempdir,
+        config: &config,
+        repo_conn: &repo_conn,
+        install_dir: &install_dir,
+    };
+    let state = state.verify()?;
+    let state = state.stage()?;
+    let (_, metadata, staging_dir) = state.commit()?;
+    let mut guard = SwapBackGuard::new(&install_dir, &staging_dir, true);
+
+    update_installed_package(
+        &mut install_conn,
+        repo_conn,
+        &metadata,
+        &package_id,
+        sky_path.to_string_lossy().to_string(),
+        install_dir.to_string_lossy().to_string(),
+    )?;
+
+    guard.disarm();
+    Ok(())
 }

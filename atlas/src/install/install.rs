@@ -1,21 +1,21 @@
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::types::package::{Architectures, PackageIdentity};
+use common::types::{
+    config::SisyphusConfig,
+    package::{Architectures, PackageIdentity},
+};
 use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OptionalExtension, params};
 
-use tempfile::Builder;
+use tempfile::{Builder, TempDir};
 
 use crate::{
     install::{
         db::{InstallReason, ensure_install_schema, insert_installed_package},
         resolve::resolve_install_order,
     },
-    types::{
-        contexts::Context, guards::SwapBackGuard, package_state::PackageState,
-        runtime_config::RuntimeConfig,
-    },
+    types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
 pub fn install(
@@ -37,7 +37,7 @@ pub fn install(
     };
 
     let architecture = Architectures::try_from(ARCH.to_string())?;
-    let settings = load_config().context("Failed to load settings")?;
+    let config = load_config().context("Failed to load settings")?;
 
     let to_install = resolve_install_order(&conn, name.clone(), architecture)?;
 
@@ -89,13 +89,13 @@ pub fn install(
         let install_dir_existed = install_dir.exists();
 
         let package_id = PackageIdentity {
-            name: package.name,
-            version: package.version,
+            name: package_name.as_str(),
+            version: package.version.as_str(),
             release: package.release,
             architecture: package.architecture,
         };
 
-        let temp_dir = Builder::new()
+        let tempdir = Builder::new()
             .prefix("sisyphus_install_tmp_dir_")
             .tempdir_in(
                 install_dir
@@ -104,25 +104,17 @@ pub fn install(
             )
             .context("Failed to create temporary directory")?;
 
-        let staging_dir = temp_dir.path().to_path_buf();
-
-        let mut ctx = Context {
-            package_id: &package_id,
-            sky_path: PathBuf::from(&package.sky_path),
-            sky_repo: runtime_config.sky_repo.clone(),
-            install_dir: install_dir.clone(),
-            temp_dir: Some(temp_dir),
-            settings: &settings,
-            repo_conn: &conn,
-            install_conn: &install_conn,
-        };
-
         install_one(
-            &mut ctx,
             runtime_config,
             install_dir_existed,
-            &staging_dir,
             install_reason,
+            package_id,
+            PathBuf::from(&package.sky_path),
+            install_dir,
+            tempdir,
+            &config,
+            &conn,
+            &install_conn,
         )?;
     }
 
@@ -130,29 +122,38 @@ pub fn install(
 }
 
 pub fn install_one(
-    ctx: &mut Context,
     runtime_config: &RuntimeConfig,
     install_dir_existed: bool,
-    staging_dir: &PathBuf,
     install_reason: InstallReason,
+    package_id: PackageIdentity,
+    sky_path: PathBuf,
+    install_dir: PathBuf,
+    tempdir: TempDir,
+    config: &SisyphusConfig,
+    conn: &Connection,
+    install_conn: &Connection,
 ) -> Result<()> {
-    let state = PackageState::NotInstalled;
+    let state = PackageState::NotInstalled {
+        package_id,
+        sky_path: &sky_path,
+        install_dir: &install_dir,
+        tempdir,
+        config,
+        repo_conn: conn,
+        install_conn: &install_conn,
+    };
+    let state = state.verify()?;
+    let state = state.stage()?;
+    let (_, metadata, staging_dir) = state.commit()?;
 
-    let state = state.verify(ctx)?;
-    let state = state.stage(ctx)?;
-    let (_state, metadata) = state.commit(ctx)?;
-    let mut guard = SwapBackGuard::new(
-        PathBuf::from(&ctx.install_dir),
-        staging_dir.to_path_buf(),
-        install_dir_existed,
-    );
+    let mut guard = SwapBackGuard::new(&install_dir, &staging_dir, install_dir_existed);
 
     insert_installed_package(
         runtime_config,
         &metadata,
-        &ctx.package_id,
-        ctx.install_dir.to_string_lossy().to_string(),
-        &ctx.sky_path.to_str().unwrap(),
+        &package_id,
+        install_dir.to_string_lossy().to_string(),
+        sky_path.to_str().unwrap(),
         install_reason,
     )?;
 

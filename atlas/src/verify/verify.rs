@@ -69,8 +69,8 @@ pub fn verify(
         };
 
         package = Some(PackageIdentity {
-            name: name.clone(),
-            version,
+            name,
+            version: &version.clone().as_str(),
             release,
             architecture: Architectures::try_from(architecture)?,
         });

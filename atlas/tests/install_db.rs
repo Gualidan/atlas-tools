@@ -10,11 +10,12 @@ use fixtures::{
     ARCH, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
 };
 use rusqlite::{Connection, params};
+use rustix::path::Arg;
 
 fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
     let identity = PackageIdentity {
-        name: name.to_string(),
-        version: "1.0.0".to_string(),
+        name: name,
+        version: "1.0.0",
         release: 1,
         architecture: ARCH,
     };
@@ -25,8 +26,8 @@ fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>)
 fn metadata(identity: &PackageIdentity, deps: &[String]) -> Metadata {
     Metadata {
         format: 1,
-        name: identity.name.clone(),
-        version: identity.version.clone(),
+        name: identity.name.to_string(),
+        version: identity.version.to_string(),
         release: identity.release,
         architecture: identity.architecture,
         deps: deps.to_vec(),

@@ -219,8 +219,8 @@ impl<'a> Resolver<'a> {
             .context("Failed to query artifact from repository database")?;
 
         let package_id = PackageIdentity {
-            name: package.name.clone(),
-            version: package.version.clone(),
+            name: package.name.as_str(),
+            version: package.version.as_str(),
             release: package.release,
             architecture: package.architecture,
         };

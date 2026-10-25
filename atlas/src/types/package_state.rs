@@ -11,47 +11,71 @@ use common::{
         unpack_payload::unpack_payload,
     },
     types::{
+        config::SisyphusConfig,
         manifest::{FileType, ManifestLine},
         metadata::Metadata,
+        package::PackageIdentity,
     },
 };
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 use tempfile::TempDir;
 
 use crate::{
-    types::contexts::{Context, RemoveContext},
+    types::contexts::RemoveContext,
     verify::{
         parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
         validate_payload::validate_payload_paths,
     },
 };
 
-pub enum PackageState {
-    NotInstalled,
+pub enum PackageState<'a> {
+    NotInstalled {
+        package_id: PackageIdentity<'a>,
+        install_conn: &'a Connection,
+        tempdir: TempDir,
+        sky_path: &'a PathBuf,
+        config: &'a SisyphusConfig,
+        repo_conn: &'a Connection,
+        install_dir: &'a PathBuf,
+    },
     Verified {
         metadata: Metadata,
         manifest_paths: Vec<ManifestLine>,
+        tempdir: TempDir,
+        install_conn: &'a Connection,
+        package_id: PackageIdentity<'a>,
+        sky_path: &'a PathBuf,
+        install_dir: &'a PathBuf,
     },
     Staged {
         tempdir: TempDir,
         metadata: Metadata,
+        install_dir: &'a PathBuf,
     },
     Installed,
 }
 
-impl PackageState {
-    pub fn verify(self, ctx: &mut Context) -> Result<PackageState> {
+impl<'a> PackageState<'a> {
+    pub fn verify(self) -> Result<PackageState<'a>> {
         match self {
-            PackageState::NotInstalled => {
-                let mut stmt = ctx.repo_conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
+            PackageState::NotInstalled {
+                package_id,
+                install_conn,
+                tempdir,
+                sky_path,
+                config,
+                repo_conn,
+                install_dir,
+            } => {
+                let mut stmt = repo_conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1")?;
                 let rows: bool = stmt.query_row(
                     params![
-                        ctx.package_id.name,
-                        ctx.package_id.version,
-                        ctx.package_id.release,
-                        ctx.package_id.architecture.to_string()
+                        package_id.name,
+                        package_id.version,
+                        package_id.release,
+                        package_id.architecture.to_string()
                     ],
                     |row| row.get(0),
                 )?;
@@ -60,20 +84,23 @@ impl PackageState {
                     return Err(anyhow!("Verification failed"));
                 }
 
-                let metadata = sky_verify(&ctx.sky_path, &ctx.package_id, &ctx.settings)?;
-                validate_archive_paths(&ctx.sky_path)
-                    .context("Failed to validate archive's paths")?;
-                validate_payload_paths(&ctx.sky_path)
-                    .context("Failed to validate payload's paths")?;
+                let metadata = sky_verify(&sky_path, &package_id, &config)?;
+                validate_archive_paths(&sky_path).context("Failed to validate archive's paths")?;
+                validate_payload_paths(&sky_path).context("Failed to validate payload's paths")?;
 
                 let (_, _, files, _) =
-                    read_sky(&PathBuf::from(&ctx.sky_path)).context("Failed to read sky file")?;
+                    read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
                 let manifest_paths =
                     parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
 
                 Ok(PackageState::Verified {
                     metadata,
                     manifest_paths,
+                    install_conn,
+                    package_id,
+                    tempdir,
+                    sky_path,
+                    install_dir,
                 })
             }
             _ => {
@@ -84,15 +111,18 @@ impl PackageState {
         }
     }
 
-    pub fn stage(self, ctx: &mut Context) -> Result<PackageState> {
+    pub fn stage(self) -> Result<PackageState<'a>> {
         match self {
             PackageState::Verified {
                 metadata,
                 manifest_paths,
+                tempdir,
+                install_conn,
+                package_id,
+                sky_path,
+                install_dir,
             } => {
-                let tempdir = ctx.temp_dir.take().context("No temporary directory")?;
-                let mut stmt = ctx
-                                    .install_conn
+                let mut stmt = install_conn
                                     .prepare(
                                         "SELECT package_name FROM owned_files WHERE path = ? AND package_name != ? AND architecture = ?",
                                     )
@@ -108,8 +138,8 @@ impl PackageState {
                         .query_row(
                             params![
                                 line.path.to_string_lossy(),
-                                ctx.package_id.name,
-                                ctx.package_id.architecture.to_string(),
+                                package_id.name,
+                                package_id.architecture.to_string(),
                             ],
                             |row| row.get::<_, String>(0),
                         )
@@ -124,9 +154,13 @@ impl PackageState {
                     ));
                 }
 
-                unpack_payload(&ctx.sky_path, &tempdir)?;
+                unpack_payload(&sky_path, &tempdir)?;
 
-                Ok(PackageState::Staged { tempdir, metadata })
+                Ok(PackageState::Staged {
+                    tempdir,
+                    metadata,
+                    install_dir,
+                })
             }
             _ => {
                 return Err(anyhow!(
@@ -136,23 +170,24 @@ impl PackageState {
         }
     }
 
-    pub fn commit(self, ctx: &mut Context) -> Result<(PackageState, Metadata)> {
+    pub fn commit(self) -> Result<(PackageState<'a>, Metadata, TempDir)> {
         match self {
-            PackageState::Staged { tempdir, metadata } => {
-                fs::create_dir_all(&ctx.install_dir)
+            PackageState::Staged {
+                tempdir,
+                metadata,
+                install_dir,
+            } => {
+                fs::create_dir_all(&install_dir)
                     .context("Failed to create the install directory")?;
 
                 match renameat_with(
                     CWD,
                     tempdir.path(),
                     CWD,
-                    ctx.install_dir.clone(),
+                    install_dir.clone(),
                     RenameFlags::EXCHANGE,
                 ) {
-                    Ok(_) => {
-                        ctx.temp_dir = Some(tempdir);
-                        Ok((PackageState::Installed, metadata))
-                    }
+                    Ok(_) => Ok((PackageState::Installed, metadata, tempdir)),
                     Err(e) => Err(e.into()),
                 }
             }
@@ -164,7 +199,7 @@ impl PackageState {
         }
     }
 
-    pub fn remove(self, ctx: &mut RemoveContext) -> Result<PackageState> {
+    pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {
                 let mut stmt  = ctx.install_conn.prepare("SELECT package_name FROM package_dependencies WHERE dependency_name = ? AND architecture = ?").context("Failed to prepare database query")?;
@@ -177,13 +212,13 @@ impl PackageState {
                 else {
                     match fs::remove_dir_all(ctx.install_dir.clone()) {
                         Ok(_) => {
-                            return Ok(PackageState::NotInstalled);
+                            return Ok(());
                         }
                         Err(e) => {
                             // Treat the fact that the dir is not there as something that means its already be done
                             //  and tolerate it to avoid a scenario where updating a package bricks uninstall
                             if e.kind() == NotFound {
-                                return Ok(PackageState::NotInstalled);
+                                return Ok(());
                             }
                             return Err(anyhow!(e));
                         }

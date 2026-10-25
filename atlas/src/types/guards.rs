@@ -1,15 +1,16 @@
 use std::{fs::remove_dir_all, path::PathBuf};
 
 use rustix::fs::{CWD, RenameFlags, renameat_with};
+use tempfile::TempDir;
 
 /// Undoes the state machine's commit-exchange when the DatabaseRecord step
 /// fails: an armed drop swaps the previous install's content back into
 /// `install_dir`. `SwapBackGuard::new` captures the world *before* the
 /// exchange runs, so both paths and `install_dir_existed` describe the
 /// pre-install world, not what the directories look like at commit time.
-pub struct SwapBackGuard {
-    install_dir: Option<PathBuf>,
-    staging_dir: Option<PathBuf>,
+pub struct SwapBackGuard<'a> {
+    install_dir: Option<&'a PathBuf>,
+    staging_dir: Option<&'a TempDir>,
     /// Whether `install_dir` existed before the exchange took place. A
     /// directory that never existed is a placeholder; one that did holds the
     /// previous install's content after the swap-back and must never be
@@ -17,8 +18,12 @@ pub struct SwapBackGuard {
     install_dir_existed: bool,
 }
 
-impl SwapBackGuard {
-    pub fn new(install_dir: PathBuf, staging_dir: PathBuf, install_dir_existed: bool) -> Self {
+impl<'a> SwapBackGuard<'a> {
+    pub fn new(
+        install_dir: &'a PathBuf,
+        staging_dir: &'a TempDir,
+        install_dir_existed: bool,
+    ) -> Self {
         SwapBackGuard {
             install_dir: Some(install_dir),
             staging_dir: Some(staging_dir),
@@ -34,7 +39,7 @@ impl SwapBackGuard {
     }
 }
 
-impl Drop for SwapBackGuard {
+impl<'a> Drop for SwapBackGuard<'a> {
     /// Restores the pre-install world when the armed guard is dropped, so the
     /// caller must keep it armed across the whole DatabaseRecord step.
     fn drop(&mut self) {
@@ -43,7 +48,13 @@ impl Drop for SwapBackGuard {
         {
             // Installs and staging both live under the same parent, so the
             // exchange is same-filesystem and must not fail in practice.
-            match renameat_with(CWD, install_dir, CWD, tempdir, RenameFlags::EXCHANGE) {
+            match renameat_with(
+                CWD,
+                install_dir.clone(),
+                CWD,
+                tempdir.path(),
+                RenameFlags::EXCHANGE,
+            ) {
                 Ok(_) => {}
                 Err(_) => eprintln!("Swap back exchange failed"),
             }
@@ -64,6 +75,8 @@ impl Drop for SwapBackGuard {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::{Builder, TempDir};
+
     use super::SwapBackGuard;
     use std::{
         fs,
@@ -74,17 +87,19 @@ mod tests {
     /// marker file. The install side holds "old" and the staging side holds
     /// "new". Both live under the same parent, so they are on the same
     /// filesystem and the exchange always works.
-    fn setup() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    fn setup() -> (tempfile::TempDir, PathBuf, TempDir) {
         let parent = tempfile::tempdir().expect("failed to create parent temp dir");
         let install_dir = parent.path().join("install");
         let staging_dir = parent.path().join("staging");
 
         fs::create_dir(&install_dir).expect("failed to create install dir");
-        fs::create_dir(&staging_dir).expect("failed to create staging dir");
+        let staging_tempdir = Builder::new()
+            .tempdir_in(&staging_dir)
+            .expect("failed to create tempdir");
         fs::write(marker(&install_dir), b"old").expect("failed to write install marker");
         fs::write(marker(&staging_dir), b"new").expect("failed to write staging marker");
 
-        (parent, install_dir, staging_dir)
+        (parent, install_dir, staging_tempdir)
     }
 
     fn marker(dir: &Path) -> PathBuf {
@@ -100,7 +115,7 @@ mod tests {
         let (_parent, install_dir, staging_dir) = setup();
 
         {
-            let _guard = SwapBackGuard::new(install_dir.clone(), staging_dir.clone(), true);
+            let _guard = SwapBackGuard::new(&install_dir, &staging_dir, true);
         }
 
         assert_eq!(
@@ -109,7 +124,7 @@ mod tests {
             "the install dir should now hold the staging side's content"
         );
         assert_eq!(
-            content(&staging_dir),
+            content(staging_dir.path()),
             "old",
             "the staging dir should now hold the install side's content"
         );
@@ -120,7 +135,7 @@ mod tests {
         let (_parent, install_dir, staging_dir) = setup();
 
         {
-            let mut guard = SwapBackGuard::new(install_dir.clone(), staging_dir.clone(), true);
+            let mut guard = SwapBackGuard::new(&install_dir, &staging_dir, true);
             guard.disarm();
         }
 
@@ -130,7 +145,7 @@ mod tests {
             "a disarmed guard must not touch the install dir"
         );
         assert_eq!(
-            content(&staging_dir),
+            content(staging_dir.path()),
             "new",
             "a disarmed guard must not touch the staging dir"
         );
@@ -141,7 +156,7 @@ mod tests {
         let (_parent, install_dir, staging_dir) = setup();
 
         {
-            let _guard = SwapBackGuard::new(install_dir.clone(), staging_dir.clone(), false);
+            let _guard = SwapBackGuard::new(&install_dir, &staging_dir, false);
         }
 
         assert!(
@@ -149,7 +164,7 @@ mod tests {
             "a placeholder install dir that did not exist before must be removed"
         );
         assert_eq!(
-            content(&staging_dir),
+            content(staging_dir.path()),
             "old",
             "the staging dir should hold the install side's original content"
         );
