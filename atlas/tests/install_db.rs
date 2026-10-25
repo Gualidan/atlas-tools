@@ -10,9 +10,8 @@ use fixtures::{
     ARCH, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
 };
 use rusqlite::{Connection, params};
-use rustix::path::Arg;
 
-fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
+fn package_identity<'a>(name: &'a str, deps: &[&str]) -> (PackageIdentity<'a>, Vec<String>) {
     let identity = PackageIdentity {
         name: name,
         version: "1.0.0",

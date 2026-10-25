@@ -50,7 +50,7 @@ impl<'a> Drop for SwapBackGuard<'a> {
             // exchange is same-filesystem and must not fail in practice.
             match renameat_with(
                 CWD,
-                install_dir.clone(),
+                install_dir.as_path(),
                 CWD,
                 tempdir.path(),
                 RenameFlags::EXCHANGE,
@@ -90,14 +90,13 @@ mod tests {
     fn setup() -> (tempfile::TempDir, PathBuf, TempDir) {
         let parent = tempfile::tempdir().expect("failed to create parent temp dir");
         let install_dir = parent.path().join("install");
-        let staging_dir = parent.path().join("staging");
 
         fs::create_dir(&install_dir).expect("failed to create install dir");
         let staging_tempdir = Builder::new()
-            .tempdir_in(&staging_dir)
+            .tempdir_in(&parent.path())
             .expect("failed to create tempdir");
         fs::write(marker(&install_dir), b"old").expect("failed to write install marker");
-        fs::write(marker(&staging_dir), b"new").expect("failed to write staging marker");
+        fs::write(marker(&staging_tempdir.path()), b"new").expect("failed to write staging marker");
 
         (parent, install_dir, staging_tempdir)
     }
