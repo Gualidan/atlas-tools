@@ -10,6 +10,7 @@ use common::types::{
     package::{Architectures, PackageIdentity},
 };
 use rusqlite::{Connection, OptionalExtension, params};
+use rustix::path::Arg;
 use semver::Version;
 use tempfile::{Builder, TempDir};
 
@@ -137,8 +138,8 @@ pub fn update_one(
         repo_conn,
         &metadata,
         &package_id,
-        sky_path.to_string_lossy().to_string(),
-        install_dir.to_string_lossy().to_string(),
+        &sky_path.to_string_lossy(),
+        &install_dir.to_string_lossy(),
     )?;
 
     guard.disarm();

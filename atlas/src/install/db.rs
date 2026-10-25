@@ -206,8 +206,8 @@ pub fn update_installed_package(
     repo_conn: &Connection,
     metadata: &Metadata,
     package_id: &PackageIdentity,
-    sky_path: String,
-    install_dir: String,
+    sky_path: &str,
+    install_dir: &str,
 ) -> Result<()> {
     conn.execute("PRAGMA foreign_keys = ON", [])
         .context("Failed to enable foreign key enforcement")?;
