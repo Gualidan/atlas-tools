@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use anyhow::Result;
 
@@ -11,11 +11,14 @@ pub struct ManifestLine {
 }
 
 impl ManifestLine {
+    /// Formats one tab-separated manifest record with a trailing newline.
+    /// Masks the mode to `0o7777` and writes it as four octal digits; the target
+    /// or hash and displayed path are emitted without escaping or validation.
     pub fn format(self) -> Result<String> {
         let mode = self.mode & 0o7777;
         Ok(format!(
             "{}\t{:04o}\t{}\t{}\n",
-            self.file_type.to_string(),
+            self.file_type,
             mode,
             self.target_or_hash,
             self.path.display()
@@ -30,12 +33,13 @@ pub enum FileType {
     Symlink,
 }
 
-impl ToString for FileType {
-    fn to_string(&self) -> String {
+impl Display for FileType {
+    /// Writes `f` for files, `d` for directories, or `l` for symbolic links.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileType::File => "f".to_string(),
-            FileType::Dir => "d".to_string(),
-            FileType::Symlink => "l".to_string(),
+            FileType::File => write!(f, "f"),
+            FileType::Dir => write!(f, "d"),
+            FileType::Symlink => write!(f, "l"),
         }
     }
 }

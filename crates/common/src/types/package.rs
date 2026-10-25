@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 /// Installable-identity view of a package: the fields the .sky metadata
 /// contract guarantees and Atlas resolves against. Recipes carry more, but
 /// verification only needs to match these identity fields.
-#[derive(Deserialize, Debug, Clone)]
-pub struct PackageIdentity {
-    pub name: String,
-    pub version: String,
+#[derive(Deserialize, Debug, Clone, Copy)]
+pub struct PackageIdentity<'a> {
+    pub name: &'a str,
+    pub version: &'a str,
     pub release: u32,
     pub architecture: Architectures,
 }

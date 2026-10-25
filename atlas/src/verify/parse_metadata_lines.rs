@@ -4,7 +4,10 @@ use anyhow::{Context, Result, anyhow};
 
 use common::types::manifest::{FileType, ManifestLine};
 
-/// From the string corresponding to the content of the "files" file of a sky archive parse the manifest and return all of its lines
+/// Parses a sky archive's `files` manifest into records in input order.
+/// Each line contains a type (`d`, `f`, or `l`), octal mode, target or hash, and
+/// path separated by tabs. Empty input yields no records. Returns an error for
+/// missing fields, unknown types, or invalid modes; paths and hashes are not validated.
 pub fn parse_metadata_lines(files: String) -> Result<Vec<ManifestLine>> {
     let lines: Vec<&str> = files.lines().collect();
     let mut manifest_lines: Vec<ManifestLine> = Vec::new();
@@ -20,13 +23,13 @@ pub fn parse_metadata_lines(files: String) -> Result<Vec<ManifestLine>> {
                     "d" => FileType::Dir,
                     "f" => FileType::File,
                     "l" => FileType::Symlink,
-                    unknown @ _ => {
+                    unknown => {
                         return Err(anyhow!("Invalid file type: {}", unknown));
                     }
                 };
                 manifest_lines.push(ManifestLine {
                     file_type: kind,
-                    mode: mode,
+                    mode,
                     target_or_hash: target_or_hash.to_string(),
                     path: PathBuf::from(path),
                 });

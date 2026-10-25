@@ -665,6 +665,36 @@ mod payload_archive_validation {
     use super::*;
 
     #[test]
+    fn missing_payload_is_rejected_even_when_other_members_are_present() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let sky = write_raw_sky(
+            &tmp,
+            "missing-payload.sky",
+            &[("metadata.yaml", b"metadata"), ("files", b"manifest")],
+        )?;
+        let result = validate_payload_paths(&sky);
+        assert_chain(&result, "Payload not found in sky file");
+        Ok(())
+    }
+
+    #[test]
+    fn valid_payload_is_found_between_unrelated_archive_members() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let payload =
+            build_payload_with_typed_entry("dir/file.txt", 0o644, EntryType::file(), b"safe\n")?;
+        let sky = write_raw_sky(
+            &tmp,
+            "valid-payload.sky",
+            &[
+                ("metadata.yaml", b"metadata"),
+                ("payload.tar.zst", &payload),
+                ("files", b"manifest"),
+            ],
+        )?;
+        validate_payload_paths(&sky)
+    }
+
+    #[test]
     fn absolute_path_in_payload() -> Result<()> {
         let tmp = TempDir::new().unwrap();
         let payload = build_payload_with_path("/etc/passwd", b"malicious\n")?;
@@ -754,4 +784,24 @@ mod payload_archive_validation {
         assert_chain(&result, "dir/dev");
         Ok(())
     }
+}
+
+#[test]
+fn symlink_target_mismatch_is_rejected_even_when_the_signature_is_valid() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let config = runtime_config(&tmp)?;
+    let contents = b"hello\n";
+    let payload = build_payload(contents, 0o644)?;
+    let file_hash = hex::encode(hash(Cursor::new(contents))?);
+    let files = format!(
+        "f\t0644\t{file_hash}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\twrong.txt\tdir/lnk\n"
+    );
+    let (sky, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "wrong-target.sky")?;
+    let settings = SisyphusConfig {
+        priv_key_path: tmp.path().join("unused.key"),
+        pub_key_path,
+    };
+    let result = verify(mode2_args(&sky), &config, settings);
+    assert_chain(&result, "symlink is pointing to the wrong file");
+    Ok(())
 }

@@ -9,15 +9,20 @@ use crate::{
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
+/// Removes the named package for the host architecture, then deletes its install
+/// database records. A missing install directory is tolerated.
+/// Returns an error if the package is absent or has dependents, and propagates
+/// database and other filesystem errors. A database failure after directory
+/// removal does not restore the files.
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
-    let (install_dir, version, release) = look_up_installed_package(&install_conn, &name)
+    let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
 
     let package_id = PackageIdentity {
-        name: name.clone(),
-        version,
+        name: name.as_str(),
+        version: version.as_str(),
         release,
         architecture: Architectures::try_from(ARCH.to_string())?,
     };

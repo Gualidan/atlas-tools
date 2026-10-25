@@ -197,7 +197,10 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// Skeleton for the local artifact-store lookup.
+    /// Looks up an exact package identity in the local repository database and
+    /// returns its artifact with verified metadata and runtime dependencies.
+    /// A SQL NULL path yields `None`; a missing row is a query error.
+    /// Database, archive, key, signature, and metadata errors propagate.
     fn find_reusable_artifact(
         &self,
         package: &Package,
@@ -219,8 +222,8 @@ impl<'a> Resolver<'a> {
             .context("Failed to query artifact from repository database")?;
 
         let package_id = PackageIdentity {
-            name: package.name.clone(),
-            version: package.version.clone(),
+            name: package.name.as_str(),
+            version: package.version.as_str(),
             release: package.release,
             architecture: package.architecture,
         };

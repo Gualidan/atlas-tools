@@ -11,6 +11,10 @@ pub struct SisyphusConfig {
     pub pub_key_path: PathBuf,
 }
 
+/// Loads the required `config.yaml` from `SISYPHUS_CONFIG_DIR`, or from the
+/// user's configuration directory under `sisyphus` when the override is unset.
+/// Creates the configuration directory if needed. Propagates directory lookup,
+/// directory creation, configuration reading, and deserialization errors.
 pub fn load_config() -> Result<SisyphusConfig> {
     let config_dir = match std::env::var_os("SISYPHUS_CONFIG_DIR") {
         Some(path) => PathBuf::from(path),
@@ -25,7 +29,7 @@ pub fn load_config() -> Result<SisyphusConfig> {
         Config::builder().add_source(File::from(config_dir.join("config.yaml")).required(true));
 
     let config = builder.build().context("Failed to build config")?;
-    Ok(config
+    config
         .try_deserialize()
-        .context("Failed to deserialize config")?)
+        .context("Failed to deserialize config")
 }

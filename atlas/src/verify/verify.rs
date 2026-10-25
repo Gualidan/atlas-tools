@@ -32,6 +32,14 @@ use crate::{
     },
 };
 
+/// Verifies a sky archive selected by exactly one package name or archive path.
+/// A name selects the host architecture's repository entry and checks its
+/// metadata identity; a direct path has no expected identity to compare.
+/// Both modes verify the signature, archive paths, and manifest paths, modes,
+/// file hashes, and symlink targets against a temporarily extracted payload.
+///
+/// Returns an error for invalid arguments, missing packages, or verification
+/// failures, and propagates database, key, archive, and filesystem errors.
 pub fn verify(
     args: VerifyArgs,
     runtime_config: &RuntimeConfig,
@@ -48,7 +56,7 @@ pub fn verify(
         ));
     }
 
-    let mut package = None;
+    let mut package: Option<(String, String, u32, Architectures)> = None;
     let mut sky_path = String::new();
 
     if let Some(ref name) = args.package {
@@ -68,12 +76,12 @@ pub fn verify(
             return Err(anyhow!("Package {name} not found"));
         };
 
-        package = Some(PackageIdentity {
-            name: name.clone(),
+        package = Some((
+            name.clone(),
             version,
             release,
-            architecture: Architectures::try_from(architecture)?,
-        });
+            Architectures::try_from(architecture)?,
+        ));
 
         sky_path = s;
     }
@@ -85,15 +93,22 @@ pub fn verify(
     validate_archive_paths(&sky_path).context("Failed to validate archive's paths")?;
 
     let (metadata_bytes, payload_bytes, files, signature_bytes) =
-        read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
+        read_sky(PathBuf::from(&sky_path)).context("Failed to read sky file")?;
 
     match (args.package.as_ref(), args.sky_path.as_deref()) {
-        (Some(_), None) => {
+        (Some(name), None) => {
             let data = data_to_sign(&metadata_bytes, payload_bytes, files.as_bytes())
                 .context("Failed to produce the data to sign")?;
 
-            verify_metadata(&metadata_bytes, &package.unwrap())
-                .context("Failed to verify metadata")?;
+            let (_, version, release, architecture) = package.context("Missing package info")?;
+            let package_id = PackageIdentity {
+                name,
+                version: &version,
+                release,
+                architecture,
+            };
+
+            verify_metadata(&metadata_bytes, &package_id).context("Failed to verify metadata")?;
             verify_signature(&data, &settings, signature_bytes)
                 .context("Failed to verify signature")?;
         }
@@ -217,7 +232,7 @@ pub fn verify(
                         "Invalid record, mode mismatch expected {expected_mode:04o} got {computed_mode:04o}"
                     ));
                 }
-                if PathBuf::from(h) != read_link(path).context("Failed to read symlink")? {
+                if *h != read_link(path).context("Failed to read symlink")? {
                     return Err(anyhow!(
                         "Invalid record, symlink is pointing to the wrong file"
                     ));
