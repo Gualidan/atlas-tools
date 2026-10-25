@@ -20,12 +20,17 @@ use crate::{
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
-/// Upgrades the named installed package for the host architecture in its recorded
-/// directory when the repository's semantic version is newer. Equal versions
-/// succeed without updating, even if release numbers differ; downgrades fail.
+/// Upgrades `args.package` for the host architecture, or visits all installed
+/// packages in name order when it is `None`. Repository lookups always use the
+/// host architecture, even for installed rows with another architecture.
+///
+/// Replaces each package in its recorded directory when the repository's semantic
+/// version is newer. Equal versions succeed without updating, even if release
+/// numbers differ; downgrades fail. An empty installed list succeeds.
 ///
 /// Propagates missing-package, version parsing, database, configuration,
-/// verification, staging, and filesystem errors from the update.
+/// verification, staging, and filesystem errors from the update. Stops at the
+/// first error; earlier successful updates remain applied.
 pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
