@@ -35,6 +35,12 @@ pub fn build(
     Ok(pkgdir)
 }
 
+/// Runs the optional prepare, build, and check phases, then the required package
+/// phase in Bubblewrap, returning the temporary package output directory.
+/// `srcdir` is mounted writable as `/srcdir`; `artifacts` supply payloads for
+/// the sandbox's `/usr`. The source directory can be modified by the phases.
+/// Propagates temporary-directory, artifact extraction, sandbox startup, and
+/// phase execution errors, including nonzero phase exit statuses.
 pub fn build_package(package: &Package, srcdir: &Path, artifacts: &[PathBuf]) -> Result<TempDir> {
     let builddir = Builder::new()
         .prefix("sisyphus_builddir")

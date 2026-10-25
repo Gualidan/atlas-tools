@@ -20,6 +20,7 @@ pub enum InstallReason {
 }
 
 impl Display for InstallReason {
+    /// Writes the database label `dependency` or `explicit`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InstallReason::Dependency => write!(f, "dependency"),
@@ -76,6 +77,12 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Records a package, its non-directory manifest paths, and its dependency edges
+/// in one install database transaction, creating the database and schema as needed.
+///
+/// Dependencies must exist for the package's architecture in both the repository
+/// and install databases. Filesystem, archive, manifest, and database errors
+/// propagate; an uncommitted transaction is rolled back.
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: &Metadata,
@@ -204,6 +211,15 @@ pub fn remove_uninstalled_package(
     Ok(())
 }
 
+/// Updates the installed row matching the package's name and architecture and
+/// replaces its owned files and outgoing dependency edges in one transaction.
+/// The installation timestamp, reason, and incoming dependency edges are retained.
+///
+/// `sky_path` supplies the new non-directory manifest paths; `install_dir` is
+/// recorded without moving files. Enables foreign keys on `conn`. Dependencies
+/// must exist for this architecture in both databases. Archive, manifest, and
+/// database errors propagate and leave the transaction uncommitted. An absent
+/// installed row can succeed when no file or dependency rows are added.
 pub fn update_installed_package(
     conn: &mut Connection,
     repo_conn: &Connection,

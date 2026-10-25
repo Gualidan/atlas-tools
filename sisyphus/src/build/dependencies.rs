@@ -197,7 +197,10 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// Skeleton for the local artifact-store lookup.
+    /// Looks up an exact package identity in the local repository database and
+    /// returns its artifact with verified metadata and runtime dependencies.
+    /// A SQL NULL path yields `None`; a missing row is a query error.
+    /// Database, archive, key, signature, and metadata errors propagate.
     fn find_reusable_artifact(
         &self,
         package: &Package,

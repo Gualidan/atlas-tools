@@ -13,6 +13,14 @@ use zstd::Decoder;
 
 use common::functions::sky_verify::get_sky_archive;
 
+/// Checks payload entry paths, types, and modes without extracting files.
+/// Allows regular files, directories, and hard or symbolic links. Rejects
+/// absolute paths, `..` components, leading `.` components, duplicate paths,
+/// and setuid/setgid modes. Link targets are not checked.
+///
+/// Returns an error if no `payload.tar.zst` member is found or an outer entry's
+/// filename cannot be read as UTF-8. Archive, decompression, header, and I/O
+/// errors propagate.
 pub fn validate_payload_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
     let mut archive = get_sky_archive(&sky_path).context("Failed to get the sky archive")?;
     let mut seen_paths: HashSet<PathBuf> = HashSet::new();

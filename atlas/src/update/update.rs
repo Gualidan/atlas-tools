@@ -20,6 +20,12 @@ use crate::{
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
+/// Upgrades the named installed package for the host architecture in its recorded
+/// directory when the repository's semantic version is newer. Equal versions
+/// succeed without updating, even if release numbers differ; downgrades fail.
+///
+/// Propagates missing-package, version parsing, database, configuration,
+/// verification, staging, and filesystem errors from the update.
 pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
@@ -107,6 +113,13 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     }
 }
 
+/// Verifies and stages the supplied package, exchanges it into `install_dir`,
+/// and updates the existing install records. The caller selects the version;
+/// this function does not compare it with the installed version.
+///
+/// `install_dir` is expected to exist, and `tempdir` must share its filesystem.
+/// Recording failures trigger a best-effort swap back. Configuration,
+/// verification, staging, filesystem, and database errors propagate.
 pub fn update_one(
     package_id: PackageIdentity,
     repo_conn: &Connection,

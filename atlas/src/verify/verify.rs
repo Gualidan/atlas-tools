@@ -32,6 +32,14 @@ use crate::{
     },
 };
 
+/// Verifies a sky archive selected by exactly one package name or archive path.
+/// A name selects the host architecture's repository entry and checks its
+/// metadata identity; a direct path has no expected identity to compare.
+/// Both modes verify the signature, archive paths, and manifest paths, modes,
+/// file hashes, and symlink targets against a temporarily extracted payload.
+///
+/// Returns an error for invalid arguments, missing packages, or verification
+/// failures, and propagates database, key, archive, and filesystem errors.
 pub fn verify(
     args: VerifyArgs,
     runtime_config: &RuntimeConfig,

@@ -19,6 +19,9 @@ pub struct SwapBackGuard<'a> {
 }
 
 impl<'a> SwapBackGuard<'a> {
+    /// Arms rollback for directories that have been exchanged. `staging_dir`
+    /// must hold the previous destination contents; `install_dir_existed`
+    /// describes the destination before the exchange.
     pub fn new(
         install_dir: &'a PathBuf,
         staging_dir: &'a TempDir,
@@ -40,8 +43,9 @@ impl<'a> SwapBackGuard<'a> {
 }
 
 impl<'a> Drop for SwapBackGuard<'a> {
-    /// Restores the pre-install world when the armed guard is dropped, so the
-    /// caller must keep it armed across the whole DatabaseRecord step.
+    /// Attempts to exchange the directories back while armed, then removes the
+    /// destination if it did not exist before installation. Rollback failures
+    /// are swallowed; disarmed guards leave both directories untouched.
     fn drop(&mut self) {
         if let Some(install_dir) = &self.install_dir
             && let Some(tempdir) = &self.staging_dir

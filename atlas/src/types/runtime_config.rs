@@ -29,6 +29,8 @@ impl RuntimeConfig {
                 .join("repo"),
         })
     }
+    /// Derives `repo.db`, `installed.db`, and the `repo` directory beneath `path`
+    /// without accessing the filesystem. Always returns a configuration.
     pub fn build_at(path: &Path) -> Result<Self> {
         Ok(RuntimeConfig {
             repo_db: path.join("repo").with_extension("db"),

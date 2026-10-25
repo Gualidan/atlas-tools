@@ -18,6 +18,12 @@ use crate::{
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
+/// Installs the named package and its repository-declared dependencies for the
+/// host architecture under `install_dir/<name>-<version>-<release>`.
+/// Already installed dependencies are skipped; the requested package is reinstalled.
+///
+/// Propagates resolution, configuration, verification, filesystem, and database
+/// errors. Packages successfully installed before a later failure remain installed.
 pub fn install(
     package_name: &String,
     runtime_config: &RuntimeConfig,
@@ -121,6 +127,17 @@ pub fn install(
     Ok(())
 }
 
+/// Verifies and stages one package, exchanges it into `install_dir`, and records
+/// it in the database selected by `runtime_config` with `install_reason`.
+/// `conn` supplies repository identities; `install_conn` supplies file ownership
+/// records for conflict checks.
+///
+/// `tempdir` must share a filesystem with `install_dir`. `install_dir_existed`
+/// describes the destination before the exchange. Database recording failures
+/// trigger a best-effort swap back, removing a newly created destination.
+/// Verification, staging, filesystem, and database errors propagate.
+///
+/// Panics if `sky_path` is not valid UTF-8 when recording the installation.
 pub fn install_one(
     runtime_config: &RuntimeConfig,
     install_dir_existed: bool,

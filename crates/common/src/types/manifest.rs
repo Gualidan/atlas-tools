@@ -11,6 +11,9 @@ pub struct ManifestLine {
 }
 
 impl ManifestLine {
+    /// Formats one tab-separated manifest record with a trailing newline.
+    /// Masks the mode to `0o7777` and writes it as four octal digits; the target
+    /// or hash and displayed path are emitted without escaping or validation.
     pub fn format(self) -> Result<String> {
         let mode = self.mode & 0o7777;
         Ok(format!(
@@ -31,6 +34,7 @@ pub enum FileType {
 }
 
 impl Display for FileType {
+    /// Writes `f` for files, `d` for directories, or `l` for symbolic links.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FileType::File => write!(f, "f"),

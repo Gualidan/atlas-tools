@@ -58,6 +58,10 @@ pub enum PackageState<'a> {
 }
 
 impl<'a> PackageState<'a> {
+    /// Advances `NotInstalled` to `Verified` after checking the exact repository
+    /// identity, archive signature and metadata, archive paths, and manifest syntax.
+    /// Propagates database, archive, key, and validation errors, including a missing
+    /// repository row. Other starting states return an invalid-state error.
     pub fn verify(self) -> Result<PackageState<'a>> {
         match self {
             PackageState::NotInstalled {
@@ -111,6 +115,11 @@ impl<'a> PackageState<'a> {
         }
     }
 
+    /// Advances `Verified` to `Staged` by extracting the payload into its temporary
+    /// directory. Rejects non-directory paths owned by another package for the
+    /// same architecture; paths already owned by this package are allowed.
+    /// Propagates database and extraction errors. Other starting states return
+    /// an invalid-state error.
     pub fn stage(self) -> Result<PackageState<'a>> {
         match self {
             PackageState::Verified {
@@ -170,6 +179,13 @@ impl<'a> PackageState<'a> {
         }
     }
 
+    /// Exchanges a `Staged` payload with the install directory, creating the
+    /// destination first if needed. Both directories must share a filesystem.
+    /// Returns `Installed`, the metadata, and the temporary directory now holding
+    /// the previous destination contents; dropping it attempts to remove them.
+    ///
+    /// Propagates directory creation and exchange errors. A failed exchange can
+    /// leave a newly created destination behind. Other states return an error.
     pub fn commit(self) -> Result<(PackageState<'a>, Metadata, TempDir)> {
         match self {
             PackageState::Staged {
@@ -199,6 +215,11 @@ impl<'a> PackageState<'a> {
         }
     }
 
+    /// Removes an `Installed` package's directory if no package depends on it
+    /// for the same architecture. A missing directory counts as success;
+    /// database records are left for the caller to remove.
+    /// Returns an error for dependents or another starting state, and propagates
+    /// database errors and filesystem errors other than `NotFound`.
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {

@@ -14,6 +14,13 @@ pub struct HttpFetcher {
 }
 
 impl Fetcher for HttpFetcher {
+    /// Downloads an HTTP(S) source into `destination`, returning its path and
+    /// the completion time as an RFC 3339 UTC timestamp. Uses the final response
+    /// URL's filename, or `tmp.bin` if absent, replacing any existing file there.
+    ///
+    /// Rejects other schemes and input URL paths ending in `.git`. URL, request,
+    /// HTTP error status, response body, and filesystem errors propagate; a
+    /// failure after file creation can leave an empty or partially written file.
     fn fetch(self: Box<Self>) -> Result<(PathBuf, String)> {
         let url = Url::parse(&self.url).context("Failed to parse url")?;
 

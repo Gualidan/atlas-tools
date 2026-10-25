@@ -14,6 +14,9 @@ use crate::{
     types::{config::SisyphusConfig, metadata::Metadata, package::PackageIdentity},
 };
 
+/// Opens a sky file as a Zstandard-decoded tar reader without validating entries.
+/// Returns file-open and decoder initialization errors; errors encountered while
+/// reading archive contents are deferred to the returned reader.
 pub fn get_sky_archive<P: AsRef<Path>>(path: &P) -> Result<Archive<Decoder<'_, BufReader<File>>>> {
     let tar_gz = File::open(path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
@@ -92,6 +95,9 @@ pub fn verify_signature(
     Ok(())
 }
 
+/// Deserializes YAML metadata and returns it if its name, version, release, and
+/// architecture match `package`. Returns deserialization or identity mismatch
+/// errors; this check does not authenticate the metadata's signature.
 pub fn verify_metadata(metadata_bytes: &[u8], package: &PackageIdentity) -> Result<Metadata> {
     let metadata: Metadata =
         serde_saphyr::from_slice(metadata_bytes).context("Failed to deserialize metadata")?;
@@ -127,6 +133,10 @@ pub fn data_to_sign(
 
     Ok(data)
 }
+/// Returns metadata after verifying the archive's Ed25519 signature using
+/// `settings.pub_key_path` and matching the expected package identity.
+/// Propagates archive reading, public-key, signature, and metadata errors.
+/// Does not validate payload paths or manifest contents.
 pub fn sky_verify(
     file_name: &PathBuf,
     package: &PackageIdentity,
