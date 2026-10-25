@@ -89,7 +89,7 @@ pub fn install(
         let install_dir_existed = install_dir.exists();
 
         let package_id = PackageIdentity {
-            name: package_name.as_str(),
+            name: package.name.as_str(),
             version: package.version.as_str(),
             release: package.release,
             architecture: package.architecture,
