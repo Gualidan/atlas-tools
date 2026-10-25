@@ -107,11 +107,9 @@ impl<'a> PackageState<'a> {
                     install_dir,
                 })
             }
-            _ => {
-                Err(anyhow!(
-                    "Invalid transaction not allowed to verify from this state"
-                ))
-            }
+            _ => Err(anyhow!(
+                "Invalid transaction not allowed to verify from this state"
+            )),
         }
     }
 
@@ -171,11 +169,9 @@ impl<'a> PackageState<'a> {
                     install_dir,
                 })
             }
-            _ => {
-                Err(anyhow!(
-                    "Invalid transaction not allowed to stage from this state"
-                ))
-            }
+            _ => Err(anyhow!(
+                "Invalid transaction not allowed to stage from this state"
+            )),
         }
     }
 
@@ -207,11 +203,9 @@ impl<'a> PackageState<'a> {
                     Err(e) => Err(e.into()),
                 }
             }
-            _ => {
-                Err(anyhow!(
-                    "Invalid transaction not allowed to commit from this state"
-                ))
-            }
+            _ => Err(anyhow!(
+                "Invalid transaction not allowed to commit from this state"
+            )),
         }
     }
 
@@ -252,11 +246,9 @@ impl<'a> PackageState<'a> {
                 ))
             }
 
-            _ => {
-                Err(anyhow!(
-                    "Invalid transaction not allowed to remove from this state"
-                ))
-            }
+            _ => Err(anyhow!(
+                "Invalid transaction not allowed to remove from this state"
+            )),
         }
     }
 }

@@ -85,7 +85,7 @@ impl Installation {
         update(
             &self.config,
             UpdateArgs {
-                package: "foo".into(),
+                package: Some("foo".into()),
             },
         )
     }
@@ -426,7 +426,7 @@ fn updating_a_package_that_is_not_installed_reports_not_found() -> Result<()> {
     let err = update(
         &fixture.config,
         UpdateArgs {
-            package: "unknown".into(),
+            package: Some("unknown".into()),
         },
     )
     .expect_err("unknown package must be rejected");

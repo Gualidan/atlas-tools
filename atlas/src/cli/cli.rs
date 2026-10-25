@@ -57,8 +57,8 @@ pub struct UninstallArgs {
 
 #[derive(Args)]
 pub struct UpdateArgs {
-    /// The package to update
-    pub package: String,
+    /// A package to update
+    pub package: Option<String>,
 }
 
 #[derive(Args)]
