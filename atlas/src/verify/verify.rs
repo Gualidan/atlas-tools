@@ -48,7 +48,7 @@ pub fn verify(
         ));
     }
 
-    let mut package = None;
+    let mut package: Option<(String, String, u32, Architectures)> = None;
     let mut sky_path = String::new();
 
     if let Some(ref name) = args.package {
@@ -68,12 +68,12 @@ pub fn verify(
             return Err(anyhow!("Package {name} not found"));
         };
 
-        package = Some(PackageIdentity {
-            name,
-            version: &version.clone().as_str(),
+        package = Some((
+            name.clone(),
+            version,
             release,
-            architecture: Architectures::try_from(architecture)?,
-        });
+            Architectures::try_from(architecture)?,
+        ));
 
         sky_path = s;
     }
@@ -88,12 +88,19 @@ pub fn verify(
         read_sky(&PathBuf::from(&sky_path)).context("Failed to read sky file")?;
 
     match (args.package.as_ref(), args.sky_path.as_deref()) {
-        (Some(_), None) => {
+        (Some(name), None) => {
             let data = data_to_sign(&metadata_bytes, payload_bytes, files.as_bytes())
                 .context("Failed to produce the data to sign")?;
 
-            verify_metadata(&metadata_bytes, &package.unwrap())
-                .context("Failed to verify metadata")?;
+            let (_, version, release, architecture) = package.context("Missing package info")?;
+            let package_id = PackageIdentity {
+                name,
+                version: &version,
+                release,
+                architecture,
+            };
+
+            verify_metadata(&metadata_bytes, &package_id).context("Failed to verify metadata")?;
             verify_signature(&data, &settings, signature_bytes)
                 .context("Failed to verify signature")?;
         }
