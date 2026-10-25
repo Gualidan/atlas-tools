@@ -30,87 +30,177 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
 
-    let mut install_stmt  = install_db_conn.prepare("SELECT version, install_dir FROM installed_packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-    let Some((installed_version, install_dir)) = install_stmt
-        .query_row(params![&args.package, ARCH], |row| {
-            let version: String = row.get::<_, String>(0)?;
-            let install_dir: String = row.get::<_, String>(1)?;
-            Ok((version, install_dir))
-        })
-        .optional()?
-    else {
-        return Err(anyhow!(
-            "Package {} not found in installed packages",
-            args.package
-        ));
-    };
-
     let repo_db_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to repository database")?;
 
-    let mut repo_stmt = repo_db_conn
-        .prepare(
-            "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
-        )
-        .context("Failed to prepare database statement")?;
-    let Some((repo_version, repo_release, sky_path)): Option<(String, u32, String)> = repo_stmt
-        .query_row(params![args.package, ARCH], |row| {
-            let version: String = row.get(0)?;
-            let release: u32 = row.get(1)?;
-            let sky_path: String = row.get(2)?;
-            Ok((version, release, sky_path))
-        })
-        .optional()?
-    else {
-        return Err(anyhow!("Package {} not found", args.package));
-    };
+    if let Some(package) = args.package {
+        let mut install_stmt  = install_db_conn.prepare("SELECT version, install_dir FROM installed_packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
+        let Some((installed_version, install_dir)) = install_stmt
+            .query_row(params![&package, ARCH], |row| {
+                let version: String = row.get::<_, String>(0)?;
+                let install_dir: String = row.get::<_, String>(1)?;
+                Ok((version, install_dir))
+            })
+            .optional()?
+        else {
+            return Err(anyhow!(
+                "Package {} not found in installed packages",
+                package
+            ));
+        };
 
-    let installed_version =
-        Version::parse(&installed_version).context("Failed to parse version number")?;
-    let available_version =
-        Version::parse(&repo_version).context("Failed to parse version number")?;
+        let mut repo_stmt = repo_db_conn
+                .prepare(
+                    "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+                )
+                .context("Failed to prepare database statement")?;
+        let Some((repo_version, repo_release, sky_path)): Option<(String, u32, String)> = repo_stmt
+            .query_row(params![package, ARCH], |row| {
+                let version: String = row.get(0)?;
+                let release: u32 = row.get(1)?;
+                let sky_path: String = row.get(2)?;
+                Ok((version, release, sky_path))
+            })
+            .optional()?
+        else {
+            return Err(anyhow!("Package {} not found", package));
+        };
 
-    match installed_version.cmp(&available_version) {
-        Greater => Err(anyhow!(
-            "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
-        )),
-        Equal => {
-            println!("Package {} is already up to date", args.package);
-            Ok(())
+        let installed_version =
+            Version::parse(&installed_version).context("Failed to parse version number")?;
+        let available_version =
+            Version::parse(&repo_version).context("Failed to parse version number")?;
+
+        match installed_version.cmp(&available_version) {
+            Greater => Err(anyhow!(
+                "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
+            )),
+            Equal => {
+                println!("Package {} is already up to date", package);
+                return Ok(());
+            }
+            Less => Ok({
+                let package_id = PackageIdentity {
+                    name: &package,
+                    version: &repo_version,
+                    release: repo_release,
+                    architecture: Architectures::try_from(ARCH.to_string())?,
+                };
+
+                let install_dir = PathBuf::from(install_dir);
+
+                let tempdir = Builder::new()
+                    .prefix("sisyphus_install_tmp_dir_")
+                    .tempdir_in(
+                        install_dir
+                            .parent()
+                            .context("Failed to get install dir's parent")?,
+                    )
+                    .context("Failed to create temporary directory")?;
+
+                drop(install_stmt);
+
+                update_one(
+                    package_id,
+                    &repo_db_conn,
+                    &mut install_db_conn,
+                    PathBuf::from(sky_path),
+                    tempdir,
+                    install_dir,
+                )?;
+            }),
+        }?
+    } else {
+        let mut install_stmt = install_db_conn
+            .prepare(
+                "SELECT name, version, release, architecture, install_dir FROM installed_packages ORDER BY name",
+            )
+            .context("Failed to prepare database query")?;
+        struct InstalledRow {
+            name: String,
+            version: String,
+            install_dir: String,
         }
-        Less => {
-            let package_id = PackageIdentity {
-                name: args.package.as_str(),
-                version: &repo_version,
-                release: repo_release,
-                architecture: Architectures::try_from(ARCH.to_string())?,
+
+        let installed_rows = install_stmt
+            .query_map([], |row| {
+                Ok(InstalledRow {
+                    name: row.get(0)?,
+                    version: row.get(1)?,
+                    install_dir: row.get(4)?,
+                })
+            })
+            .context("Failed to list all installed packages")?
+            .collect::<Result<Vec<InstalledRow>, _>>()?;
+
+        drop(install_stmt);
+
+        let mut repo_stmt = repo_db_conn
+                                    .prepare(
+                                        "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+                                    )
+                                    .context("Failed to prepare database statement")?;
+
+        for package in installed_rows {
+            let Some((repo_version, repo_release, sky_path)): Option<(String, u32, String)> =
+                repo_stmt
+                    .query_row(params![package.name, ARCH], |row| {
+                        let version: String = row.get(0)?;
+                        let release: u32 = row.get(1)?;
+                        let sky_path: String = row.get(2)?;
+                        Ok((version, release, sky_path))
+                    })
+                    .optional()?
+            else {
+                return Err(anyhow!("Package {} not found", package.name));
             };
 
-            let install_dir = PathBuf::from(install_dir);
+            let installed_version =
+                Version::parse(&package.version).context("Failed to parse version")?;
+            let available_version =
+                Version::parse(&repo_version).context("Failed to parse version")?;
 
-            let tempdir = Builder::new()
-                .prefix("sisyphus_install_tmp_dir_")
-                .tempdir_in(
-                    install_dir
-                        .parent()
-                        .context("Failed to get install dir's parent")?,
-                )
-                .context("Failed to create temporary directory")?;
+            match installed_version.cmp(&available_version) {
+                Greater => Err(anyhow!(
+                    "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
+                )),
+                Equal => {
+                    println!("Package {} is already up to date", package.name);
+                    continue;
+                }
+                Less => Ok({
+                    let package_id = PackageIdentity {
+                        name: &package.name,
+                        version: &repo_version,
+                        release: repo_release,
+                        architecture: Architectures::try_from(ARCH.to_string())?,
+                    };
 
-            drop(install_stmt);
+                    let install_dir = PathBuf::from(package.install_dir);
 
-            update_one(
-                package_id,
-                &repo_db_conn,
-                &mut install_db_conn,
-                PathBuf::from(sky_path),
-                tempdir,
-                install_dir,
-            )?;
+                    let tempdir = Builder::new()
+                        .prefix("sisyphus_install_tmp_dir_")
+                        .tempdir_in(
+                            install_dir
+                                .parent()
+                                .context("Failed to get install dir's parent")?,
+                        )
+                        .context("Failed to create temporary directory")?;
 
-            Ok(())
+                    update_one(
+                        package_id,
+                        &repo_db_conn,
+                        &mut install_db_conn,
+                        PathBuf::from(sky_path),
+                        tempdir,
+                        install_dir,
+                    )?;
+                }),
+            }?
         }
     }
+
+    Ok(())
 }
 
 /// Verifies and stages the supplied package, exchanges it into `install_dir`,
