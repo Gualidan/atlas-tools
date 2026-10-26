@@ -17,7 +17,7 @@ use tempfile::{Builder, TempDir};
 
 use crate::{
     cli::cli::UpdateArgs,
-    install::db::update_installed_package,
+    install::{db::update_installed_package, install::print_packages_with_indent},
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
@@ -72,15 +72,20 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
             return Err(anyhow!("Package {} not found", package));
         };
 
+        print_packages_with_indent(vec![(&package, &repo_version)], 4);
+
         let ans = Confirm::new(&format!(
-            "This will update {}, do you wish to proceed? [Y/n]",
-            package
+            "This will update these packages, do you wish to proceed?",
         ))
         .with_default(true)
         .prompt();
 
         match ans {
-            Ok(_) => {}
+            Ok(true) => {}
+            Ok(false) => {
+                println!("Transaction aborted");
+                return Ok(());
+            }
             Err(_) => return Err(anyhow!("Invalid answer try again")),
         }
 
