@@ -6,7 +6,10 @@ use inquire::Confirm;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
-    install::db::{ensure_install_schema, remove_uninstalled_package},
+    install::{
+        db::{ensure_install_schema, remove_uninstalled_package},
+        install::print_packages_with_indent,
+    },
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
@@ -21,15 +24,20 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
     let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
 
+    print_packages_with_indent(vec![(name, &version)], 4);
+
     let ans = Confirm::new(&format!(
-        "This will uninstall {}, do you wish to proceed? [Y/n]",
-        name
+        "This will uninstall these packages, do you wish to proceed?",
     ))
     .with_default(true)
     .prompt();
 
     match ans {
-        Ok(_) => {}
+        Ok(true) => {}
+        Ok(false) => {
+            println!("Transaction aborted");
+            return Ok(());
+        }
         Err(_) => return Err(anyhow!("Invalid answer try again")),
     }
 
