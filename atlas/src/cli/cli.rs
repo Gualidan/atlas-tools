@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use common::types::config::load_config;
 
 use crate::{
-    install::install::install,
+    install::install::{install, set_assume_yes},
     types::runtime_config::RuntimeConfig,
     uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
     update::update::update,
@@ -20,6 +20,10 @@ use crate::{
     about = "The Atlas package manager"
 )]
 struct Cli {
+    /// Assume yes for all confirmation prompts
+    #[arg(short = 'y', long = "yes", global = true)]
+    assume_yes: bool,
+
     #[command(subcommand)]
     commands: Commands,
 }
@@ -66,6 +70,7 @@ pub struct CleanArgs {}
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
+    set_assume_yes(cli.assume_yes);
 
     match cli.commands {
         Commands::Install(args) => {
@@ -87,7 +92,7 @@ pub fn run() -> Result<()> {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
 
-            uninstall(&runtime_config, &args.package)?;
+            uninstall(&runtime_config, &args.package, true)?;
         }
         Commands::Update(args) => {
             let runtime_config =

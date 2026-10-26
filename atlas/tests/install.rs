@@ -696,7 +696,7 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
     install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
     install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    uninstall(&config, &"A".to_string()).expect("uninstalling A should succeed");
+    uninstall(&config, &"A".to_string(), false).expect("uninstalling A should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(

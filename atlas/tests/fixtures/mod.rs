@@ -402,6 +402,10 @@ impl ConfigEnv {
         static LOCK: Mutex<()> = Mutex::new(());
         let guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        // Integration tests run without a terminal; auto-accept confirmation
+        // prompts so install/uninstall/update can be exercised directly.
+        atlas::install::install::set_assume_yes(true);
+
         let config_dir = tmp.path().join("sisyphus-config");
         std::fs::create_dir_all(&config_dir)?;
         let pub_key_path = config_dir.join("pub.key");

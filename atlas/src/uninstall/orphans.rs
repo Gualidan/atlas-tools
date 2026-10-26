@@ -5,7 +5,7 @@ use common::types::package::Architectures;
 use rusqlite::{Connection, params};
 
 use crate::{
-    install::{db::ensure_install_schema, install::print_packages_with_indent},
+    install::{db::ensure_install_schema, install::confirmation_prompt},
     types::{orphan_packages::OrphanPackage, runtime_config::RuntimeConfig},
     uninstall::uninstall::uninstall,
 };
@@ -13,16 +13,23 @@ use crate::{
 pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     let orphans = get_orphaned_packages(runtime_config)?;
 
+    if orphans.is_empty() {
+        println!("No orphaned packages to remove");
+        return Ok(());
+    }
+
     let packages: Vec<(&str, &str)> = orphans
         .iter()
         .map(|orphan| (orphan.name.as_str(), orphan.version.as_str()))
         .collect();
 
-    print_packages_with_indent(packages, 4);
+    if !confirmation_prompt(packages, 4, "uninstall")? {
+        return Ok(());
+    }
 
     for orphan in orphans {
         println!("Uninstalling {}", orphan.name);
-        uninstall(runtime_config, &orphan.name)?;
+        uninstall(runtime_config, &orphan.name, false)?;
     }
 
     Ok(())

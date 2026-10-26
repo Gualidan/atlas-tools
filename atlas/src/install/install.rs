@@ -4,7 +4,12 @@ use common::types::{
     package::{Architectures, PackageIdentity},
 };
 use inquire::Confirm;
-use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
+use std::{
+    env::consts::ARCH,
+    fs::create_dir_all,
+    path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -34,40 +39,29 @@ pub fn install(
         .context("Failed to open connection to the repository database")?;
 
     let mut stmt = conn
-        .prepare("SELECT name, version FROM packages WHERE name = ? AND architecture = ?")
+        .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
         .context("Failed to prepare database query")?;
-    let Some((name, version)): Option<(String, String)> = stmt
-        .query_row(params![package_name, ARCH], |row| {
-            let name: String = row.get(0)?;
-            let version: String = row.get(1)?;
-            Ok((name, version))
-        })
+    let Some(name): Option<String> = stmt
+        .query_row(params![package_name, ARCH], |row| row.get(0))
         .optional()?
     else {
         return Err(anyhow!("Package {} not found", package_name));
     };
 
-    print_packages_with_indent(vec![(&name, &version)], 4);
-
-    let ans = Confirm::new(&format!(
-        "This will install these packages, do you wish to proceed?",
-    ))
-    .with_default(true)
-    .prompt();
-
-    match ans {
-        Ok(true) => {}
-        Ok(false) => {
-            println!("Transaction aborted");
-            return Ok(());
-        }
-        Err(_) => return Err(anyhow!("Invalid answer try again")),
-    }
-
     let architecture = Architectures::try_from(ARCH.to_string())?;
     let config = load_config().context("Failed to load settings")?;
 
     let to_install = resolve_install_order(&conn, name.clone(), architecture)?;
+    let packages = to_install
+        .iter()
+        .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
+        .collect::<Vec<(&str, &str)>>();
+
+    let ans = confirmation_prompt(packages, 4, "install")?;
+
+    if !ans {
+        return Ok(());
+    }
 
     create_dir_all(&install_dir).context("Failed to create install_dir's parents")?;
 
@@ -200,9 +194,45 @@ pub fn install_one(
     Ok(())
 }
 
-pub fn print_packages_with_indent(packages: Vec<(&str, &str)>, indent: usize) {
+static ASSUME_YES: AtomicBool = AtomicBool::new(false);
+
+/// Skips interactive confirmation prompts when set to `true`. Intended for the
+/// CLI's `--yes` flag and for non-interactive test runs.
+pub fn set_assume_yes(assume_yes: bool) {
+    ASSUME_YES.store(assume_yes, Ordering::Relaxed);
+}
+
+pub fn confirmation_prompt(
+    packages: Vec<(&str, &str)>,
+    indent: usize,
+    action: &str,
+) -> Result<bool> {
+    if packages.is_empty() {
+        return Ok(true);
+    }
+
     println!("Packages:");
     for (name, version) in packages {
         println!("{:indent$}{}-{}", "", name, version, indent = indent);
+    }
+
+    if ASSUME_YES.load(Ordering::Relaxed) {
+        return Ok(true);
+    }
+
+    let ans = Confirm::new(&format!(
+        "This will {} these packages, do you wish to proceed?",
+        action
+    ))
+    .with_default(true)
+    .prompt();
+
+    match ans {
+        Ok(true) => return Ok(true),
+        Ok(false) => {
+            println!("Transaction aborted");
+            return Ok(false);
+        }
+        Err(_) => return Err(anyhow!("Invalid answer try again")),
     }
 }

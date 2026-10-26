@@ -2,13 +2,12 @@ use std::{env::consts::ARCH, path::PathBuf};
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use common::types::package::{Architectures, PackageIdentity};
-use inquire::Confirm;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     install::{
         db::{ensure_install_schema, remove_uninstalled_package},
-        install::print_packages_with_indent,
+        install::confirmation_prompt,
     },
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
 };
@@ -18,27 +17,14 @@ use crate::{
 /// Returns an error if the package is absent or has dependents, and propagates
 /// database and other filesystem errors. A database failure after directory
 /// removal does not restore the files.
-pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
+pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
     let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
 
-    print_packages_with_indent(vec![(name, &version)], 4);
-
-    let ans = Confirm::new(&format!(
-        "This will uninstall these packages, do you wish to proceed?",
-    ))
-    .with_default(true)
-    .prompt();
-
-    match ans {
-        Ok(true) => {}
-        Ok(false) => {
-            println!("Transaction aborted");
-            return Ok(());
-        }
-        Err(_) => return Err(anyhow!("Invalid answer try again")),
+    if prompt && !confirmation_prompt(vec![(name, &version)], 4, "uninstall")? {
+        return Ok(());
     }
 
     let package_id = PackageIdentity {
