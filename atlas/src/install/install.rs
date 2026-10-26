@@ -3,6 +3,7 @@ use common::types::{
     config::SisyphusConfig,
     package::{Architectures, PackageIdentity},
 };
+use inquire::Confirm;
 use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
@@ -41,6 +42,18 @@ pub fn install(
     else {
         return Err(anyhow!("Package {} not found", package_name));
     };
+
+    let ans = Confirm::new(&format!(
+        "This will install {}, do you wish to proceed? [Y/n]",
+        package_name
+    ))
+    .with_default(true)
+    .prompt();
+
+    match ans {
+        Ok(_) => {}
+        Err(_) => return Err(anyhow!("Invalid answer try again")),
+    }
 
     let architecture = Architectures::try_from(ARCH.to_string())?;
     let config = load_config().context("Failed to load settings")?;
