@@ -9,6 +9,7 @@ use common::types::{
     config::load_config,
     package::{Architectures, PackageIdentity},
 };
+use inquire::Confirm;
 use rusqlite::{Connection, OptionalExtension, params};
 use rustix::path::Arg;
 use semver::Version;
@@ -70,6 +71,18 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         else {
             return Err(anyhow!("Package {} not found", package));
         };
+
+        let ans = Confirm::new(&format!(
+            "This will update {}, do you wish to proceed? [Y/n]",
+            package
+        ))
+        .with_default(true)
+        .prompt();
+
+        match ans {
+            Ok(_) => {}
+            Err(_) => return Err(anyhow!("Invalid answer try again")),
+        }
 
         let installed_version =
             Version::parse(&installed_version).context("Failed to parse version number")?;
