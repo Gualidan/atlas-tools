@@ -17,6 +17,7 @@ tempfile.workspace = true
 anyhow.workspace = true
 hex.workspace = true
 uzers = "0.12.2"
+inquire = "0.9.4"
 
 [dev-dependencies]
 ring.workspace = true
