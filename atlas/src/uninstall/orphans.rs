@@ -1,12 +1,11 @@
 use std::{env::consts::ARCH, path::PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use common::types::package::Architectures;
-use inquire::Confirm;
 use rusqlite::{Connection, params};
 
 use crate::{
-    install::db::ensure_install_schema,
+    install::{db::ensure_install_schema, install::print_packages_with_indent},
     types::{orphan_packages::OrphanPackage, runtime_config::RuntimeConfig},
     uninstall::uninstall::uninstall,
 };
@@ -14,20 +13,12 @@ use crate::{
 pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     let orphans = get_orphaned_packages(runtime_config)?;
 
-    for orphan in &orphans {
-        println!("{}", orphan.name);
-    }
+    let packages: Vec<(&str, &str)> = orphans
+        .iter()
+        .map(|orphan| (orphan.name.as_str(), orphan.version.as_str()))
+        .collect();
 
-    let ans = Confirm::new(&format!(
-        "This will install these packages, do you wish to proceed? [Y/n]",
-    ))
-    .with_default(true)
-    .prompt();
-
-    match ans {
-        Ok(_) => {}
-        Err(_) => return Err(anyhow!("Invalid answer try again")),
-    }
+    print_packages_with_indent(packages, 4);
 
     for orphan in orphans {
         println!("Uninstalling {}", orphan.name);
