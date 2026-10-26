@@ -34,24 +34,33 @@ pub fn install(
         .context("Failed to open connection to the repository database")?;
 
     let mut stmt = conn
-        .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
+        .prepare("SELECT name, version FROM packages WHERE name = ? AND architecture = ?")
         .context("Failed to prepare database query")?;
-    let Some(name): Option<String> = stmt
-        .query_row(params![package_name, ARCH], |row| row.get(0))
+    let Some((name, version)): Option<(String, String)> = stmt
+        .query_row(params![package_name, ARCH], |row| {
+            let name: String = row.get(0)?;
+            let version: String = row.get(1)?;
+            Ok((name, version))
+        })
         .optional()?
     else {
         return Err(anyhow!("Package {} not found", package_name));
     };
 
+    print_packages_with_indent(vec![(&name, &version)], 4);
+
     let ans = Confirm::new(&format!(
-        "This will install {}, do you wish to proceed? [Y/n]",
-        package_name
+        "This will install these packages, do you wish to proceed?",
     ))
     .with_default(true)
     .prompt();
 
     match ans {
-        Ok(_) => {}
+        Ok(true) => {}
+        Ok(false) => {
+            println!("Transaction aborted");
+            return Ok(());
+        }
         Err(_) => return Err(anyhow!("Invalid answer try again")),
     }
 
@@ -189,4 +198,11 @@ pub fn install_one(
 
     guard.disarm();
     Ok(())
+}
+
+pub fn print_packages_with_indent(packages: Vec<(&str, &str)>, indent: usize) {
+    println!("Packages:");
+    for (name, version) in packages {
+        println!("{:indent$}{}-{}", "", name, version, indent = indent);
+    }
 }
