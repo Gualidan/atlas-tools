@@ -2,6 +2,7 @@ use std::{env::consts::ARCH, path::PathBuf};
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use common::types::package::{Architectures, PackageIdentity};
+use inquire::Confirm;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
@@ -19,6 +20,18 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
         .context("Failed to open connection to install database")?;
     let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
+
+    let ans = Confirm::new(&format!(
+        "This will uninstall {}, do you wish to proceed? [Y/n]",
+        name
+    ))
+    .with_default(true)
+    .prompt();
+
+    match ans {
+        Ok(_) => {}
+        Err(_) => return Err(anyhow!("Invalid answer try again")),
+    }
 
     let package_id = PackageIdentity {
         name: name.as_str(),

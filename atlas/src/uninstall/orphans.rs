@@ -1,7 +1,8 @@
 use std::{env::consts::ARCH, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use common::types::package::Architectures;
+use inquire::Confirm;
 use rusqlite::{Connection, params};
 
 use crate::{
@@ -12,6 +13,21 @@ use crate::{
 
 pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     let orphans = get_orphaned_packages(runtime_config)?;
+
+    for orphan in &orphans {
+        println!("{}", orphan.name);
+    }
+
+    let ans = Confirm::new(&format!(
+        "This will install these packages, do you wish to proceed? [Y/n]",
+    ))
+    .with_default(true)
+    .prompt();
+
+    match ans {
+        Ok(_) => {}
+        Err(_) => return Err(anyhow!("Invalid answer try again")),
+    }
 
     for orphan in orphans {
         println!("Uninstalling {}", orphan.name);
