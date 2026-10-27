@@ -113,3 +113,7 @@ pub fn run() -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

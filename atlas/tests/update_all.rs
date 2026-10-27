@@ -477,3 +477,41 @@ fn a_missing_repository_table_reports_an_error_even_with_no_installed_packages()
     );
     fixture.assert_no_staging_dirs(&[])
 }
+
+#[test]
+fn deferred_resolution_errors_are_returned_after_applying_earlier_upgrades() -> Result<()> {
+    for failure in ["downgrade", "invalid-version", "invalid-release"] {
+        let fixture = BulkUpdate::new()?;
+        for name in ["zeta", "middle", "alpha"] {
+            fixture.install(name)?;
+            fixture.publish(name, "2.0.0", 7)?;
+        }
+        let (sql, expected) = match failure {
+            "downgrade" => (
+                "UPDATE packages SET version = '0.9.0' WHERE name = 'middle'",
+                "Not allowed to downgrade middle",
+            ),
+            "invalid-version" => (
+                "UPDATE packages SET version = 'invalid' WHERE name = 'middle'",
+                "Failed to parse version",
+            ),
+            "invalid-release" => (
+                "UPDATE packages SET release = -1 WHERE name = 'middle'",
+                "out of range",
+            ),
+            _ => unreachable!(),
+        };
+        fixture.repo()?.execute(sql, [])?;
+
+        let err = fixture
+            .update_all()
+            .expect_err("resolution failure must be reported");
+
+        assert!(format!("{err:#}").contains(expected), "{failure}: {err:#}");
+        fixture.assert_installed("alpha", "2.0.0", 7)?;
+        fixture.assert_installed("middle", "1.0.0", 1)?;
+        fixture.assert_installed("zeta", "1.0.0", 1)?;
+        fixture.assert_no_staging_dirs(&["alpha", "middle", "zeta"])?;
+    }
+    Ok(())
+}

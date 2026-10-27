@@ -457,3 +457,31 @@ fn semantic_versions_are_compared_numerically() -> Result<()> {
     assert_eq!(fs::read(fixture.dir.join("dir/new.txt"))?, b"new\n");
     fixture.assert_no_staging_dirs()
 }
+
+#[test]
+fn single_update_does_not_resolve_repository_install_dependencies() -> Result<()> {
+    let fixture = Installation::new()?;
+    fixture.publish("2.0.0", &[])?;
+    Connection::open(&fixture.config.repo_db)?.execute(
+        "UPDATE packages SET deps = 'invalid: [yaml' WHERE name = 'foo'",
+        [],
+    )?;
+
+    fixture.update()?;
+
+    assert_eq!(fs::read(fixture.dir.join("dir/new.txt"))?, b"new\n");
+    assert!(!fixture.dir.join("dir/old.txt").exists());
+    let conn = fixture.conn()?;
+    let (version, dir): (String, String) = conn.query_row(
+        "SELECT version, install_dir FROM installed_packages WHERE name = 'foo'",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(version, "2.0.0");
+    assert_eq!(dir, fixture.dir.to_str().unwrap());
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
+        1
+    );
+    fixture.assert_no_staging_dirs()
+}

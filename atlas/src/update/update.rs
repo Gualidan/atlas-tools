@@ -354,3 +354,7 @@ pub fn update_one(
     guard.disarm();
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;
