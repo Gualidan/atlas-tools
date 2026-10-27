@@ -21,7 +21,8 @@ pub struct ResolvedPackage {
 }
 
 pub fn resolve_install_order(
-    conn: &Connection,
+    repo_conn: &Connection,
+    install_conn: &Connection,
     name: String,
     arch: Architectures,
 ) -> Result<Vec<ResolvedPackage>> {
@@ -30,7 +31,8 @@ pub fn resolve_install_order(
     let mut resolved_packages: Vec<ResolvedPackage> = Vec::new();
 
     visit(
-        conn,
+        repo_conn,
+        install_conn,
         name,
         &mut stack,
         &mut resolved,
@@ -42,7 +44,8 @@ pub fn resolve_install_order(
 }
 
 fn visit(
-    conn: &Connection,
+    repo_conn: &Connection,
+    install_conn: &Connection,
     name: String,
     stack: &mut Vec<String>,
     resolved: &mut HashSet<String>,
@@ -59,7 +62,7 @@ fn visit(
         return Err(anyhow!("dependency cycle: {}", cycle.join(" -> ")));
     }
 
-    let mut stmt  = conn.prepare("SELECT version, release, sky_path, deps FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
+    let mut stmt  = repo_conn.prepare("SELECT version, release, sky_path, deps FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
     let Some((version, release, sky_path, deps)): Option<(String, u32, String, String)> = stmt
         .query_row(params![name, arch.to_string()], |row| {
             let version: String = row.get(0)?;
@@ -77,13 +80,23 @@ fn visit(
         });
     };
 
-    let deps: Vec<&str> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
+    let deps: Vec<String> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
 
     stack.push(name.to_string());
+    let mut stmt = install_conn
+        .prepare("SELECT name FROM installed_packages WHERE name = ?")
+        .context("Failed to prepare database query")?;
 
     for dep in deps {
+        let name: Option<String> = stmt.query_row(params![dep], |row| row.get(0)).optional()?;
+
+        if name.is_some() {
+            continue;
+        }
+
         visit(
-            conn,
+            repo_conn,
+            install_conn,
             dep.to_string(),
             stack,
             resolved,
@@ -138,8 +151,15 @@ mod tests {
         }
     }
 
-    fn resolve_names(conn: &Connection, name: &str) -> Result<Vec<String>> {
-        let packages = resolve_install_order(conn, name.to_string(), ARCH)?;
+    fn install_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::install::db::ensure_install_schema(&conn).unwrap();
+        conn
+    }
+
+    fn resolve_names(repo_conn: &Connection, name: &str) -> Result<Vec<String>> {
+        let install_conn = install_conn();
+        let packages = resolve_install_order(repo_conn, &install_conn, name.to_string(), ARCH)?;
         Ok(packages.into_iter().map(|package| package.name).collect())
     }
 

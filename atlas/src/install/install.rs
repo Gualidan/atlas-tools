@@ -3,12 +3,7 @@ use common::types::{
     config::SisyphusConfig,
     package::{Architectures, PackageIdentity},
 };
-use std::{
-    env::consts::ARCH,
-    fs::create_dir_all,
-    path::PathBuf,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -28,21 +23,23 @@ use crate::{
 /// host architecture under `install_dir/<name>-<version>-<release>`.
 /// Already installed dependencies are skipped; the requested package is reinstalled.
 ///
-/// Requests confirmation for the resolved package list unless
-/// [`set_assume_yes`] is enabled. Declining succeeds without installing anything.
-///
-/// Propagates resolution, configuration, confirmation, verification, filesystem,
-/// and database errors. Packages successfully installed before a later failure
-/// remain installed.
+/// Propagates resolution, configuration, verification, filesystem, and database
+/// errors. Packages successfully installed before a later failure remain installed.
 pub fn install(
     package_name: &String,
     runtime_config: &RuntimeConfig,
     install_dir: PathBuf,
 ) -> Result<()> {
-    let conn = Connection::open(&runtime_config.repo_db)
+    let repo_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
+    let install_conn = Connection::open(&runtime_config.install_db)
+        .context("Failed to open connection to install database")?;
+    install_conn
+        .execute("PRAGMA foreign_keys = ON", [])
+        .context("Failed to enable foreign key enforcement")?;
+    ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
 
-    let mut stmt = conn
+    let mut stmt = repo_conn
         .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
         .context("Failed to prepare database query")?;
     let Some(name): Option<String> = stmt
@@ -55,7 +52,7 @@ pub fn install(
     let architecture = Architectures::try_from(ARCH.to_string())?;
     let config = load_config().context("Failed to load settings")?;
 
-    let to_install = resolve_install_order(&conn, name.clone(), architecture)?;
+    let to_install = resolve_install_order(&repo_conn, &install_conn, name.clone(), architecture)?;
     let packages = to_install
         .iter()
         .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
@@ -73,13 +70,6 @@ pub fn install(
         std::fs::create_dir_all(parent)
             .context("Failed to create the install database directory")?;
     }
-
-    let install_conn = Connection::open(&runtime_config.install_db)
-        .context("Failed to open connection to install database")?;
-    install_conn
-        .execute("PRAGMA foreign_keys = ON", [])
-        .context("Failed to enable foreign key enforcement")?;
-    ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
 
     let mut stmt = install_conn
         .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
@@ -139,7 +129,7 @@ pub fn install(
             install_dir,
             tempdir,
             &config,
-            &conn,
+            &repo_conn,
             &install_conn,
         )?;
     }
