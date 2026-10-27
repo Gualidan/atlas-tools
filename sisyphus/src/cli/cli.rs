@@ -11,6 +11,10 @@ use std::path::PathBuf;
     about = "Package build system for the Atlas package manager"
 )]
 struct Cli {
+    /// Assume yes to every prompt
+    #[arg(short = 'y', long = "yes", global = true)]
+    assume_yes: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
