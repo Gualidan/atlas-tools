@@ -228,13 +228,14 @@ fn assert_unchanged(config: &RuntimeConfig, names: &[&str]) -> Result<()> {
 }
 
 #[test]
-fn declining_install_leaves_no_files_or_install_records() -> Result<()> {
+fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
     answer_prompt(
-        "declining_install_leaves_no_files_or_install_records",
+        "declining_install_leaves_no_files_or_install_database",
         false,
         || {
             let tmp = tempdir();
-            let config = runtime_config(&tmp)?;
+            let mut config = runtime_config(&tmp)?;
+            config.install_db = tmp.path().join("atlas/state/installed.db");
             let (_, public_key) = generate_keypair()?;
             let _env = ConfigEnv::new(&tmp, &public_key)?;
             set_assume_yes(false);
@@ -244,13 +245,8 @@ fn declining_install_leaves_no_files_or_install_records() -> Result<()> {
             install(&"foo".into(), &config, root.clone())?;
 
             assert!(!root.exists());
-            let conn = Connection::open(&config.install_db)?;
-            for table in ["installed_packages", "owned_files", "package_dependencies"] {
-                assert_eq!(
-                    count(&conn, &format!("SELECT COUNT(*) FROM {table}"), &[]),
-                    0
-                );
-            }
+            assert!(!config.install_db.exists());
+            assert!(!tmp.path().join("atlas").exists());
             Ok(())
         },
     )

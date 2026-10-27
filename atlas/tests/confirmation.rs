@@ -183,13 +183,7 @@ fn install_prompt_error_lists_dependencies_and_leaves_no_installation() -> Resul
                 "Command is running outside of a TTY try passing --yes"
             );
             assert!(!root.exists());
-            let conn = Connection::open(&config.install_db)?;
-            for table in ["installed_packages", "owned_files", "package_dependencies"] {
-                assert_eq!(
-                    count(&conn, &format!("SELECT COUNT(*) FROM {table}"), &[]),
-                    0
-                );
-            }
+            assert!(!config.install_db.exists());
             Ok(())
         },
         |stdout| {
@@ -197,6 +191,43 @@ fn install_prompt_error_lists_dependencies_and_leaves_no_installation() -> Resul
                 stdout.contains("Packages:\n    bar-1.0.0\n    foo-2.0.0\n"),
                 "{stdout}"
             );
+        },
+    )
+}
+
+#[test]
+fn install_prompt_error_preserves_existing_database_and_skips_installed_dependencies() -> Result<()>
+{
+    without_terminal(
+        "install_prompt_error_preserves_existing_database_and_skips_installed_dependencies",
+        || {
+            let tmp = tempdir();
+            let config = runtime_config(&tmp)?;
+            let (_, key) = generate_keypair()?;
+            let _env = ConfigEnv::new(&tmp, &key)?;
+            set_assume_yes(false);
+            seed_installed(&config, "bar", "dependency")?;
+            seed_repo_db_with_deps(
+                &config.repo_db,
+                &[("foo", "2.0.0", 1, "missing-foo.sky", &["bar"])],
+            );
+            let database_before = fs::read(&config.install_db)?;
+            let root = tmp.path().join("root");
+
+            let err = install(&"foo".into(), &config, root.clone())
+                .expect_err("installed dependencies must be resolved before confirmation");
+
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
+            assert!(!root.exists());
+            assert_eq!(fs::read(&config.install_db)?, database_before);
+            assert_installed_unchanged(&config, "bar")
+        },
+        |stdout| {
+            assert!(stdout.contains("Packages:\n    foo-2.0.0\n"), "{stdout}");
+            assert!(!stdout.contains("    bar-"), "{stdout}");
         },
     )
 }

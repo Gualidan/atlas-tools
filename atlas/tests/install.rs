@@ -254,9 +254,11 @@ fn raw_fixture_with_clean_entry_installs() -> Result<()> {
 }
 
 #[test]
-fn fresh_install_populates_owned_files() -> Result<()> {
+fn fresh_install_creates_database_parents_and_populates_owned_files() -> Result<()> {
     let tmp = tempdir();
-    let config = runtime_config(&tmp)?;
+    let mut config = runtime_config(&tmp)?;
+    config.install_db = tmp.path().join("atlas/state/installed.db");
+    assert!(!config.install_db.parent().unwrap().exists());
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
