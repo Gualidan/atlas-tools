@@ -59,10 +59,11 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         error: deferred_error,
     } = resolve_update_order(&install_db_conn, &repo_db_conn, args.package.as_deref())?;
 
+    if let Some(error) = deferred_error {
+        return Err(error);
+    }
+
     if to_update.is_empty() {
-        if let Some(error) = deferred_error {
-            return Err(error);
-        }
         match args.package.as_deref() {
             Some(package) => println!("Package {package} is already up to date"),
             None => println!("All packages are up to date"),
@@ -108,10 +109,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         )?;
     }
 
-    match deferred_error {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
+    Ok(())
 }
 
 struct Resolution {
