@@ -30,7 +30,7 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    install(&"foo".to_string(), &config, tmp.path().join("root")).expect("install should succeed");
+    install(&"foo".to_string(), &config, &tmp.path().join("root")).expect("install should succeed");
 
     uninstall(&config, &"foo".to_string(), false).expect("uninstall should succeed");
 
@@ -98,8 +98,8 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
-    install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
+    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
+    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
 
     let result = uninstall(&config, &"A".to_string(), false);
     let err = result.expect_err("uninstalling A should fail because B depends on it");
@@ -157,8 +157,8 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
-    install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
+    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
+    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
 
     uninstall(&config, &"B".to_string(), false)
         .expect("uninstalling B should succeed (nothing depends on B)");
@@ -205,6 +205,93 @@ fn uninstall_non_installed_package_fails() -> Result<()> {
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
     assert!(chain.contains("ghost"), "error chain was: {chain}");
+
+    Ok(())
+}
+
+#[test]
+fn resolver_includes_all_dependencies() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+    let sky_path_a = write_signed_sky(
+        &tmp,
+        &keypair,
+        "foo.sky",
+        "foo",
+        "1.0.0",
+        1,
+        b"foo\n",
+        vec![],
+    )?;
+    let sky_path_b = write_signed_sky(
+        &tmp,
+        &keypair,
+        "bar.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"bar\n",
+        vec!["foo".to_string()],
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path_a.to_str().unwrap())],
+    );
+    seed_repo_db(
+        &config.repo_db,
+        &[("foo", "1.0.0", 1, sky_path_b.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+
+    install(&"foo".to_string(), &config, &root).expect("install should succeed");
+    install(&"bar".to_string(), &config, &root).expect("install should succeed");
+
+    uninstall(&config, &"bar".to_string(), false).expect("uninstall should succeed");
+
+    let conn = Connection::open(&config.install_db)?;
+
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+            &[&"foo"]
+        ),
+        1,
+        "foo should be removed together with bar, because b depends on it"
+    );
+
+    // The universe of this test is exactly {A, B}, so the tables must be
+    // completely empty afterwards. Blanket checks catch partial removals
+    // that a targeted check would miss.
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
+        0,
+        "installed_packages should be empty: only foo and bar were ever installed"
+    );
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
+        0,
+        "package_dependencies should be empty: no stale edges may survive"
+    );
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM owned_files", &[]),
+        0,
+        "owned_files should be empty: file ownership rows must go too"
+    );
+
+    // Disk must match the database — this is the check for your PR #5 bug class
+    // (right DB rows deleted, wrong/stale directories left behind).
+    assert!(
+        !root.join("A-1.0.0-1").exists(),
+        "A's install_dir should be removed from disk together with B's"
+    );
+    assert!(
+        !root.join("B-1.0.0-1").exists(),
+        "B's install_dir should be removed from disk"
+    );
 
     Ok(())
 }

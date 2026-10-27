@@ -87,7 +87,7 @@ pub fn run() -> Result<()> {
             let install_dir =
                 env::var("ATLAS_INSTALL_DIR").unwrap_or(String::from("/var/lib/atlas/local"));
 
-            install(&args.package, &runtime_config, PathBuf::from(install_dir))?;
+            install(&args.package, &runtime_config, &PathBuf::from(install_dir))?;
         }
         Commands::Verify(args) => {
             let runtime_config =

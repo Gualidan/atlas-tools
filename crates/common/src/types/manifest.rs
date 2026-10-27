@@ -14,15 +14,15 @@ impl ManifestLine {
     /// Formats one tab-separated manifest record with a trailing newline.
     /// Masks the mode to `0o7777` and writes it as four octal digits; the target
     /// or hash and displayed path are emitted without escaping or validation.
-    pub fn format(self) -> Result<String> {
+    pub fn format(self) -> String {
         let mode = self.mode & 0o7777;
-        Ok(format!(
+        format!(
             "{}\t{:04o}\t{}\t{}\n",
             self.file_type,
             mode,
             self.target_or_hash,
             self.path.display()
-        ))
+        )
     }
 }
 

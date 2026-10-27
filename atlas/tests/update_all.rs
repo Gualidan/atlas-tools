@@ -77,7 +77,7 @@ impl BulkUpdate {
         install(
             &name.to_string(),
             &self.config,
-            self.tmp.path().join("root"),
+            &self.tmp.path().join("root"),
         )
     }
 

@@ -108,7 +108,7 @@ pub fn verify_metadata(metadata_bytes: &[u8], package: &PackageIdentity) -> Resu
         || metadata.architecture != package.architecture
     {
         return Err(anyhow!(
-            "Verification failed: metadata does not match the expected package"
+            "Verification failed: metadata does not match the expected package {metadata:?} package: {package:?}"
         ));
     }
 

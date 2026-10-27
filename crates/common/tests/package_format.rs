@@ -9,7 +9,7 @@ use common::{
 use std::{fs, io::Cursor, path::PathBuf};
 use tar::{Builder, Header};
 
-const METADATA: &[u8] = br#"format: 1
+const METADATA: &[u8] = br"format: 1
 name: example
 version: 1.2.3
 release: 4
@@ -22,7 +22,7 @@ build:
   recipe_sha256: deadbeef
   built_at: '2026-01-01T00:00:00Z'
   builder: tester
-"#;
+";
 
 #[test]
 fn metadata_verification_accepts_a_slice_and_identity_borrowed_from_owned_strings() -> Result<()> {
@@ -154,7 +154,7 @@ fn malformed_or_incomplete_metadata_is_rejected() {
 }
 
 #[test]
-fn display_and_manifest_format_preserve_the_file_type_wire_values() -> Result<()> {
+fn display_and_manifest_format_preserve_the_file_type_wire_values() {
     for (kind, marker, mode, target) in [
         (FileType::File, "f", 0o100644, "deadbeef"),
         (FileType::Dir, "d", 0o40755, "-"),
@@ -175,11 +175,10 @@ fn display_and_manifest_format_preserve_the_file_type_wire_values() -> Result<()
             _ => unreachable!(),
         };
         assert_eq!(
-            line.format()?,
+            line.format(),
             format!("{marker}\t{expected_mode}\t{target}\tpath with spaces\n")
         );
     }
-    Ok(())
 }
 
 fn append(builder: &mut Builder<Vec<u8>>, name: &str, contents: &[u8]) -> Result<()> {

@@ -49,7 +49,7 @@ impl Installation {
             &[("foo", "1.0.0", 1, sky.to_str().unwrap())],
         );
         let root = tmp.path().join("root");
-        install(&"foo".to_string(), &config, root.clone())?;
+        install(&"foo".to_string(), &config, &root)?;
         let dir = root.join("foo-1.0.0-1");
         Ok(Self {
             tmp,

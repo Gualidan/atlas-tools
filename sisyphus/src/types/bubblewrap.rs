@@ -55,7 +55,7 @@ impl Sandbox for Bubblewrap {
             .arg(&self.release)
             .arg("--setenv")
             .arg("ARCH")
-            .arg(&self.arch)
+            .arg(self.arch)
             .arg("--setenv")
             .arg("srcdir")
             .arg("/srcdir")
@@ -66,7 +66,7 @@ impl Sandbox for Bubblewrap {
             .arg("pkgdir")
             .arg("/pkgdir")
             .arg("--unshare-net")
-            .args(&["bash", "-euo", "pipefail", "-c", &phase])
+            .args(["bash", "-euo", "pipefail", "-c", &phase])
             .spawn()
             .context("Failed to spawn bwrap command")?;
 
@@ -74,8 +74,7 @@ impl Sandbox for Bubblewrap {
 
         if !status.success() {
             return Err(anyhow!(
-                "Bubblewrap exited with non zero exit status: {}",
-                status
+                "Bubblewrap exited with non zero exit status: {status}",
             ));
         }
 

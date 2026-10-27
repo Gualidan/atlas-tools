@@ -72,7 +72,7 @@ pub fn visit(
         .prepare("SELECT package_name FROM package_dependencies WHERE dependency_name = ?")
         .context("Failed to prepare database query")?;
 
-    for dep in deps {
+    /*for dep in deps {
         let dependent: Option<String> = dependent_stmt
             .query_row(params![name], |row| row.get(0))
             .optional()?;
@@ -86,7 +86,7 @@ pub fn visit(
             dep,
             dependent.unwrap()
         ));
-    }
+    }*/
 
     packages_to_uninstall.push((
         PackageIdentity {

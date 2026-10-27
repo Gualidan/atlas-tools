@@ -28,7 +28,7 @@ use crate::{
 pub fn install(
     package_name: &String,
     runtime_config: &RuntimeConfig,
-    install_dir: PathBuf,
+    install_dir: &PathBuf,
 ) -> Result<()> {
     let repo_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
@@ -39,7 +39,7 @@ pub fn install(
         .query_row(params![package_name, ARCH], |row| row.get(0))
         .optional()?
     else {
-        return Err(anyhow!("Package {} not found", package_name));
+        return Err(anyhow!("Package {package_name} not found",));
     };
 
     let architecture = Architectures::try_from(ARCH.to_string())?;
@@ -71,7 +71,7 @@ pub fn install(
         return Ok(());
     }
 
-    create_dir_all(&install_dir).context("Failed to create install_dir's parents")?;
+    create_dir_all(install_dir).context("Failed to create install_dir's parents")?;
 
     if let Some(parent) = runtime_config.install_db.parent() {
         std::fs::create_dir_all(parent)
@@ -104,7 +104,7 @@ pub fn install(
             if installed {
                 continue;
             }
-        };
+        }
 
         let install_reason = if is_root {
             InstallReason::Explicit
@@ -138,9 +138,9 @@ pub fn install(
             runtime_config,
             install_dir_existed,
             install_reason,
-            package_id,
-            PathBuf::from(&package.sky_path),
-            install_dir,
+            &package_id,
+            &PathBuf::from(&package.sky_path),
+            &install_dir,
             tempdir,
             &config,
             &repo_conn,
@@ -166,9 +166,9 @@ pub fn install_one(
     runtime_config: &RuntimeConfig,
     install_dir_existed: bool,
     install_reason: InstallReason,
-    package_id: PackageIdentity,
-    sky_path: PathBuf,
-    install_dir: PathBuf,
+    package_id: &PackageIdentity,
+    sky_path: &PathBuf,
+    install_dir: &PathBuf,
     tempdir: TempDir,
     config: &SisyphusConfig,
     conn: &Connection,
@@ -176,8 +176,8 @@ pub fn install_one(
 ) -> Result<()> {
     let state = PackageState::NotInstalled {
         package_id: package_id.clone(),
-        sky_path: &sky_path,
-        install_dir: &install_dir,
+        sky_path,
+        install_dir,
         tempdir,
         config,
         repo_conn: conn,
@@ -187,12 +187,12 @@ pub fn install_one(
     let state = state.stage()?;
     let (_, metadata, staging_dir) = state.commit()?;
 
-    let mut guard = SwapBackGuard::new(&install_dir, &staging_dir, install_dir_existed);
+    let mut guard = SwapBackGuard::new(install_dir, &staging_dir, install_dir_existed);
 
     insert_installed_package(
         runtime_config,
         &metadata,
-        &package_id,
+        package_id,
         install_dir.to_string_lossy().to_string(),
         sky_path.to_str().unwrap(),
         install_reason,

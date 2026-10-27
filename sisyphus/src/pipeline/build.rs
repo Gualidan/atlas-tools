@@ -15,7 +15,7 @@ use crate::{
 use std::path::PathBuf;
 
 pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Result<()> {
-    let package = Recipe { path: &recipe }.parse()?;
+    let package = Recipe { path: recipe }.parse()?;
     let binding = RuntimeConfig::build(recipe)?;
     let config = load_config().context("Failed to load config")?;
     let runtime_config = runtime_config.unwrap_or(&binding);
@@ -27,7 +27,7 @@ pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Re
         let mut stmt = conn.prepare("SELECT 1 FROM packages WHERE name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1").context("Failed to prepare database query")?;
         let package_exists: Option<bool> = stmt
             .query_row(
-                &[
+                [
                     &package.name,
                     &package.version,
                     &package.release.to_string(),
@@ -38,11 +38,11 @@ pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Re
             .optional()
             .context("Failed to query database row")?;
 
-        if !package_exists.is_none() {
+        if package_exists.is_some() {
             let mut stmt = conn.prepare("SELECT sky_path FROM packages where name = ? AND version = ? AND release = ? AND architecture = ? LIMIT 1").context("Failed to prepare database query")?;
             let sky_path: String = stmt
                 .query_row(
-                    &[
+                    [
                         &package.name,
                         &package.version,
                         &package.release.to_string(),
