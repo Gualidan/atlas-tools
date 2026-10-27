@@ -1884,6 +1884,7 @@ dependencies = [
  "common",
  "compress-tools",
  "hex",
+ "inquire",
  "libc",
  "reqwest",
  "ring",
