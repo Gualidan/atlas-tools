@@ -479,7 +479,7 @@ fn a_missing_repository_table_reports_an_error_even_with_no_installed_packages()
 }
 
 #[test]
-fn deferred_resolution_errors_are_returned_before_applying_any_upgrades() -> Result<()> {
+fn resolution_errors_are_returned_before_any_upgrade_is_applied() -> Result<()> {
     for failure in ["downgrade", "invalid-version", "invalid-release"] {
         let fixture = BulkUpdate::new()?;
         for name in ["zeta", "middle", "alpha"] {
