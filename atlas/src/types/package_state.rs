@@ -217,33 +217,19 @@ impl<'a> PackageState<'a> {
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {
-                let mut stmt  = ctx.install_conn.prepare("SELECT package_name FROM package_dependencies WHERE dependency_name = ? AND architecture = ?").context("Failed to prepare database query")?;
-                let Some(dependent): Option<String> = stmt
-                    .query_row(
-                        params![ctx.package_id.name, ctx.package_id.architecture.to_string()],
-                        |row| row.get(0),
-                    )
-                    .optional()?
-                else {
-                    match fs::remove_dir_all(ctx.install_dir.clone()) {
-                        Ok(_) => {
+                match fs::remove_dir_all(ctx.install_dir.clone()) {
+                    Ok(_) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        // Treat the fact that the dir is not there as something that means its already be done
+                        //  and tolerate it to avoid a scenario where updating a package bricks uninstall
+                        if e.kind() == NotFound {
                             return Ok(());
                         }
-                        Err(e) => {
-                            // Treat the fact that the dir is not there as something that means its already be done
-                            //  and tolerate it to avoid a scenario where updating a package bricks uninstall
-                            if e.kind() == NotFound {
-                                return Ok(());
-                            }
-                            return Err(anyhow!(e));
-                        }
+                        return Err(anyhow!(e));
                     }
-                };
-
-                Err(anyhow!(
-                    "Cannot remove package {}: {dependent} depends on it",
-                    ctx.package_id.name
-                ))
+                }
             }
 
             _ => Err(anyhow!(
