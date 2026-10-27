@@ -40,9 +40,9 @@ struct UpdateCandidate {
 /// numbers differ; downgrades fail. An empty update set succeeds without asking.
 ///
 /// Prompts before applying the resolved updates unless `set_assume_yes` is
-/// enabled. Declining succeeds without applying updates. In bulk mode, a
-/// per-package resolution error is returned after applying earlier candidates
-/// in name order, unless confirmation is declined or applying an update fails.
+/// enabled. Declining succeeds without applying updates. In bulk mode, the
+/// first per-package resolution error is returned before any prompt, and no
+/// update is applied.
 ///
 /// Propagates missing-package, version parsing, confirmation, database,
 /// configuration, verification, staging, and filesystem errors. Stops at the
