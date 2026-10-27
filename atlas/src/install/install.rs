@@ -6,11 +6,12 @@ use common::types::{
 use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use tempfile::{Builder, TempDir};
 
 use crate::{
+    cli::confirmation::{Action, confirmation_prompt},
     install::{
         db::{InstallReason, ensure_install_schema, insert_installed_package},
         resolve::resolve_install_order,
@@ -29,10 +30,9 @@ pub fn install(
     runtime_config: &RuntimeConfig,
     install_dir: PathBuf,
 ) -> Result<()> {
-    let conn = Connection::open(&runtime_config.repo_db)
+    let repo_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
-
-    let mut stmt = conn
+    let mut stmt = repo_conn
         .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
         .context("Failed to prepare database query")?;
     let Some(name): Option<String> = stmt
@@ -45,7 +45,31 @@ pub fn install(
     let architecture = Architectures::try_from(ARCH.to_string())?;
     let config = load_config().context("Failed to load settings")?;
 
-    let to_install = resolve_install_order(&conn, name.clone(), architecture)?;
+    let to_install = {
+        let install_conn = if runtime_config.install_db.exists() {
+            Connection::open_with_flags(
+                &runtime_config.install_db,
+                OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .context("Failed to open connection to install database")?
+        } else {
+            let conn = Connection::open_in_memory()
+                .context("Failed to open temporary install database")?;
+            ensure_install_schema(&conn).context("Failed to create the install database schema")?;
+            conn
+        };
+        resolve_install_order(&repo_conn, &install_conn, name.clone(), architecture)?
+    };
+    let packages = to_install
+        .iter()
+        .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
+        .collect::<Vec<(&str, &str)>>();
+
+    let ans = confirmation_prompt(packages, 4, Action::Install)?;
+
+    if !ans {
+        return Ok(());
+    }
 
     create_dir_all(&install_dir).context("Failed to create install_dir's parents")?;
 
@@ -119,7 +143,7 @@ pub fn install(
             install_dir,
             tempdir,
             &config,
-            &conn,
+            &repo_conn,
             &install_conn,
         )?;
     }

@@ -32,7 +32,7 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
 
     install(&"foo".to_string(), &config, tmp.path().join("root")).expect("install should succeed");
 
-    uninstall(&config, &"foo".to_string()).expect("uninstall should succeed");
+    uninstall(&config, &"foo".to_string(), false).expect("uninstall should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -101,7 +101,7 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
     install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    let result = uninstall(&config, &"A".to_string());
+    let result = uninstall(&config, &"A".to_string(), false);
     let err = result.expect_err("uninstalling A should fail because B depends on it");
     let chain = format!("{err:#}");
     assert!(chain.contains("depends on"), "error chain was: {chain}");
@@ -160,9 +160,10 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
     install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
     install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    uninstall(&config, &"B".to_string())
+    uninstall(&config, &"B".to_string(), false)
         .expect("uninstalling B should succeed (nothing depends on B)");
-    uninstall(&config, &"A".to_string()).expect("uninstalling A should now succeed (B is gone)");
+    uninstall(&config, &"A".to_string(), false)
+        .expect("uninstalling A should now succeed (B is gone)");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -199,7 +200,7 @@ fn uninstall_non_installed_package_fails() -> Result<()> {
     let (_keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let result = uninstall(&config, &"ghost".to_string());
+    let result = uninstall(&config, &"ghost".to_string(), false);
     let err = result.expect_err("uninstalling a non-installed package should fail");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");

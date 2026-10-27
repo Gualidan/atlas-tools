@@ -5,20 +5,28 @@ use common::types::package::{Architectures, PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
+    cli::confirmation::{Action, confirmation_prompt},
     install::db::{ensure_install_schema, remove_uninstalled_package},
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
 /// Removes the named package for the host architecture, then deletes its install
 /// database records. A missing install directory is tolerated.
-/// Returns an error if the package is absent or has dependents, and propagates
-/// database and other filesystem errors. A database failure after directory
-/// removal does not restore the files.
-pub fn uninstall(runtime_config: &RuntimeConfig, name: &String) -> Result<()> {
+///
+/// When `prompt` is true, requests confirmation after looking up the package
+/// unless `set_assume_yes` is enabled. Declining succeeds without removing it.
+/// Returns an error if the package is absent or, when removal proceeds, has
+/// dependents, and propagates confirmation, database, and other filesystem errors.
+/// A database failure after directory removal does not restore the files.
+pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
     let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
+
+    if prompt && !confirmation_prompt(vec![(name, &version)], 4, Action::Uninstall)? {
+        return Ok(());
+    }
 
     let package_id = PackageIdentity {
         name: name.as_str(),

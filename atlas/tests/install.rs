@@ -254,9 +254,11 @@ fn raw_fixture_with_clean_entry_installs() -> Result<()> {
 }
 
 #[test]
-fn fresh_install_populates_owned_files() -> Result<()> {
+fn fresh_install_creates_database_parents_and_populates_owned_files() -> Result<()> {
     let tmp = tempdir();
-    let config = runtime_config(&tmp)?;
+    let mut config = runtime_config(&tmp)?;
+    config.install_db = tmp.path().join("atlas/state/installed.db");
+    assert!(!config.install_db.parent().unwrap().exists());
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
@@ -696,7 +698,7 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
     install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
     install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    uninstall(&config, &"A".to_string()).expect("uninstalling A should succeed");
+    uninstall(&config, &"A".to_string(), false).expect("uninstalling A should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(

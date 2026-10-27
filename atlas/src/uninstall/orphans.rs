@@ -5,17 +5,39 @@ use common::types::package::Architectures;
 use rusqlite::{Connection, params};
 
 use crate::{
+    cli::confirmation::{Action, confirmation_prompt},
     install::db::ensure_install_schema,
     types::{orphan_packages::OrphanPackage, runtime_config::RuntimeConfig},
     uninstall::uninstall::uninstall,
 };
 
+/// Removes installed packages for the host architecture that are not reachable
+/// from explicitly installed packages through recorded dependencies.
+///
+/// Requests confirmation once unless `set_assume_yes` is enabled, then removes
+/// packages without individual prompts. An empty list or a declined prompt
+/// succeeds without removing packages. Propagates lookup, confirmation, and
+/// uninstall errors; stops at the first failure, retaining earlier removals.
 pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     let orphans = get_orphaned_packages(runtime_config)?;
 
+    if orphans.is_empty() {
+        println!("No orphaned packages to remove");
+        return Ok(());
+    }
+
+    let packages: Vec<(&str, &str)> = orphans
+        .iter()
+        .map(|orphan| (orphan.name.as_str(), orphan.version.as_str()))
+        .collect();
+
+    if !confirmation_prompt(packages, 4, Action::Uninstall)? {
+        return Ok(());
+    }
+
     for orphan in orphans {
         println!("Uninstalling {}", orphan.name);
-        uninstall(runtime_config, &orphan.name)?;
+        uninstall(runtime_config, &orphan.name, false)?;
     }
 
     Ok(())

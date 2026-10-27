@@ -236,7 +236,7 @@ fn bulk_versions_are_compared_numerically() -> Result<()> {
 }
 
 #[test]
-fn bulk_update_stops_in_name_order_and_retains_earlier_successes() -> Result<()> {
+fn a_missing_bulk_repository_package_aborts_before_applying_earlier_candidates() -> Result<()> {
     let fixture = BulkUpdate::new()?;
     for name in ["zeta", "missing", "alpha"] {
         fixture.install(name)?;
@@ -251,7 +251,7 @@ fn bulk_update_stops_in_name_order_and_retains_earlier_successes() -> Result<()>
         .expect_err("a missing repository package must stop the loop");
 
     assert_eq!(err.to_string(), "Package missing not found");
-    fixture.assert_installed("alpha", "2.0.0", 7)?;
+    fixture.assert_installed("alpha", "1.0.0", 1)?;
     fixture.assert_installed("missing", "1.0.0", 1)?;
     fixture.assert_installed("zeta", "1.0.0", 1)?;
     fixture.assert_no_staging_dirs(&["alpha", "missing", "zeta"])
@@ -476,4 +476,42 @@ fn a_missing_repository_table_reports_an_error_even_with_no_installed_packages()
         "{err:#}"
     );
     fixture.assert_no_staging_dirs(&[])
+}
+
+#[test]
+fn resolution_errors_are_returned_before_any_upgrade_is_applied() -> Result<()> {
+    for failure in ["downgrade", "invalid-version", "invalid-release"] {
+        let fixture = BulkUpdate::new()?;
+        for name in ["zeta", "middle", "alpha"] {
+            fixture.install(name)?;
+            fixture.publish(name, "2.0.0", 7)?;
+        }
+        let (sql, expected) = match failure {
+            "downgrade" => (
+                "UPDATE packages SET version = '0.9.0' WHERE name = 'middle'",
+                "Not allowed to downgrade middle",
+            ),
+            "invalid-version" => (
+                "UPDATE packages SET version = 'invalid' WHERE name = 'middle'",
+                "Failed to parse version",
+            ),
+            "invalid-release" => (
+                "UPDATE packages SET release = -1 WHERE name = 'middle'",
+                "out of range",
+            ),
+            _ => unreachable!(),
+        };
+        fixture.repo()?.execute(sql, [])?;
+
+        let err = fixture
+            .update_all()
+            .expect_err("resolution failure must be reported");
+
+        assert!(format!("{err:#}").contains(expected), "{failure}: {err:#}");
+        fixture.assert_installed("alpha", "1.0.0", 1)?;
+        fixture.assert_installed("middle", "1.0.0", 1)?;
+        fixture.assert_installed("zeta", "1.0.0", 1)?;
+        fixture.assert_no_staging_dirs(&["alpha", "middle", "zeta"])?;
+    }
+    Ok(())
 }

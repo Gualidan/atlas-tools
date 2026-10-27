@@ -15,22 +15,38 @@ use semver::Version;
 use tempfile::{Builder, TempDir};
 
 use crate::{
-    cli::cli::UpdateArgs,
+    cli::{
+        cli::UpdateArgs,
+        confirmation::{Action, confirmation_prompt},
+    },
     install::db::update_installed_package,
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
-/// Upgrades `args.package` for the host architecture, or visits all installed
-/// packages in name order when it is `None`. Repository lookups always use the
-/// host architecture, even for installed rows with another architecture.
+struct UpdateCandidate {
+    name: String,
+    version: String,
+    release: u32,
+    install_dir: String,
+    sky_path: String,
+}
+
+/// Upgrades `args.package` for the host architecture, or every installed package
+/// with an available upgrade when it is `None`. Repository lookups always use
+/// the host architecture, even for installed rows with another architecture.
 ///
 /// Replaces each package in its recorded directory when the repository's semantic
 /// version is newer. Equal versions succeed without updating, even if release
-/// numbers differ; downgrades fail. An empty installed list succeeds.
+/// numbers differ; downgrades fail. An empty update set succeeds without asking.
 ///
-/// Propagates missing-package, version parsing, database, configuration,
-/// verification, staging, and filesystem errors from the update. Stops at the
-/// first error; earlier successful updates remain applied.
+/// Prompts before applying the resolved updates unless `set_assume_yes` is
+/// enabled. Declining succeeds without applying updates. In bulk mode, the
+/// first per-package resolution error is returned before any prompt, and no
+/// update is applied.
+///
+/// Propagates missing-package, version parsing, confirmation, database,
+/// configuration, verification, staging, and filesystem errors. Stops at the
+/// first update failure; earlier successful updates remain applied.
 pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
@@ -38,172 +54,262 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     let repo_db_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to repository database")?;
 
-    if let Some(package) = args.package {
-        let mut install_stmt  = install_db_conn.prepare("SELECT version, install_dir FROM installed_packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-        let Some((installed_version, install_dir)) = install_stmt
-            .query_row(params![&package, ARCH], |row| {
-                let version: String = row.get::<_, String>(0)?;
-                let install_dir: String = row.get::<_, String>(1)?;
-                Ok((version, install_dir))
-            })
-            .optional()?
-        else {
-            return Err(anyhow!(
-                "Package {} not found in installed packages",
-                package
-            ));
+    let Resolution {
+        candidates: to_update,
+        error: deferred_error,
+    } = resolve_update_order(&install_db_conn, &repo_db_conn, args.package.as_deref())?;
+
+    if let Some(error) = deferred_error {
+        return Err(error);
+    }
+
+    if to_update.is_empty() {
+        match args.package.as_deref() {
+            Some(package) => println!("Package {package} is already up to date"),
+            None => println!("All packages are up to date"),
+        }
+        return Ok(());
+    }
+
+    let packages = to_update
+        .iter()
+        .map(|row| (row.name.as_str(), row.version.as_str()))
+        .collect::<Vec<(&str, &str)>>();
+
+    if !confirmation_prompt(packages, 4, Action::Update)? {
+        return Ok(());
+    }
+
+    for package in to_update {
+        let package_id = PackageIdentity {
+            name: &package.name,
+            version: &package.version,
+            release: package.release,
+            architecture: Architectures::try_from(ARCH.to_string())?,
         };
 
-        let mut repo_stmt = repo_db_conn
-                .prepare(
-                    "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
-                )
-                .context("Failed to prepare database statement")?;
-        let Some((repo_version, repo_release, sky_path)): Option<(String, u32, String)> = repo_stmt
-            .query_row(params![package, ARCH], |row| {
+        let install_dir = PathBuf::from(package.install_dir);
+
+        let tempdir = Builder::new()
+            .prefix("sisyphus_install_tmp_dir_")
+            .tempdir_in(
+                install_dir
+                    .parent()
+                    .context("Failed to get install dir's parent")?,
+            )
+            .context("Failed to create temporary directory")?;
+
+        update_one(
+            package_id,
+            &repo_db_conn,
+            &mut install_db_conn,
+            PathBuf::from(package.sky_path),
+            tempdir,
+            install_dir,
+        )?;
+    }
+
+    Ok(())
+}
+
+struct Resolution {
+    candidates: Vec<UpdateCandidate>,
+    error: Option<anyhow::Error>,
+}
+
+/// Resolves the packages that have a newer repository version. With `name`, only
+/// that installed package is considered; without it, every installed package is
+/// visited in name order. Bulk resolution returns the first per-package failure
+/// in `Resolution.error` alongside earlier candidates. Single-package failures
+/// and bulk query setup or installed-row errors propagate directly. No updates
+/// are applied here.
+fn resolve_update_order(
+    install_conn: &Connection,
+    repo_conn: &Connection,
+    name: Option<&str>,
+) -> Result<Resolution> {
+    match name {
+        Some(name) => Ok(Resolution {
+            candidates: resolve_one(install_conn, repo_conn, name)?,
+            error: None,
+        }),
+        None => resolve_all(install_conn, repo_conn),
+    }
+}
+
+/// Resolves a single installed package and repository entry for the host
+/// architecture, retaining its recorded install directory. Returns one candidate
+/// for a newer semantic version, or none for an equal version regardless of release.
+/// Missing entries, downgrades, version parsing, and database errors propagate.
+fn resolve_one(
+    install_conn: &Connection,
+    repo_conn: &Connection,
+    name: &str,
+) -> Result<Vec<UpdateCandidate>> {
+    let mut install_stmt = install_conn
+        .prepare(
+            "SELECT version, install_dir FROM installed_packages WHERE name = ? AND architecture = ?",
+        )
+        .context("Failed to prepare database query")?;
+
+    let Some((installed_version, install_dir)) = install_stmt
+        .query_row(params![name, ARCH], |row| {
+            let version: String = row.get(0)?;
+            let install_dir: String = row.get(1)?;
+            Ok((version, install_dir))
+        })
+        .optional()?
+    else {
+        return Err(anyhow!("Package {name} not found in installed packages"));
+    };
+
+    let mut repo_stmt = repo_conn
+        .prepare(
+            "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+        )
+        .context("Failed to prepare database statement")?;
+
+    let Some((repo_version, repo_release, sky_path)) = repo_stmt
+        .query_row(params![name, ARCH], |row| {
+            let version: String = row.get(0)?;
+            let release: u32 = row.get(1)?;
+            let sky_path: String = row.get(2)?;
+            Ok((version, release, sky_path))
+        })
+        .optional()?
+    else {
+        return Err(anyhow!("Package {name} not found"));
+    };
+
+    match compare_versions(
+        &installed_version,
+        &repo_version,
+        "Failed to parse version number",
+    )? {
+        Less => Ok(vec![UpdateCandidate {
+            name: name.to_string(),
+            version: repo_version,
+            release: repo_release,
+            install_dir,
+            sky_path,
+        }]),
+        Equal => Ok(Vec::new()),
+        Greater => Err(downgrade_error(name, &installed_version, &repo_version)),
+    }
+}
+
+/// Resolves upgrades in installed-package name order, using host-architecture
+/// repository entries even for installed rows with a different architecture.
+/// Equal semantic versions are skipped regardless of release numbers.
+///
+/// Query setup and installed-row errors propagate directly. The first missing
+/// repository entry, repository-row error, invalid version, or downgrade ends
+/// resolution and is returned in `Resolution.error` with earlier candidates.
+fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Resolution> {
+    let mut install_stmt = install_conn
+        .prepare(
+            "SELECT name, version, install_dir, sky_path, release FROM installed_packages ORDER BY name",
+        )
+        .context("Failed to prepare database query")?;
+
+    let installed_rows = install_stmt
+        .query_map([], |row| {
+            Ok(UpdateCandidate {
+                name: row.get(0)?,
+                version: row.get(1)?,
+                install_dir: row.get(2)?,
+                sky_path: row.get(3)?,
+                release: row.get(4)?,
+            })
+        })
+        .context("Failed to list all installed packages")?
+        .collect::<Result<Vec<UpdateCandidate>, _>>()?;
+
+    let mut repo_stmt = repo_conn
+        .prepare(
+            "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+        )
+        .context("Failed to prepare database statement")?;
+
+    let mut to_update = Vec::new();
+
+    for package in installed_rows {
+        let repo_record = repo_stmt
+            .query_row(params![package.name, ARCH], |row| {
                 let version: String = row.get(0)?;
                 let release: u32 = row.get(1)?;
                 let sky_path: String = row.get(2)?;
                 Ok((version, release, sky_path))
             })
-            .optional()?
-        else {
-            return Err(anyhow!("Package {} not found", package));
+            .optional();
+
+        let (repo_version, repo_release, sky_path) = match repo_record {
+            Ok(Some(record)) => record,
+            Ok(None) => {
+                return Ok(Resolution {
+                    candidates: to_update,
+                    error: Some(anyhow!("Package {} not found", package.name)),
+                });
+            }
+            Err(error) => {
+                return Ok(Resolution {
+                    candidates: to_update,
+                    error: Some(error.into()),
+                });
+            }
         };
 
-        let installed_version =
-            Version::parse(&installed_version).context("Failed to parse version number")?;
-        let available_version =
-            Version::parse(&repo_version).context("Failed to parse version number")?;
-
-        match installed_version.cmp(&available_version) {
-            Greater => Err(anyhow!(
-                "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
-            )),
-            Equal => {
-                println!("Package {} is already up to date", package);
-                return Ok(());
-            }
-            Less => Ok({
-                let package_id = PackageIdentity {
-                    name: &package,
-                    version: &repo_version,
-                    release: repo_release,
-                    architecture: Architectures::try_from(ARCH.to_string())?,
-                };
-
-                let install_dir = PathBuf::from(install_dir);
-
-                let tempdir = Builder::new()
-                    .prefix("sisyphus_install_tmp_dir_")
-                    .tempdir_in(
-                        install_dir
-                            .parent()
-                            .context("Failed to get install dir's parent")?,
-                    )
-                    .context("Failed to create temporary directory")?;
-
-                drop(install_stmt);
-
-                update_one(
-                    package_id,
-                    &repo_db_conn,
-                    &mut install_db_conn,
-                    PathBuf::from(sky_path),
-                    tempdir,
-                    install_dir,
-                )?;
+        match compare_versions(&package.version, &repo_version, "Failed to parse version") {
+            Ok(Less) => to_update.push(UpdateCandidate {
+                name: package.name,
+                version: repo_version,
+                release: repo_release,
+                install_dir: package.install_dir,
+                sky_path,
             }),
-        }?
-    } else {
-        let mut install_stmt = install_db_conn
-            .prepare("SELECT name, version, install_dir FROM installed_packages ORDER BY name")
-            .context("Failed to prepare database query")?;
-        struct InstalledRow {
-            name: String,
-            version: String,
-            install_dir: String,
-        }
-
-        let installed_rows = install_stmt
-            .query_map([], |row| {
-                Ok(InstalledRow {
-                    name: row.get(0)?,
-                    version: row.get(1)?,
-                    install_dir: row.get(4)?,
-                })
-            })
-            .context("Failed to list all installed packages")?
-            .collect::<Result<Vec<InstalledRow>, _>>()?;
-
-        drop(install_stmt);
-
-        let mut repo_stmt = repo_db_conn
-                                    .prepare(
-                                        "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
-                                    )
-                                    .context("Failed to prepare database statement")?;
-
-        for package in installed_rows {
-            let Some((repo_version, repo_release, sky_path)): Option<(String, u32, String)> =
-                repo_stmt
-                    .query_row(params![package.name, ARCH], |row| {
-                        let version: String = row.get(0)?;
-                        let release: u32 = row.get(1)?;
-                        let sky_path: String = row.get(2)?;
-                        Ok((version, release, sky_path))
-                    })
-                    .optional()?
-            else {
-                return Err(anyhow!("Package {} not found", package.name));
-            };
-
-            let installed_version =
-                Version::parse(&package.version).context("Failed to parse version")?;
-            let available_version =
-                Version::parse(&repo_version).context("Failed to parse version")?;
-
-            match installed_version.cmp(&available_version) {
-                Greater => Err(anyhow!(
-                    "Not allowed to downgrade your installed package is version {installed_version} while the repository's is version {repo_version}"
-                )),
-                Equal => {
-                    println!("Package {} is already up to date", package.name);
-                    continue;
-                }
-                Less => Ok({
-                    let package_id = PackageIdentity {
-                        name: &package.name,
-                        version: &repo_version,
-                        release: repo_release,
-                        architecture: Architectures::try_from(ARCH.to_string())?,
-                    };
-
-                    let install_dir = PathBuf::from(package.install_dir);
-
-                    let tempdir = Builder::new()
-                        .prefix("sisyphus_install_tmp_dir_")
-                        .tempdir_in(
-                            install_dir
-                                .parent()
-                                .context("Failed to get install dir's parent")?,
-                        )
-                        .context("Failed to create temporary directory")?;
-
-                    update_one(
-                        package_id,
-                        &repo_db_conn,
-                        &mut install_db_conn,
-                        PathBuf::from(sky_path),
-                        tempdir,
-                        install_dir,
-                    )?;
-                }),
-            }?
+            Ok(Equal) => {}
+            Ok(Greater) => {
+                return Ok(Resolution {
+                    candidates: to_update,
+                    error: Some(downgrade_error(
+                        &package.name,
+                        &package.version,
+                        &repo_version,
+                    )),
+                });
+            }
+            Err(error) => {
+                return Ok(Resolution {
+                    candidates: to_update,
+                    error: Some(error),
+                });
+            }
         }
     }
 
-    Ok(())
+    Ok(Resolution {
+        candidates: to_update,
+        error: None,
+    })
+}
+
+/// Compares `installed` against `available` as semantic versions. Returns a
+/// parsing error with `parse_context` attached if either version is invalid.
+fn compare_versions(
+    installed: &str,
+    available: &str,
+    parse_context: &'static str,
+) -> Result<std::cmp::Ordering> {
+    let installed = Version::parse(installed).context(parse_context)?;
+    let available = Version::parse(available).context(parse_context)?;
+    Ok(installed.cmp(&available))
+}
+
+/// Builds a downgrade error identifying the package and both version strings.
+fn downgrade_error(name: &str, installed: &str, available: &str) -> anyhow::Error {
+    anyhow!(
+        "Not allowed to downgrade {name}: installed version is {installed} while the repository's is {available}"
+    )
 }
 
 /// Verifies and stages the supplied package, exchanges it into `install_dir`,
@@ -249,3 +355,7 @@ pub fn update_one(
     guard.disarm();
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

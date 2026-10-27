@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use common::types::config::load_config;
 
 use crate::{
+    cli::confirmation::set_assume_yes,
     install::install::install,
     types::runtime_config::RuntimeConfig,
     uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
@@ -20,6 +21,10 @@ use crate::{
     about = "The Atlas package manager"
 )]
 struct Cli {
+    /// Assume yes for all confirmation prompts
+    #[arg(short = 'y', long = "yes", global = true)]
+    assume_yes: bool,
+
     #[command(subcommand)]
     commands: Commands,
 }
@@ -64,8 +69,15 @@ pub struct UpdateArgs {
 #[derive(Args)]
 pub struct CleanArgs {}
 
+/// Parses process arguments, sets confirmation behavior from `--yes`, and runs
+/// the selected command. Installs use `ATLAS_INSTALL_DIR`, defaulting to
+/// `/var/lib/atlas/local` when the variable is absent or not valid Unicode.
+///
+/// Propagates configuration and command errors. Argument parsing exits the
+/// process for help, version information, or invalid arguments.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
+    set_assume_yes(cli.assume_yes);
 
     match cli.commands {
         Commands::Install(args) => {
@@ -87,7 +99,7 @@ pub fn run() -> Result<()> {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
 
-            uninstall(&runtime_config, &args.package)?;
+            uninstall(&runtime_config, &args.package, true)?;
         }
         Commands::Update(args) => {
             let runtime_config =
@@ -102,3 +114,7 @@ pub fn run() -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

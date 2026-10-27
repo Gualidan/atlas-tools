@@ -137,7 +137,7 @@ fn uninstalling_a_never_installed_package_reports_not_found() -> Result<()> {
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
     seed_foo_depends_on_bar(&tmp, &config, &keypair)?;
 
-    let err = uninstall(&config, &"bar".to_string())
+    let err = uninstall(&config, &"bar".to_string(), false)
         .expect_err("bar was never installed, so uninstalling it must fail");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
@@ -146,7 +146,8 @@ fn uninstalling_a_never_installed_package_reports_not_found() -> Result<()> {
         "a package with no ledger row must not trigger the dependent guard: {chain}"
     );
 
-    let err = uninstall(&config, &"foo".to_string()).expect_err("foo was never installed either");
+    let err =
+        uninstall(&config, &"foo".to_string(), false).expect_err("foo was never installed either");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
 
