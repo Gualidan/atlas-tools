@@ -3,7 +3,6 @@ use common::types::{
     config::SisyphusConfig,
     package::{Architectures, PackageIdentity},
 };
-use inquire::Confirm;
 use std::{
     env::consts::ARCH,
     fs::create_dir_all,
@@ -17,6 +16,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tempfile::{Builder, TempDir};
 
 use crate::{
+    cli::confirmation::{Action, confirmation_prompt},
     install::{
         db::{InstallReason, ensure_install_schema, insert_installed_package},
         resolve::resolve_install_order,
@@ -61,7 +61,7 @@ pub fn install(
         .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
         .collect::<Vec<(&str, &str)>>();
 
-    let ans = confirmation_prompt(packages, 4, "install")?;
+    let ans = confirmation_prompt(packages, 4, Action::Install)?;
 
     if !ans {
         return Ok(());
@@ -196,55 +196,4 @@ pub fn install_one(
 
     guard.disarm();
     Ok(())
-}
-
-static ASSUME_YES: AtomicBool = AtomicBool::new(false);
-
-/// Skips interactive confirmation prompts when set to `true`. Intended for the
-/// CLI's `--yes` flag and for non-interactive test runs.
-pub fn set_assume_yes(assume_yes: bool) {
-    ASSUME_YES.store(assume_yes, Ordering::Relaxed);
-}
-
-/// Lists `(name, version)` pairs with `indent` leading spaces per package and
-/// asks for confirmation using `action` as the verb, defaulting to yes.
-///
-/// An empty list returns `true` without output or a prompt. When
-/// [`set_assume_yes`] is enabled, a nonempty list is still printed but returns
-/// `true` without prompting. Declining prints an abort message and returns `false`.
-/// Prompt errors, including cancellation or interruption, are replaced with
-/// `Invalid answer try again`.
-pub fn confirmation_prompt(
-    packages: Vec<(&str, &str)>,
-    indent: usize,
-    action: &str,
-) -> Result<bool> {
-    if packages.is_empty() {
-        return Ok(true);
-    }
-
-    println!("Packages:");
-    for (name, version) in packages {
-        println!("{:indent$}{}-{}", "", name, version, indent = indent);
-    }
-
-    if ASSUME_YES.load(Ordering::Relaxed) {
-        return Ok(true);
-    }
-
-    let ans = Confirm::new(&format!(
-        "This will {} these packages, do you wish to proceed?",
-        action
-    ))
-    .with_default(true)
-    .prompt();
-
-    match ans {
-        Ok(true) => return Ok(true),
-        Ok(false) => {
-            println!("Transaction aborted");
-            return Ok(false);
-        }
-        Err(_) => return Err(anyhow!("Invalid answer try again")),
-    }
 }

@@ -15,8 +15,11 @@ use semver::Version;
 use tempfile::{Builder, TempDir};
 
 use crate::{
-    cli::cli::UpdateArgs,
-    install::{db::update_installed_package, install::confirmation_prompt},
+    cli::{
+        cli::UpdateArgs,
+        confirmation::{Action, confirmation_prompt},
+    },
+    install::db::update_installed_package,
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
@@ -72,7 +75,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         .map(|row| (row.name.as_str(), row.version.as_str()))
         .collect::<Vec<(&str, &str)>>();
 
-    if !confirmation_prompt(packages, 4, "update")? {
+    if !confirmation_prompt(packages, 4, Action::Update)? {
         return Ok(());
     }
 

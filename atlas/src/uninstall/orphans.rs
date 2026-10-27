@@ -5,7 +5,8 @@ use common::types::package::Architectures;
 use rusqlite::{Connection, params};
 
 use crate::{
-    install::{db::ensure_install_schema, install::confirmation_prompt},
+    cli::confirmation::{Action, confirmation_prompt},
+    install::db::ensure_install_schema,
     types::{orphan_packages::OrphanPackage, runtime_config::RuntimeConfig},
     uninstall::uninstall::uninstall,
 };
@@ -30,7 +31,7 @@ pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
         .map(|orphan| (orphan.name.as_str(), orphan.version.as_str()))
         .collect();
 
-    if !confirmation_prompt(packages, 4, "uninstall")? {
+    if !confirmation_prompt(packages, 4, Action::Uninstall)? {
         return Ok(());
     }
 

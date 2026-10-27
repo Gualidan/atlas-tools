@@ -5,10 +5,8 @@ use common::types::package::{Architectures, PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
-    install::{
-        db::{ensure_install_schema, remove_uninstalled_package},
-        install::confirmation_prompt,
-    },
+    cli::confirmation::{Action, confirmation_prompt},
+    install::db::{ensure_install_schema, remove_uninstalled_package},
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
 };
 
@@ -26,7 +24,7 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) ->
     let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
         .context("Failed to look up installed package")?;
 
-    if prompt && !confirmation_prompt(vec![(name, &version)], 4, "uninstall")? {
+    if prompt && !confirmation_prompt(vec![(name, &version)], 4, Action::Uninstall)? {
         return Ok(());
     }
 

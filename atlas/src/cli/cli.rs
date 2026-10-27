@@ -5,7 +5,8 @@ use clap::{Args, Parser, Subcommand};
 use common::types::config::load_config;
 
 use crate::{
-    install::install::{install, set_assume_yes},
+    cli::confirmation::set_assume_yes,
+    install::install::install,
     types::runtime_config::RuntimeConfig,
     uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
     update::update::update,
