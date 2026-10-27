@@ -10,13 +10,16 @@ use crate::{
     uninstall::resolve::packages_to_uninstall,
 };
 
-/// Removes the named package for the host architecture, then deletes its install
-/// database records. A missing install directory is tolerated.
+/// Removes the packages resolved from `name` by [`packages_to_uninstall`],
+/// deleting each directory before its install database records. Lookups are by
+/// name without an architecture filter. A missing directory is tolerated.
 ///
-/// When `prompt` is true, requests confirmation after looking up the package
-/// unless `set_assume_yes` is enabled. Declining succeeds without removing it.
-/// Returns an error if the package is absent or, when removal proceeds, has
-/// dependents, and propagates confirmation, database, and other filesystem errors.
+/// When `prompt` is true, requests confirmation for the resolved list unless
+/// `set_assume_yes` is enabled. Declining succeeds without removing packages.
+/// Resolution and dependent checks run before confirmation.
+///
+/// Returns an error for an absent package or recorded dependent, and propagates
+/// resolution, confirmation, database, and other filesystem errors.
 /// A database failure after directory removal does not restore the files.
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)

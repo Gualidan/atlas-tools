@@ -2,9 +2,14 @@ use anyhow::{Context, Result, anyhow};
 use common::types::package::{Architectures, PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
-/// Recursively resolve a packages deps by querying the install database
-/// checks for dependents for each package returning an error if it finds one
-/// and returns a vector of all the package identities to remove
+/// Resolves `name` to installed identities and directory paths for removal.
+/// Rejects any recorded dependent of `name`, without filtering by architecture.
+/// Does not remove files or change database records.
+///
+/// Returns an error for a missing installed row, database failures, malformed
+/// dependency YAML, or an unsupported architecture. Dependency-free packages
+/// yield one entry; packages with dependencies inherit [`visit`]'s recursion
+/// limitation.
 pub fn packages_to_uninstall<'a>(
     conn: &Connection,
     name: String,
@@ -31,7 +36,15 @@ pub fn packages_to_uninstall<'a>(
     Ok(packages_to_uninstall)
 }
 
-/// Queries a packages deps recursively failing if a dependent is found
+/// Appends `name`'s installed identity and directory path to
+/// `packages_to_uninstall` when its recorded dependency list is empty.
+/// Lookups use only the name, without filtering by architecture. Does not
+/// remove files or change database records.
+///
+/// Returns an error for a missing installed row, database failures, malformed
+/// dependency YAML, or an unsupported architecture. With a nonempty dependency
+/// list, a recorded dependent of `name` causes an error; otherwise the same
+/// package is revisited without progress and can exhaust the stack.
 pub fn visit(
     conn: &Connection,
     packages_to_uninstall: &mut Vec<(PackageIdentity, String)>,

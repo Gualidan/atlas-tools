@@ -209,11 +209,11 @@ impl<'a> PackageState<'a> {
         }
     }
 
-    /// Removes an `Installed` package's directory if no package depends on it
-    /// for the same architecture. A missing directory counts as success;
-    /// database records are left for the caller to remove.
-    /// Returns an error for dependents or another starting state, and propagates
-    /// database errors and filesystem errors other than `NotFound`.
+    /// Recursively removes `ctx.install_dir` from the `Installed` state.
+    /// A missing directory counts as success. Dependency checks and database
+    /// record removal are left to the caller.
+    /// Returns an error for another starting state and propagates filesystem
+    /// errors other than `NotFound`; failed removal may leave some files deleted.
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {
