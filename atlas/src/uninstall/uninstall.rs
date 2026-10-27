@@ -1,13 +1,13 @@
 use std::{env::consts::ARCH, path::PathBuf};
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
-use common::types::package::{Architectures, PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     cli::confirmation::{Action, confirmation_prompt},
     install::db::{ensure_install_schema, remove_uninstalled_package},
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
+    uninstall::resolve::packages_to_uninstall,
 };
 
 /// Removes the named package for the host architecture, then deletes its install
@@ -21,31 +21,38 @@ use crate::{
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
-    let (install_dir, version, release) = look_up_installed_package(&install_conn, name)
-        .context("Failed to look up installed package")?;
+    let mut stmt = install_conn
+        .prepare("SELECT name FROM installed_packages WHERE name = ?")
+        .context("Failed to prepare database query")?;
+    let Some(name): Option<String> = stmt.query_row(params![name], |row| row.get(0)).optional()?
+    else {
+        return Err(anyhow!("Package {} not found", name));
+    };
 
-    if prompt && !confirmation_prompt(vec![(name, &version)], 4, Action::Uninstall)? {
+    drop(stmt);
+
+    let to_uninstall = packages_to_uninstall(&install_conn, name.clone())?;
+    let packages = to_uninstall
+        .iter()
+        .map(|(pkg, _)| (pkg.name.as_str(), pkg.version.as_str()))
+        .collect::<Vec<(&str, &str)>>();
+
+    if prompt && !confirmation_prompt(packages, 4, Action::Uninstall)? {
         return Ok(());
     }
 
-    let package_id = PackageIdentity {
-        name: name.as_str(),
-        version: version.as_str(),
-        release,
-        architecture: Architectures::try_from(ARCH.to_string())?,
-    };
+    for (package, install_dir) in to_uninstall {
+        let state = PackageState::Installed;
+        let ctx = &mut RemoveContext {
+            package_id: &package,
+            install_conn: &install_conn,
+            install_dir: PathBuf::from(install_dir),
+        };
 
-    let mut ctx = RemoveContext {
-        package_id: &package_id,
-        install_dir: PathBuf::from(install_dir),
-        install_conn: &install_conn,
-    };
+        state.remove(ctx)?;
 
-    let state = PackageState::Installed;
-
-    state.remove(&mut ctx)?;
-
-    remove_uninstalled_package(&mut install_conn, &package_id)?;
+        remove_uninstalled_package(&mut install_conn, &package)?;
+    }
 
     Ok(())
 }
