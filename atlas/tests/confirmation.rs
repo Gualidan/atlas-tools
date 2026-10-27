@@ -255,6 +255,45 @@ fn uninstall_prompt_error_preserves_files_and_ledger() -> Result<()> {
 }
 
 #[test]
+fn uninstall_prompt_lists_the_complete_plan_before_changing_any_package() -> Result<()> {
+    without_terminal(
+        "uninstall_prompt_lists_the_complete_plan_before_changing_any_package",
+        || {
+            let tmp = tempdir();
+            let config = runtime_config(&tmp)?;
+            seed_installed(&config, "app", "explicit")?;
+            seed_installed(&config, "library", "dependency")?;
+            Connection::open(&config.install_db)?.execute(
+                "INSERT INTO package_dependencies VALUES ('app', ?, 'library')",
+                [ARCH.to_string()],
+            )?;
+            let before = fs::read(&config.install_db)?;
+
+            let err = uninstall(&config, &"app".into(), true)
+                .expect_err("closed stdin must stop the complete uninstall plan");
+
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
+            assert_eq!(fs::read(&config.install_db)?, before);
+            assert_installed_unchanged(&config, "app")?;
+            assert_installed_unchanged(&config, "library")
+        },
+        |stdout| {
+            assert_eq!(stdout.matches("Packages:").count(), 1, "{stdout}");
+            for name in ["app", "library"] {
+                assert_eq!(
+                    stdout.matches(&format!("    {name}-1.0.0\n")).count(),
+                    1,
+                    "{stdout}"
+                );
+            }
+        },
+    )
+}
+
+#[test]
 fn uninstall_can_skip_its_prompt_without_global_assume_yes() -> Result<()> {
     without_terminal(
         "uninstall_can_skip_its_prompt_without_global_assume_yes",

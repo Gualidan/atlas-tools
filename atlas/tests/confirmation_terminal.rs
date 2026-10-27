@@ -270,6 +270,30 @@ fn declining_uninstall_preserves_files_and_install_records() -> Result<()> {
 }
 
 #[test]
+fn declining_uninstall_preserves_every_package_in_the_resolved_plan() -> Result<()> {
+    answer_prompt(
+        "declining_uninstall_preserves_every_package_in_the_resolved_plan",
+        false,
+        || {
+            let tmp = tempdir();
+            let config = runtime_config(&tmp)?;
+            seed_installation(&config, "app", "explicit")?;
+            seed_installation(&config, "library", "dependency")?;
+            Connection::open(&config.install_db)?.execute(
+                "INSERT INTO package_dependencies VALUES ('app', ?, 'library')",
+                [ARCH.to_string()],
+            )?;
+            let before = fs::read(&config.install_db)?;
+
+            uninstall(&config, &"app".into(), true)?;
+
+            assert_eq!(fs::read(&config.install_db)?, before);
+            assert_unchanged(&config, &["app", "library"])
+        },
+    )
+}
+
+#[test]
 fn declining_single_update_preserves_files_and_install_records() -> Result<()> {
     answer_prompt(
         "declining_single_update_preserves_files_and_install_records",

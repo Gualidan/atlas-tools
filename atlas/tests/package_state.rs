@@ -322,3 +322,81 @@ fn invalid_remove_transitions_leave_existing_files_alone() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn installed_remove_deletes_the_tree_without_changing_dependency_records() -> Result<()> {
+    let fixture = StateFixture::new()?;
+    fixture.claim("foo", "x86_64", "owned.txt")?;
+    fixture.claim("dependent", "x86_64", "dependent.txt")?;
+    fixture.installed.execute(
+        "INSERT INTO package_dependencies VALUES ('dependent', 'x86_64', 'foo')",
+        [],
+    )?;
+    fs::create_dir_all(fixture.install_dir.join("nested"))?;
+    fs::write(fixture.install_dir.join("nested/file.txt"), b"payload")?;
+    let changes_before = fixture.installed.total_changes();
+    let identity = fixture.identity();
+    let mut ctx = RemoveContext {
+        package_id: &identity,
+        install_conn: &fixture.installed,
+        install_dir: fixture.install_dir.clone(),
+    };
+
+    // Dependency checks belong to the resolver; this state transition removes
+    // files only, leaving all ledger cleanup to its caller.
+    PackageState::Installed.remove(&mut ctx)?;
+
+    assert!(!fixture.install_dir.exists());
+    assert_eq!(fixture.installed.total_changes(), changes_before);
+    assert_eq!(
+        fixture
+            .installed
+            .query_row("SELECT COUNT(*) FROM package_dependencies", [], |row| row
+                .get::<_, i64>(
+                0
+            ))?,
+        1
+    );
+    Ok(())
+}
+
+#[test]
+fn installed_remove_is_idempotent_when_the_directory_is_missing() -> Result<()> {
+    let fixture = StateFixture::new()?;
+    let identity = fixture.identity();
+    let mut ctx = RemoveContext {
+        package_id: &identity,
+        install_conn: &fixture.installed,
+        install_dir: fixture.install_dir.clone(),
+    };
+
+    for _ in 0..2 {
+        PackageState::Installed.remove(&mut ctx)?;
+    }
+
+    assert!(!fixture.install_dir.exists());
+    Ok(())
+}
+
+#[test]
+fn installed_remove_propagates_errors_other_than_a_missing_directory() -> Result<()> {
+    let fixture = StateFixture::new()?;
+    fs::write(&fixture.install_dir, b"not a directory")?;
+    let identity = fixture.identity();
+    let mut ctx = RemoveContext {
+        package_id: &identity,
+        install_conn: &fixture.installed,
+        install_dir: fixture.install_dir.clone(),
+    };
+
+    let err = PackageState::Installed
+        .remove(&mut ctx)
+        .expect_err("a regular file is an error");
+
+    let cause = err
+        .downcast_ref::<std::io::Error>()
+        .expect("must propagate the I/O error");
+    assert_ne!(cause.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(fs::read(&fixture.install_dir)?, b"not a directory");
+    Ok(())
+}

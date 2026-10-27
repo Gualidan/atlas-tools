@@ -44,6 +44,45 @@ fn metadata_verification_accepts_a_slice_and_identity_borrowed_from_owned_string
 }
 
 #[test]
+fn package_identity_owns_escaped_strings_after_the_yaml_buffer_is_dropped() -> Result<()> {
+    let identity: PackageIdentity = {
+        let yaml = String::from(
+            "name: \"ex\\u0061mple\"\nversion: \"1.2.\\u0033\"\nrelease: 4\narchitecture: x86_64\n",
+        );
+        serde_saphyr::from_str(&yaml)?
+    };
+
+    let metadata = verify_metadata(METADATA, &identity)?;
+
+    assert_eq!(identity.name, "example");
+    assert_eq!(identity.version, "1.2.3");
+    assert_eq!(metadata.name, identity.name);
+    assert_eq!(metadata.version, identity.version);
+    Ok(())
+}
+
+#[test]
+fn cloning_a_package_identity_keeps_independent_strings_and_verification() -> Result<()> {
+    let original: PackageIdentity = serde_saphyr::from_str(
+        "name: example\nversion: 1.2.3\nrelease: 4\narchitecture: x86_64\n",
+    )?;
+    let mut cloned = original.clone();
+    cloned.name.push_str("-other");
+    cloned.version.push_str("-rc.1");
+
+    verify_metadata(METADATA, &original)?;
+    assert!(verify_metadata(METADATA, &cloned).is_err());
+    assert_eq!(original.name, "example");
+    assert_eq!(original.version, "1.2.3");
+    assert_eq!(cloned.release, original.release);
+    assert_eq!(cloned.architecture, original.architecture);
+    drop(original);
+    assert_eq!(cloned.name, "example-other");
+    assert_eq!(cloned.version, "1.2.3-rc.1");
+    Ok(())
+}
+
+#[test]
 fn each_identity_field_must_match_the_metadata() {
     let identity = PackageIdentity {
         name: "example".to_string(),
