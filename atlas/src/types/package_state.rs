@@ -32,7 +32,7 @@ use crate::{
 
 pub enum PackageState<'a> {
     NotInstalled {
-        package_id: PackageIdentity<'a>,
+        package_id: PackageIdentity,
         install_conn: &'a Connection,
         tempdir: TempDir,
         sky_path: &'a PathBuf,
@@ -45,7 +45,7 @@ pub enum PackageState<'a> {
         manifest_paths: Vec<ManifestLine>,
         tempdir: TempDir,
         install_conn: &'a Connection,
-        package_id: PackageIdentity<'a>,
+        package_id: PackageIdentity,
         sky_path: &'a PathBuf,
         install_dir: &'a PathBuf,
     },

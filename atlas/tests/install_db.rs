@@ -11,10 +11,10 @@ use fixtures::{
 };
 use rusqlite::{Connection, params};
 
-fn package_identity<'a>(name: &'a str, deps: &[&str]) -> (PackageIdentity<'a>, Vec<String>) {
+fn package_identity<'a>(name: &'a str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
     let identity = PackageIdentity {
-        name: name,
-        version: "1.0.0",
+        name: name.to_string(),
+        version: "1.0.0".to_string(),
         release: 1,
         architecture: ARCH,
     };

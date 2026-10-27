@@ -98,8 +98,8 @@ impl Database {
                 deps.iter().map(|dep| dep.to_string()).collect(),
             ),
             &PackageIdentity {
-                name: "foo",
-                version: "2.0.0",
+                name: "foo".to_string(),
+                version: "2.0.0".to_string(),
                 release: 7,
                 architecture: ARCH,
             },

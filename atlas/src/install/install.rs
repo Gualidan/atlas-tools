@@ -119,8 +119,8 @@ pub fn install(
         let install_dir_existed = install_dir.exists();
 
         let package_id = PackageIdentity {
-            name: package.name.as_str(),
-            version: package.version.as_str(),
+            name: package.name,
+            version: package.version,
             release: package.release,
             architecture: package.architecture,
         };
@@ -175,7 +175,7 @@ pub fn install_one(
     install_conn: &Connection,
 ) -> Result<()> {
     let state = PackageState::NotInstalled {
-        package_id,
+        package_id: package_id.clone(),
         sky_path: &sky_path,
         install_dir: &install_dir,
         tempdir,

@@ -82,8 +82,8 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
 
     for package in to_update {
         let package_id = PackageIdentity {
-            name: &package.name,
-            version: &package.version,
+            name: package.name,
+            version: package.version,
             release: package.release,
             architecture: Architectures::try_from(ARCH.to_string())?,
         };
@@ -330,7 +330,7 @@ pub fn update_one(
     let config = load_config().context("Failed to load configuration")?;
 
     let state = PackageState::NotInstalled {
-        package_id,
+        package_id: package_id.clone(),
         install_conn,
         sky_path: &sky_path,
         tempdir,
@@ -347,7 +347,7 @@ pub fn update_one(
         install_conn,
         repo_conn,
         &metadata,
-        &package_id,
+        &package_id.clone(),
         &sky_path.to_string_lossy(),
         &install_dir.to_string_lossy(),
     )?;

@@ -29,8 +29,8 @@ fn metadata_verification_accepts_a_slice_and_identity_borrowed_from_owned_string
     let name = String::from("example");
     let version = String::from("1.2.3");
     let identity = PackageIdentity {
-        name: &name,
-        version: &version,
+        name: name.clone(),
+        version: version.clone(),
         release: 4,
         architecture: Architectures::X86_64,
     };
@@ -46,8 +46,8 @@ fn metadata_verification_accepts_a_slice_and_identity_borrowed_from_owned_string
 #[test]
 fn each_identity_field_must_match_the_metadata() {
     let identity = PackageIdentity {
-        name: "example",
-        version: "1.2.3",
+        name: "example".to_string(),
+        version: "1.2.3".to_string(),
         release: 4,
         architecture: Architectures::X86_64,
     };
@@ -55,22 +55,22 @@ fn each_identity_field_must_match_the_metadata() {
         (
             "name",
             PackageIdentity {
-                name: "different",
-                ..identity
+                name: "different".to_string(),
+                ..identity.clone()
             },
         ),
         (
             "version",
             PackageIdentity {
-                version: "1.2.4",
-                ..identity
+                version: "1.2.4".to_string(),
+                ..identity.clone()
             },
         ),
         (
             "release",
             PackageIdentity {
                 release: 5,
-                ..identity
+                ..identity.clone()
             },
         ),
         (
@@ -94,8 +94,8 @@ fn each_identity_field_must_match_the_metadata() {
 #[test]
 fn malformed_or_incomplete_metadata_is_rejected() {
     let identity = PackageIdentity {
-        name: "example",
-        version: "1.2.3",
+        name: "example".to_string(),
+        version: "1.2.3".to_string(),
         release: 4,
         architecture: Architectures::X86_64,
     };

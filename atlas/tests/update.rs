@@ -199,8 +199,8 @@ fn update_one_commits_using_its_supplied_connections_and_staging_directory() -> 
 
     update_one(
         PackageIdentity {
-            name: "foo",
-            version: "2.0.0",
+            name: "foo".to_string(),
+            version: "2.0.0".to_string(),
             release: 7,
             architecture: ARCH,
         },

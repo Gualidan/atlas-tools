@@ -57,10 +57,10 @@ impl StateFixture {
         })
     }
 
-    fn identity(&self) -> PackageIdentity<'_> {
+    fn identity(&self) -> PackageIdentity {
         PackageIdentity {
-            name: "foo",
-            version: "2.0.0",
+            name: "foo".to_string(),
+            version: "2.0.0".to_string(),
             release: 3,
             architecture: ARCH,
         }
