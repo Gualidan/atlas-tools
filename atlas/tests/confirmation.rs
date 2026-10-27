@@ -116,7 +116,10 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
             // A fresh process must require confirmation by default.
             let err = confirmation_prompt(vec![("foo", "1.0.0")], 0, Action::Install)
                 .expect_err("a nonempty plan requires a terminal by default");
-            assert_eq!(err.to_string(), "Invalid answer try again");
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
 
             set_assume_yes(true);
             assert!(confirmation_prompt(
@@ -133,7 +136,10 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
             set_assume_yes(false);
             let err = confirmation_prompt(vec![("foo", "1.0.0")], 4, Action::Uninstall)
                 .expect_err("disabling assume_yes must restore terminal confirmation");
-            assert_eq!(err.to_string(), "Invalid answer try again");
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
             Ok(())
         },
         |stdout| {
@@ -172,9 +178,18 @@ fn install_prompt_error_lists_dependencies_and_leaves_no_installation() -> Resul
             let err = install(&"foo".into(), &config, root.clone())
                 .expect_err("terminal failure must stop the install before reading archives");
 
-            assert_eq!(err.to_string(), "Invalid answer try again");
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
             assert!(!root.exists());
-            assert!(!config.install_db.exists());
+            let conn = Connection::open(&config.install_db)?;
+            for table in ["installed_packages", "owned_files", "package_dependencies"] {
+                assert_eq!(
+                    count(&conn, &format!("SELECT COUNT(*) FROM {table}"), &[]),
+                    0
+                );
+            }
             Ok(())
         },
         |stdout| {
@@ -198,7 +213,10 @@ fn uninstall_prompt_error_preserves_files_and_ledger() -> Result<()> {
             let err = uninstall(&config, &"foo".into(), true)
                 .expect_err("terminal failure must stop removal");
 
-            assert_eq!(err.to_string(), "Invalid answer try again");
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
             assert_installed_unchanged(&config, "foo")
         },
         |stdout| assert!(stdout.contains("Packages:\n    foo-1.0.0\n"), "{stdout}"),
@@ -266,7 +284,10 @@ fn clean_prompt_error_lists_all_orphans_and_removes_nothing() -> Result<()> {
             let err = uninstall_orphans(&config)
                 .expect_err("terminal failure must stop the entire cleanup");
 
-            assert_eq!(err.to_string(), "Invalid answer try again");
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
             for name in ["alpha", "zeta", "explicit"] {
                 assert_installed_unchanged(&config, name)?;
             }
@@ -372,7 +393,10 @@ fn update_prompt_error_lists_only_upgrades_and_leaves_files_untouched() -> Resul
             for package in [Some("foo".into()), None] {
                 let err = update(&config, UpdateArgs { package })
                     .expect_err("terminal failure must stop updates before staging");
-                assert_eq!(err.to_string(), "Invalid answer try again");
+                assert_eq!(
+                    err.to_string(),
+                    "Command is running outside of a TTY try passing --yes"
+                );
             }
 
             assert_installed_unchanged(&config, "foo")?;
@@ -394,6 +418,73 @@ fn update_prompt_error_lists_only_upgrades_and_leaves_files_untouched() -> Resul
             );
             assert!(!stdout.contains("    current-"), "{stdout}");
             assert!(!stdout.contains("    uninstalled-"), "{stdout}");
+        },
+    )
+}
+
+#[test]
+fn bulk_resolution_errors_abort_before_confirmation_or_any_update() -> Result<()> {
+    without_terminal(
+        "bulk_resolution_errors_abort_before_confirmation_or_any_update",
+        || {
+            for failing_package in ["alpha", "middle", "zeta"] {
+                for (sql, expected) in [
+                    ("DELETE FROM packages WHERE name = ?", "not found"),
+                    (
+                        "UPDATE packages SET version = '0.9.0' WHERE name = ?",
+                        "Not allowed to downgrade",
+                    ),
+                    (
+                        "UPDATE packages SET version = 'invalid' WHERE name = ?",
+                        "Failed to parse version",
+                    ),
+                    (
+                        "UPDATE packages SET release = -1 WHERE name = ?",
+                        "out of range",
+                    ),
+                ] {
+                    let tmp = tempdir();
+                    let config = runtime_config(&tmp)?;
+                    for name in ["zeta", "middle", "alpha"] {
+                        seed_installed(&config, name, "explicit")?;
+                    }
+                    seed_repo_db(
+                        &config.repo_db,
+                        &[
+                            ("alpha", "2.0.0", 7, "missing-alpha.sky"),
+                            ("middle", "2.0.0", 7, "missing-middle.sky"),
+                            ("zeta", "2.0.0", 7, "missing-zeta.sky"),
+                        ],
+                    );
+                    Connection::open(&config.repo_db)?.execute(sql, [failing_package])?;
+                    let entries_before = fs::read_dir(tmp.path())?
+                        .map(|entry| entry.map(|entry| entry.file_name()))
+                        .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
+
+                    let err = update(&config, UpdateArgs { package: None })
+                        .expect_err("a resolution error must abort the whole plan");
+
+                    assert!(
+                        format!("{err:#}").contains(expected),
+                        "{failing_package}, {sql}: {err:#}"
+                    );
+                    for name in ["alpha", "middle", "zeta"] {
+                        assert_installed_unchanged(&config, name)?;
+                    }
+                    let entries_after = fs::read_dir(tmp.path())?
+                        .map(|entry| entry.map(|entry| entry.file_name()))
+                        .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
+                    assert_eq!(
+                        entries_after, entries_before,
+                        "no staging directories may remain"
+                    );
+                }
+            }
+            Ok(())
+        },
+        |stdout| {
+            assert!(!stdout.contains("Packages:"), "{stdout}");
+            assert!(!stdout.contains("up to date"), "{stdout}");
         },
     )
 }

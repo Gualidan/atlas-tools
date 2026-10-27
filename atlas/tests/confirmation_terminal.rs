@@ -87,6 +87,15 @@ impl Drop for TestChild {
 /// Exercise the real terminal backend with a programmatic answer. No human
 /// input is read. A deadline prevents extra/unexpected prompts from hanging CI.
 fn answer_prompt(test_name: &str, accept: bool, body: impl FnOnce() -> Result<()>) -> Result<()> {
+    answer_prompt_with_keys(test_name, if accept { b"\r" } else { b"n\r" }, accept, body)
+}
+
+fn answer_prompt_with_keys(
+    test_name: &str,
+    keys: &[u8],
+    accept: bool,
+    body: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     if env::var_os("ATLAS_TERMINAL_TEST_CHILD").as_deref() == Some(test_name.as_ref()) {
         return body();
     }
@@ -129,7 +138,7 @@ fn answer_prompt(test_name: &str, accept: bool, body: impl FnOnce() -> Result<()
                 .windows(b"do you wish to proceed?".len())
                 .any(|bytes| bytes == b"do you wish to proceed?")
         {
-            terminal.write_all(if accept { b"\r" } else { b"n\r" })?;
+            terminal.write_all(keys)?;
             answered = true;
         }
         if let Some(status) = child.0.try_wait()? {
@@ -219,9 +228,9 @@ fn assert_unchanged(config: &RuntimeConfig, names: &[&str]) -> Result<()> {
 }
 
 #[test]
-fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
+fn declining_install_leaves_no_files_or_install_records() -> Result<()> {
     answer_prompt(
-        "declining_install_leaves_no_files_or_install_database",
+        "declining_install_leaves_no_files_or_install_records",
         false,
         || {
             let tmp = tempdir();
@@ -235,7 +244,13 @@ fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
             install(&"foo".into(), &config, root.clone())?;
 
             assert!(!root.exists());
-            assert!(!config.install_db.exists());
+            let conn = Connection::open(&config.install_db)?;
+            for table in ["installed_packages", "owned_files", "package_dependencies"] {
+                assert_eq!(
+                    count(&conn, &format!("SELECT COUNT(*) FROM {table}"), &[]),
+                    0
+                );
+            }
             Ok(())
         },
     )
@@ -361,6 +376,40 @@ fn accepting_clean_asks_once_and_removes_all_orphans() -> Result<()> {
                 0
             );
             assert_eq!(count(&conn, "SELECT COUNT(*) FROM owned_files", &[]), 0);
+            Ok(())
+        },
+    )
+}
+
+#[test]
+fn escape_cancels_confirmation_cleanly() -> Result<()> {
+    answer_prompt_with_keys(
+        "escape_cancels_confirmation_cleanly",
+        b"\x1b",
+        false,
+        || {
+            assert!(!confirmation_prompt(
+                vec![("foo", "1.0.0")],
+                4,
+                Action::Install
+            )?);
+            Ok(())
+        },
+    )
+}
+
+#[test]
+fn ctrl_c_cancels_confirmation_cleanly() -> Result<()> {
+    answer_prompt_with_keys(
+        "ctrl_c_cancels_confirmation_cleanly",
+        b"\x03",
+        false,
+        || {
+            assert!(!confirmation_prompt(
+                vec![("foo", "2.0.0")],
+                4,
+                Action::Update
+            )?);
             Ok(())
         },
     )

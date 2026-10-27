@@ -281,3 +281,41 @@ fn semantic_version_comparison_handles_numeric_and_prerelease_boundaries() -> Re
     }
     Ok(())
 }
+
+#[test]
+fn single_resolution_ignores_unrelated_invalid_installed_and_repository_rows() -> Result<()> {
+    let db = Databases::new()?;
+    db.install("target", "1.0.0", ARCH)?;
+    db.publish("target", "2.0.0", ARCH)?;
+    db.install("broken", "invalid", ARCH)?;
+    db.publish("broken", "invalid", ARCH)?;
+
+    let resolution = db.resolve(Some("target"))?;
+
+    assert!(resolution.error.is_none());
+    assert_eq!(resolution.candidates.len(), 1);
+    assert_eq!(resolution.candidates[0].name, "target");
+    assert_eq!(resolution.candidates[0].version, "2.0.0");
+    Ok(())
+}
+
+#[test]
+fn corrupt_installed_rows_propagate_instead_of_returning_a_partial_bulk_plan() -> Result<()> {
+    let db = Databases::new()?;
+    for name in ["alpha", "zeta"] {
+        db.install(name, "1.0.0", ARCH)?;
+        db.publish(name, "2.0.0", ARCH)?;
+    }
+    db.installed.execute(
+        "UPDATE installed_packages SET release = -1 WHERE name = 'zeta'",
+        [],
+    )?;
+
+    let err = db
+        .resolve(None)
+        .err()
+        .expect("installed rows must be valid");
+
+    assert!(format!("{err:#}").contains("out of range"), "{err:#}");
+    Ok(())
+}

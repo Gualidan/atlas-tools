@@ -236,7 +236,7 @@ fn bulk_versions_are_compared_numerically() -> Result<()> {
 }
 
 #[test]
-fn bulk_update_stops_in_name_order_and_retains_earlier_successes() -> Result<()> {
+fn a_missing_bulk_repository_package_aborts_before_applying_earlier_candidates() -> Result<()> {
     let fixture = BulkUpdate::new()?;
     for name in ["zeta", "missing", "alpha"] {
         fixture.install(name)?;
@@ -251,7 +251,7 @@ fn bulk_update_stops_in_name_order_and_retains_earlier_successes() -> Result<()>
         .expect_err("a missing repository package must stop the loop");
 
     assert_eq!(err.to_string(), "Package missing not found");
-    fixture.assert_installed("alpha", "2.0.0", 7)?;
+    fixture.assert_installed("alpha", "1.0.0", 1)?;
     fixture.assert_installed("missing", "1.0.0", 1)?;
     fixture.assert_installed("zeta", "1.0.0", 1)?;
     fixture.assert_no_staging_dirs(&["alpha", "missing", "zeta"])
@@ -479,7 +479,7 @@ fn a_missing_repository_table_reports_an_error_even_with_no_installed_packages()
 }
 
 #[test]
-fn deferred_resolution_errors_are_returned_after_applying_earlier_upgrades() -> Result<()> {
+fn deferred_resolution_errors_are_returned_before_applying_any_upgrades() -> Result<()> {
     for failure in ["downgrade", "invalid-version", "invalid-release"] {
         let fixture = BulkUpdate::new()?;
         for name in ["zeta", "middle", "alpha"] {
@@ -508,7 +508,7 @@ fn deferred_resolution_errors_are_returned_after_applying_earlier_upgrades() -> 
             .expect_err("resolution failure must be reported");
 
         assert!(format!("{err:#}").contains(expected), "{failure}: {err:#}");
-        fixture.assert_installed("alpha", "2.0.0", 7)?;
+        fixture.assert_installed("alpha", "1.0.0", 1)?;
         fixture.assert_installed("middle", "1.0.0", 1)?;
         fixture.assert_installed("zeta", "1.0.0", 1)?;
         fixture.assert_no_staging_dirs(&["alpha", "middle", "zeta"])?;
