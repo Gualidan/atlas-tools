@@ -28,8 +28,12 @@ use crate::{
 /// host architecture under `install_dir/<name>-<version>-<release>`.
 /// Already installed dependencies are skipped; the requested package is reinstalled.
 ///
-/// Propagates resolution, configuration, verification, filesystem, and database
-/// errors. Packages successfully installed before a later failure remain installed.
+/// Requests confirmation for the resolved package list unless
+/// [`set_assume_yes`] is enabled. Declining succeeds without installing anything.
+///
+/// Propagates resolution, configuration, confirmation, verification, filesystem,
+/// and database errors. Packages successfully installed before a later failure
+/// remain installed.
 pub fn install(
     package_name: &String,
     runtime_config: &RuntimeConfig,
@@ -202,6 +206,14 @@ pub fn set_assume_yes(assume_yes: bool) {
     ASSUME_YES.store(assume_yes, Ordering::Relaxed);
 }
 
+/// Lists `(name, version)` pairs with `indent` leading spaces per package and
+/// asks for confirmation using `action` as the verb, defaulting to yes.
+///
+/// An empty list returns `true` without output or a prompt. When
+/// [`set_assume_yes`] is enabled, a nonempty list is still printed but returns
+/// `true` without prompting. Declining prints an abort message and returns `false`.
+/// Prompt errors, including cancellation or interruption, are replaced with
+/// `Invalid answer try again`.
 pub fn confirmation_prompt(
     packages: Vec<(&str, &str)>,
     indent: usize,

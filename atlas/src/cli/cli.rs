@@ -68,6 +68,12 @@ pub struct UpdateArgs {
 #[derive(Args)]
 pub struct CleanArgs {}
 
+/// Parses process arguments, sets confirmation behavior from `--yes`, and runs
+/// the selected command. Installs use `ATLAS_INSTALL_DIR`, defaulting to
+/// `/var/lib/atlas/local` when the variable is absent or not valid Unicode.
+///
+/// Propagates configuration and command errors. Argument parsing exits the
+/// process for help, version information, or invalid arguments.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     set_assume_yes(cli.assume_yes);

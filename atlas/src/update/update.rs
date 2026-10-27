@@ -36,10 +36,14 @@ struct UpdateCandidate {
 /// version is newer. Equal versions succeed without updating, even if release
 /// numbers differ; downgrades fail. An empty update set succeeds without asking.
 ///
-/// Prompts before applying the resolved updates. Propagates missing-package,
-/// version parsing, database, configuration, verification, staging, and
-/// filesystem errors from the update. Stops at the first error; earlier
-/// successful updates remain applied.
+/// Prompts before applying the resolved updates unless `set_assume_yes` is
+/// enabled. Declining succeeds without applying updates. In bulk mode, a
+/// per-package resolution error is returned after applying earlier candidates
+/// in name order, unless confirmation is declined or applying an update fails.
+///
+/// Propagates missing-package, version parsing, confirmation, database,
+/// configuration, verification, staging, and filesystem errors. Stops at the
+/// first update failure; earlier successful updates remain applied.
 pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
@@ -114,8 +118,10 @@ struct Resolution {
 
 /// Resolves the packages that have a newer repository version. With `name`, only
 /// that installed package is considered; without it, every installed package is
-/// visited in name order. Bulk resolution reports a per-package failure
-/// alongside the candidates resolved before it, so earlier updates still apply.
+/// visited in name order. Bulk resolution returns the first per-package failure
+/// in `Resolution.error` alongside earlier candidates. Single-package failures
+/// and bulk query setup or installed-row errors propagate directly. No updates
+/// are applied here.
 fn resolve_update_order(
     install_conn: &Connection,
     repo_conn: &Connection,
@@ -130,6 +136,10 @@ fn resolve_update_order(
     }
 }
 
+/// Resolves a single installed package and repository entry for the host
+/// architecture, retaining its recorded install directory. Returns one candidate
+/// for a newer semantic version, or none for an equal version regardless of release.
+/// Missing entries, downgrades, version parsing, and database errors propagate.
 fn resolve_one(
     install_conn: &Connection,
     repo_conn: &Connection,
@@ -187,6 +197,13 @@ fn resolve_one(
     }
 }
 
+/// Resolves upgrades in installed-package name order, using host-architecture
+/// repository entries even for installed rows with a different architecture.
+/// Equal semantic versions are skipped regardless of release numbers.
+///
+/// Query setup and installed-row errors propagate directly. The first missing
+/// repository entry, repository-row error, invalid version, or downgrade ends
+/// resolution and is returned in `Resolution.error` with earlier candidates.
 fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Resolution> {
     let mut install_stmt = install_conn
         .prepare(
@@ -275,6 +292,8 @@ fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Reso
     })
 }
 
+/// Compares `installed` against `available` as semantic versions. Returns a
+/// parsing error with `parse_context` attached if either version is invalid.
 fn compare_versions(
     installed: &str,
     available: &str,
@@ -285,6 +304,7 @@ fn compare_versions(
     Ok(installed.cmp(&available))
 }
 
+/// Builds a downgrade error identifying the package and both version strings.
 fn downgrade_error(name: &str, installed: &str, available: &str) -> anyhow::Error {
     anyhow!(
         "Not allowed to downgrade {name}: installed version is {installed} while the repository's is {available}"

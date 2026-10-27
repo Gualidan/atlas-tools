@@ -10,6 +10,13 @@ use crate::{
     uninstall::uninstall::uninstall,
 };
 
+/// Removes installed packages for the host architecture that are not reachable
+/// from explicitly installed packages through recorded dependencies.
+///
+/// Requests confirmation once unless `set_assume_yes` is enabled, then removes
+/// packages without individual prompts. An empty list or a declined prompt
+/// succeeds without removing packages. Propagates lookup, confirmation, and
+/// uninstall errors; stops at the first failure, retaining earlier removals.
 pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     let orphans = get_orphaned_packages(runtime_config)?;
 
