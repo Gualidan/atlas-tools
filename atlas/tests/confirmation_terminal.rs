@@ -15,11 +15,11 @@ use std::{
 
 use anyhow::Result;
 use atlas::{
-    cli::cli::UpdateArgs,
-    install::{
-        db::ensure_install_schema,
-        install::{confirmation_prompt, install, set_assume_yes},
+    cli::{
+        cli::UpdateArgs,
+        confirmation::{Action, confirmation_prompt, set_assume_yes},
     },
+    install::{db::ensure_install_schema, install::install},
     types::runtime_config::RuntimeConfig,
     uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
     update::update::update,
@@ -328,7 +328,11 @@ fn pressing_enter_accepts_the_default_confirmation() -> Result<()> {
         "pressing_enter_accepts_the_default_confirmation",
         true,
         || {
-            assert!(confirmation_prompt(vec![("foo", "1.0.0")], 4, "install")?);
+            assert!(confirmation_prompt(
+                vec![("foo", "1.0.0")],
+                4,
+                Action::Install
+            )?);
             Ok(())
         },
     )

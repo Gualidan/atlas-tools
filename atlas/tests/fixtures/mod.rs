@@ -404,7 +404,7 @@ impl ConfigEnv {
 
         // Integration tests run without a terminal; auto-accept confirmation
         // prompts so install/uninstall/update can be exercised directly.
-        atlas::install::install::set_assume_yes(true);
+        atlas::cli::confirmation::set_assume_yes(true);
 
         let config_dir = tmp.path().join("sisyphus-config");
         std::fs::create_dir_all(&config_dir)?;
