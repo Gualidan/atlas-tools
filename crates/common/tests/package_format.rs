@@ -127,6 +127,21 @@ fn each_identity_field_must_match_the_metadata() {
             err.to_string().contains("metadata does not match"),
             "{field}: {err:#}"
         );
+        let message = err.to_string();
+        for identity_value in ["example", "1.2.3", &mismatch.name, &mismatch.version] {
+            assert!(message.contains(identity_value), "{field}: {message}");
+        }
+        for non_identity_value in [
+            "source",
+            "https://example.invalid/source.tar.gz",
+            "unused",
+            "runtime",
+            "deadbeef",
+            "2026-01-01T00:00:00Z",
+            "tester",
+        ] {
+            assert!(!message.contains(non_identity_value), "{field}: {message}");
+        }
     }
 }
 
