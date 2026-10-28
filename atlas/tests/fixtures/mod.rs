@@ -61,7 +61,7 @@ pub fn seed_repo_db_with_deps(path: &Path, packages: &[(&str, &str, u32, &str, &
     create_packages_table(&mut conn).unwrap();
 
     for (name, version, release, sky_path, deps) in packages {
-        let deps: Vec<String> = deps.iter().map(|dep| dep.to_string()).collect();
+        let deps: Vec<String> = deps.iter().map(ToString::to_string).collect();
         let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
 
         conn.execute(

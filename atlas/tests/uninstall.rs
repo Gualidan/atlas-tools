@@ -279,7 +279,7 @@ fn uninstall_keeps_explicitly_installed_dependencies() -> Result<()> {
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
         0,
-        "package_dependencies should contain baz's edges"
+        "package_dependencies should be empty"
     );
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM owned_files", &[]),
