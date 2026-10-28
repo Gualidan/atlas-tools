@@ -76,7 +76,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
         .map(|row| (row.name.as_str(), row.version.as_str()))
         .collect::<Vec<(&str, &str)>>();
 
-    if !confirmation_prompt(packages, 4, Action::Update)? {
+    if !confirmation_prompt(packages, 4, &Action::Update)? {
         return Ok(());
     }
 

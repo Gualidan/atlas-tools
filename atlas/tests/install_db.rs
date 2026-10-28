@@ -11,7 +11,7 @@ use fixtures::{
 };
 use rusqlite::{Connection, params};
 
-fn package_identity<'a>(name: &'a str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
+fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
     let identity = PackageIdentity {
         name: name.to_string(),
         version: "1.0.0".to_string(),
@@ -25,8 +25,8 @@ fn package_identity<'a>(name: &'a str, deps: &[&str]) -> (PackageIdentity, Vec<S
 fn metadata(identity: &PackageIdentity, deps: &[String]) -> Metadata {
     Metadata {
         format: 1,
-        name: identity.name.to_string(),
-        version: identity.version.to_string(),
+        name: identity.name.clone(),
+        version: identity.version.clone(),
         release: identity.release,
         architecture: identity.architecture,
         deps: deps.to_vec(),

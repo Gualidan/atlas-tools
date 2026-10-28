@@ -82,7 +82,7 @@ fn visit(
 
     let deps: Vec<String> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
 
-    stack.push(name.to_string());
+    stack.push(name.clone());
     let mut stmt = install_conn
         .prepare("SELECT name FROM installed_packages WHERE name = ?")
         .context("Failed to prepare database query")?;
@@ -97,7 +97,7 @@ fn visit(
         visit(
             repo_conn,
             install_conn,
-            dep.to_string(),
+            dep.clone(),
             stack,
             resolved,
             resolved_packages,
@@ -106,7 +106,7 @@ fn visit(
     }
 
     stack.pop();
-    resolved.insert(name.to_string());
+    resolved.insert(name.clone());
     resolved_packages.push(ResolvedPackage {
         name,
         version,

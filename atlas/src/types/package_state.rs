@@ -199,7 +199,7 @@ impl<'a> PackageState<'a> {
                     install_dir.clone(),
                     RenameFlags::EXCHANGE,
                 ) {
-                    Ok(_) => Ok((PackageState::Installed, metadata, tempdir)),
+                    Ok(()) => Ok((PackageState::Installed, metadata, tempdir)),
                     Err(e) => Err(e.into()),
                 }
             }
@@ -218,16 +218,14 @@ impl<'a> PackageState<'a> {
         match self {
             PackageState::Installed => {
                 match fs::remove_dir_all(ctx.install_dir.clone()) {
-                    Ok(_) => {
-                        return Ok(());
-                    }
+                    Ok(()) => Ok(()),
                     Err(e) => {
                         // Treat the fact that the dir is not there as something that means its already be done
                         //  and tolerate it to avoid a scenario where updating a package bricks uninstall
                         if e.kind() == NotFound {
                             return Ok(());
                         }
-                        return Err(anyhow!(e));
+                        Err(anyhow!(e))
                     }
                 }
             }
