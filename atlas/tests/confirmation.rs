@@ -2,6 +2,7 @@ mod fixtures;
 
 use std::{
     env, fs, io,
+    os::unix::process::CommandExt,
     process::{Command, Stdio},
 };
 
@@ -23,7 +24,7 @@ use fixtures::{
 use rusqlite::{Connection, params};
 
 /// Run one test in its own process with closed stdin and captured stdout. This
-/// guarantees no terminal is required, isolates ASSUME_YES, and lets the parent
+/// guarantees no terminal is required, isolates `ASSUME_YES`, and lets the parent
 /// check the package preview without relying on libtest's output capture.
 fn without_terminal(
     test_name: &str,
@@ -34,11 +35,25 @@ fn without_terminal(
         return body();
     }
 
-    let output = Command::new(env::current_exe()?)
+    let mut command = Command::new(env::current_exe()?);
+    command
         .args(["--exact", test_name, "--nocapture", "--color", "never"])
         .env("ATLAS_CONFIRMATION_TEST_CHILD", test_name)
-        .stdin(Stdio::null())
-        .output()?;
+        .stdin(Stdio::null());
+
+    // A test harness started from a terminal gives the child that terminal as
+    // its controlling tty. `inquire`/crossterm then falls back to `/dev/tty`
+    // (stdin is `/dev/null`) and blocks waiting for a keypress. Starting the
+    // child in its own session makes `/dev/tty` unavailable, so the prompt
+    // correctly reports that it is not running in a TTY.
+    unsafe {
+        command.pre_exec(|| {
+            rustix::process::setsid().map_err(io::Error::from)?;
+            Ok(())
+        });
+    }
+
+    let output = command.output()?;
     let stdout = String::from_utf8(output.stdout)?;
     assert!(
         output.status.success(),
@@ -116,6 +131,7 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
             // A fresh process must require confirmation by default.
             let err = confirmation_prompt(vec![("foo", "1.0.0")], 0, &Action::Install)
                 .expect_err("a nonempty plan requires a terminal by default");
+
             assert_eq!(
                 err.to_string(),
                 "Command is running outside of a TTY try passing --yes"
