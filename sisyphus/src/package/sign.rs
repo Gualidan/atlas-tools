@@ -24,7 +24,7 @@ pub fn sign_artifacts(
         manifest_hash.as_ref(),
     ]
     .concat();
-    let signature = sign(&priv_key_path, data.as_slice()).context("Failed to sign artifacts")?;
+    let signature = sign(priv_key_path, data.as_slice()).context("Failed to sign artifacts")?;
 
     Ok(signature)
 }

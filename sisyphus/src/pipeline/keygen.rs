@@ -25,9 +25,9 @@ pub fn run_keygen(path: &Option<PathBuf>) -> Result<()> {
 
         match ans {
             Ok(true) => {
-                println!("Proceeding...")
+                println!("Proceeding...");
             }
-            Ok(false) | Err(OperationInterrupted) | Err(OperationCanceled) => {
+            Ok(false) | Err(OperationInterrupted | OperationCanceled) => {
                 println!("Transaction aborted");
                 return Ok(());
             }

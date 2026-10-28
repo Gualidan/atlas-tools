@@ -49,7 +49,7 @@ impl Installation {
             &[("foo", "1.0.0", 1, sky.to_str().unwrap())],
         );
         let root = tmp.path().join("root");
-        install(&"foo".to_string(), &config, root.clone())?;
+        install(&"foo".to_string(), &config, &root)?;
         let dir = root.join("foo-1.0.0-1");
         Ok(Self {
             tmp,
@@ -70,7 +70,7 @@ impl Installation {
             version,
             7,
             b"new\n",
-            deps.iter().map(|dep| dep.to_string()).collect(),
+            deps.iter().map(ToString::to_string).collect(),
             "dir",
             "new.txt",
         )?;
@@ -199,8 +199,8 @@ fn update_one_commits_using_its_supplied_connections_and_staging_directory() -> 
 
     update_one(
         PackageIdentity {
-            name: "foo",
-            version: "2.0.0",
+            name: "foo".to_string(),
+            version: "2.0.0".to_string(),
             release: 7,
             architecture: ARCH,
         },

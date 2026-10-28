@@ -15,12 +15,12 @@ pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata> {
 
     let metadata = Metadata {
         format: 1,
-        name: package.name.to_owned(),
-        version: package.version.to_owned(),
+        name: package.name.clone(),
+        version: package.version.clone(),
         release: package.release.to_owned(),
-        architecture: package.architecture.to_owned(),
-        deps: package.deps.to_owned(),
-        source: package.source.to_owned(),
+        architecture: package.architecture,
+        deps: package.deps.clone(),
+        source: package.source.clone(),
         build: Build {
             recipe_sha256: hex::encode(hash(reader).context("Failed to hash recipe file")?),
             built_at: Utc::now().to_rfc3339(),

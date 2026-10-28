@@ -32,7 +32,7 @@ use crate::{
 
 pub enum PackageState<'a> {
     NotInstalled {
-        package_id: PackageIdentity<'a>,
+        package_id: PackageIdentity,
         install_conn: &'a Connection,
         tempdir: TempDir,
         sky_path: &'a PathBuf,
@@ -45,7 +45,7 @@ pub enum PackageState<'a> {
         manifest_paths: Vec<ManifestLine>,
         tempdir: TempDir,
         install_conn: &'a Connection,
-        package_id: PackageIdentity<'a>,
+        package_id: PackageIdentity,
         sky_path: &'a PathBuf,
         install_dir: &'a PathBuf,
     },
@@ -199,7 +199,7 @@ impl<'a> PackageState<'a> {
                     install_dir.clone(),
                     RenameFlags::EXCHANGE,
                 ) {
-                    Ok(_) => Ok((PackageState::Installed, metadata, tempdir)),
+                    Ok(()) => Ok((PackageState::Installed, metadata, tempdir)),
                     Err(e) => Err(e.into()),
                 }
             }
@@ -209,41 +209,25 @@ impl<'a> PackageState<'a> {
         }
     }
 
-    /// Removes an `Installed` package's directory if no package depends on it
-    /// for the same architecture. A missing directory counts as success;
-    /// database records are left for the caller to remove.
-    /// Returns an error for dependents or another starting state, and propagates
-    /// database errors and filesystem errors other than `NotFound`.
+    /// Recursively removes `ctx.install_dir` from the `Installed` state.
+    /// A missing directory counts as success. Dependency checks and database
+    /// record removal are left to the caller.
+    /// Returns an error for another starting state and propagates filesystem
+    /// errors other than `NotFound`; failed removal may leave some files deleted.
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {
-                let mut stmt  = ctx.install_conn.prepare("SELECT package_name FROM package_dependencies WHERE dependency_name = ? AND architecture = ?").context("Failed to prepare database query")?;
-                let Some(dependent): Option<String> = stmt
-                    .query_row(
-                        params![ctx.package_id.name, ctx.package_id.architecture.to_string()],
-                        |row| row.get(0),
-                    )
-                    .optional()?
-                else {
-                    match fs::remove_dir_all(ctx.install_dir.clone()) {
-                        Ok(_) => {
+                match fs::remove_dir_all(ctx.install_dir.clone()) {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        // Treat the fact that the dir is not there as something that means its already be done
+                        //  and tolerate it to avoid a scenario where updating a package bricks uninstall
+                        if e.kind() == NotFound {
                             return Ok(());
                         }
-                        Err(e) => {
-                            // Treat the fact that the dir is not there as something that means its already be done
-                            //  and tolerate it to avoid a scenario where updating a package bricks uninstall
-                            if e.kind() == NotFound {
-                                return Ok(());
-                            }
-                            return Err(anyhow!(e));
-                        }
+                        Err(anyhow!(e))
                     }
-                };
-
-                Err(anyhow!(
-                    "Cannot remove package {}: {dependent} depends on it",
-                    ctx.package_id.name
-                ))
+                }
             }
 
             _ => Err(anyhow!(

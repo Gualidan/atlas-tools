@@ -2,6 +2,7 @@ mod fixtures;
 
 use std::{
     env, fs, io,
+    os::unix::process::CommandExt,
     process::{Command, Stdio},
 };
 
@@ -23,7 +24,7 @@ use fixtures::{
 use rusqlite::{Connection, params};
 
 /// Run one test in its own process with closed stdin and captured stdout. This
-/// guarantees no terminal is required, isolates ASSUME_YES, and lets the parent
+/// guarantees no terminal is required, isolates `ASSUME_YES`, and lets the parent
 /// check the package preview without relying on libtest's output capture.
 fn without_terminal(
     test_name: &str,
@@ -34,11 +35,25 @@ fn without_terminal(
         return body();
     }
 
-    let output = Command::new(env::current_exe()?)
+    let mut command = Command::new(env::current_exe()?);
+    command
         .args(["--exact", test_name, "--nocapture", "--color", "never"])
         .env("ATLAS_CONFIRMATION_TEST_CHILD", test_name)
-        .stdin(Stdio::null())
-        .output()?;
+        .stdin(Stdio::null());
+
+    // A test harness started from a terminal gives the child that terminal as
+    // its controlling tty. `inquire`/crossterm then falls back to `/dev/tty`
+    // (stdin is `/dev/null`) and blocks waiting for a keypress. Starting the
+    // child in its own session makes `/dev/tty` unavailable, so the prompt
+    // correctly reports that it is not running in a TTY.
+    unsafe {
+        command.pre_exec(|| {
+            rustix::process::setsid().map_err(io::Error::from)?;
+            Ok(())
+        });
+    }
+
+    let output = command.output()?;
     let stdout = String::from_utf8(output.stdout)?;
     assert!(
         output.status.success(),
@@ -101,7 +116,7 @@ fn empty_package_list_needs_no_terminal_or_assume_yes() -> Result<()> {
         "empty_package_list_needs_no_terminal_or_assume_yes",
         || {
             set_assume_yes(false);
-            assert!(confirmation_prompt(vec![], 4, Action::Install)?);
+            assert!(confirmation_prompt(vec![], 4, &Action::Install)?);
             Ok(())
         },
         |stdout| assert!(!stdout.contains("Packages:")),
@@ -114,8 +129,9 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
         "assume_yes_prints_names_versions_and_indentation_and_can_be_disabled",
         || {
             // A fresh process must require confirmation by default.
-            let err = confirmation_prompt(vec![("foo", "1.0.0")], 0, Action::Install)
+            let err = confirmation_prompt(vec![("foo", "1.0.0")], 0, &Action::Install)
                 .expect_err("a nonempty plan requires a terminal by default");
+
             assert_eq!(
                 err.to_string(),
                 "Command is running outside of a TTY try passing --yes"
@@ -125,16 +141,16 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
             assert!(confirmation_prompt(
                 vec![("foo", "1.0.0")],
                 0,
-                Action::Install
+                &Action::Install
             )?);
             assert!(confirmation_prompt(
                 vec![("bar", "2.0.0-rc.1"), ("baz", "3.0.0")],
                 4,
-                Action::Update
+                &Action::Update
             )?);
 
             set_assume_yes(false);
-            let err = confirmation_prompt(vec![("foo", "1.0.0")], 4, Action::Uninstall)
+            let err = confirmation_prompt(vec![("foo", "1.0.0")], 4, &Action::Uninstall)
                 .expect_err("disabling assume_yes must restore terminal confirmation");
             assert_eq!(
                 err.to_string(),
@@ -175,7 +191,7 @@ fn install_prompt_error_lists_dependencies_and_leaves_no_installation() -> Resul
             );
             let root = tmp.path().join("root");
 
-            let err = install(&"foo".into(), &config, root.clone())
+            let err = install(&"foo".into(), &config, &root)
                 .expect_err("terminal failure must stop the install before reading archives");
 
             assert_eq!(
@@ -214,7 +230,7 @@ fn install_prompt_error_preserves_existing_database_and_skips_installed_dependen
             let database_before = fs::read(&config.install_db)?;
             let root = tmp.path().join("root");
 
-            let err = install(&"foo".into(), &config, root.clone())
+            let err = install(&"foo".into(), &config, &root)
                 .expect_err("installed dependencies must be resolved before confirmation");
 
             assert_eq!(
@@ -251,6 +267,45 @@ fn uninstall_prompt_error_preserves_files_and_ledger() -> Result<()> {
             assert_installed_unchanged(&config, "foo")
         },
         |stdout| assert!(stdout.contains("Packages:\n    foo-1.0.0\n"), "{stdout}"),
+    )
+}
+
+#[test]
+fn uninstall_prompt_lists_the_complete_plan_before_changing_any_package() -> Result<()> {
+    without_terminal(
+        "uninstall_prompt_lists_the_complete_plan_before_changing_any_package",
+        || {
+            let tmp = tempdir();
+            let config = runtime_config(&tmp)?;
+            seed_installed(&config, "app", "explicit")?;
+            seed_installed(&config, "library", "dependency")?;
+            Connection::open(&config.install_db)?.execute(
+                "INSERT INTO package_dependencies VALUES ('app', ?, 'library')",
+                [ARCH.to_string()],
+            )?;
+            let before = fs::read(&config.install_db)?;
+
+            let err = uninstall(&config, &"app".into(), true)
+                .expect_err("closed stdin must stop the complete uninstall plan");
+
+            assert_eq!(
+                err.to_string(),
+                "Command is running outside of a TTY try passing --yes"
+            );
+            assert_eq!(fs::read(&config.install_db)?, before);
+            assert_installed_unchanged(&config, "app")?;
+            assert_installed_unchanged(&config, "library")
+        },
+        |stdout| {
+            assert_eq!(stdout.matches("Packages:").count(), 1, "{stdout}");
+            for name in ["app", "library"] {
+                assert_eq!(
+                    stdout.matches(&format!("    {name}-1.0.0\n")).count(),
+                    1,
+                    "{stdout}"
+                );
+            }
+        },
     )
 }
 

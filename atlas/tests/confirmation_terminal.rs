@@ -242,7 +242,7 @@ fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
             seed_repo_db(&config.repo_db, &[("foo", "1.0.0", 1, "missing.sky")]);
             let root = tmp.path().join("root");
 
-            install(&"foo".into(), &config, root.clone())?;
+            install(&"foo".into(), &config, &root)?;
 
             assert!(!root.exists());
             assert!(!config.install_db.exists());
@@ -265,6 +265,30 @@ fn declining_uninstall_preserves_files_and_install_records() -> Result<()> {
             uninstall(&config, &"foo".into(), true)?;
 
             assert_unchanged(&config, &["foo"])
+        },
+    )
+}
+
+#[test]
+fn declining_uninstall_preserves_every_package_in_the_resolved_plan() -> Result<()> {
+    answer_prompt(
+        "declining_uninstall_preserves_every_package_in_the_resolved_plan",
+        false,
+        || {
+            let tmp = tempdir();
+            let config = runtime_config(&tmp)?;
+            seed_installation(&config, "app", "explicit")?;
+            seed_installation(&config, "library", "dependency")?;
+            Connection::open(&config.install_db)?.execute(
+                "INSERT INTO package_dependencies VALUES ('app', ?, 'library')",
+                [ARCH.to_string()],
+            )?;
+            let before = fs::read(&config.install_db)?;
+
+            uninstall(&config, &"app".into(), true)?;
+
+            assert_eq!(fs::read(&config.install_db)?, before);
+            assert_unchanged(&config, &["app", "library"])
         },
     )
 }
@@ -342,7 +366,7 @@ fn pressing_enter_accepts_the_default_confirmation() -> Result<()> {
             assert!(confirmation_prompt(
                 vec![("foo", "1.0.0")],
                 4,
-                Action::Install
+                &Action::Install
             )?);
             Ok(())
         },
@@ -387,7 +411,7 @@ fn escape_cancels_confirmation_cleanly() -> Result<()> {
             assert!(!confirmation_prompt(
                 vec![("foo", "1.0.0")],
                 4,
-                Action::Install
+                &Action::Install
             )?);
             Ok(())
         },
@@ -404,7 +428,7 @@ fn ctrl_c_cancels_confirmation_cleanly() -> Result<()> {
             assert!(!confirmation_prompt(
                 vec![("foo", "2.0.0")],
                 4,
-                Action::Update
+                &Action::Update
             )?);
             Ok(())
         },

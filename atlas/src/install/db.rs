@@ -14,6 +14,7 @@ use crate::{
     types::runtime_config::RuntimeConfig, verify::parse_metadata_lines::parse_metadata_lines,
 };
 
+#[derive(PartialEq)]
 pub enum InstallReason {
     Dependency,
     Explicit,
@@ -25,6 +26,16 @@ impl Display for InstallReason {
         match self {
             InstallReason::Dependency => write!(f, "dependency"),
             InstallReason::Explicit => write!(f, "explicit"),
+        }
+    }
+}
+
+impl From<String> for InstallReason {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "explicit" => Self::Explicit,
+            "dependency" => Self::Dependency,
+            _ => panic!("Invalid string impossible to convert it to an install reason"),
         }
     }
 }

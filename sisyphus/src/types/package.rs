@@ -34,7 +34,7 @@ impl Package {
                 && !self.name.chars().next().unwrap().is_ascii_digit()
             || !self.name.chars().skip(1).all(|c| {
                 c.is_ascii_lowercase()
-                    || c.is_digit(10)
+                    || c.is_ascii_digit()
                     || c == '+'
                     || c == '.'
                     || c == '_'

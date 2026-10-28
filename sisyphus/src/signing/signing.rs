@@ -10,24 +10,23 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
-    let path = match keypath {
-        Some(p) => std::path::PathBuf::from(p),
-        None => {
-            let keys_dir = config_dir()
-                .context("Failed to derive user's config directory")?
-                .join("sisyphus")
-                .join("keys");
-            let filename = format!(
-                "{}-{}-{}.key",
-                whoami::username().context("Failed to get user's username")?,
-                whoami::hostname().context("Failed to get system hostname")?,
-                SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .context("Failed to derive duration since Unix Epoch")?
-                    .as_secs()
-            );
-            keys_dir.join(filename)
-        }
+    let path = if let Some(keypath) = keypath {
+        std::path::PathBuf::from(keypath)
+    } else {
+        let keys_dir = config_dir()
+            .context("Failed to derive user's config directory")?
+            .join("sisyphus")
+            .join("keys");
+        let filename = format!(
+            "{}-{}-{}.key",
+            whoami::username().context("Failed to get user's username")?,
+            whoami::hostname().context("Failed to get system hostname")?,
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .context("Failed to derive duration since Unix Epoch")?
+                .as_secs()
+        );
+        keys_dir.join(filename)
     };
 
     if path.exists() {
@@ -54,9 +53,9 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
         .map_err(|e| match e.kind() {
             AlreadyExists => anyhow!(
                 "Key at path {} already exists, not allowed to overwrite it",
-                &path.display()
+                path.display()
             ),
-            _ => anyhow!("Failed to open file at path {}", &path.display()),
+            _ => anyhow!("Failed to open file at path {}", path.display()),
         })?;
     pub_file
         .write_all(pub_key)
@@ -70,9 +69,9 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
         .map_err(|e| match e.kind() {
             AlreadyExists => anyhow!(
                 "Key at path {} already exists, not allowed to overwrite it",
-                &path.display()
+                path.display()
             ),
-            _ => anyhow!("Failed to open file at path {}", &path.display()),
+            _ => anyhow!("Failed to open file at path {}", path.display()),
         })?;
     file.write_all(priv_key)
         .context("Failed to write private key to disk")?;

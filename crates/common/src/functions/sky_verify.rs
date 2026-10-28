@@ -107,8 +107,14 @@ pub fn verify_metadata(metadata_bytes: &[u8], package: &PackageIdentity) -> Resu
         || metadata.release != package.release
         || metadata.architecture != package.architecture
     {
+        let actual = PackageIdentity {
+            name: metadata.name,
+            version: metadata.version,
+            release: metadata.release,
+            architecture: metadata.architecture,
+        };
         return Err(anyhow!(
-            "Verification failed: metadata does not match the expected package"
+            "Verification failed: metadata does not match the expected package: metadata: {actual:?}, expected: {package:?}"
         ));
     }
 

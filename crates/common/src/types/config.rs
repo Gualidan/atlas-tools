@@ -15,6 +15,9 @@ pub struct SisyphusConfig {
 /// user's configuration directory under `sisyphus` when the override is unset.
 /// Creates the configuration directory if needed. Propagates directory lookup,
 /// directory creation, configuration reading, and deserialization errors.
+///
+/// # Errors
+/// Will return an Err if deriving a directory, creating a directory or deserialisation fails
 pub fn load_config() -> Result<SisyphusConfig> {
     let config_dir = match std::env::var_os("SISYPHUS_CONFIG_DIR") {
         Some(path) => PathBuf::from(path),

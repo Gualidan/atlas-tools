@@ -111,7 +111,7 @@ fn a_miss_downloads_and_a_second_build_hits_the_cache() -> Result<()> {
     let url = start_payload_server(vec![contents.to_vec()])?;
     let pkg = package(&url, &sha256(contents));
 
-    let fetched = fetch(&pkg, FetchMode::Build, &runtime_config)
+    let fetched = fetch(&pkg, &FetchMode::Build, &runtime_config)
         .expect("a cache miss must download and verify the source");
     assert!(fetched.exists(), "the downloaded file must exist");
     assert_eq!(
@@ -125,7 +125,7 @@ fn a_miss_downloads_and_a_second_build_hits_the_cache() -> Result<()> {
         "the miss must record one row"
     );
 
-    let hit = fetch(&pkg, FetchMode::Build, &runtime_config)
+    let hit = fetch(&pkg, &FetchMode::Build, &runtime_config)
         .expect("the second build must hit the cache");
     assert_eq!(hit, fetched, "the cache hit must serve the same file");
     assert_eq!(
@@ -202,7 +202,7 @@ fn a_new_sha_for_the_same_url_replaces_the_cached_row() -> Result<()> {
     let url = start_payload_server(vec![first.to_vec(), second.to_vec()])?;
 
     let pkg_one = package(&url, &sha256(first));
-    fetch(&pkg_one, FetchMode::Build, &runtime_config).expect("the first fetch must succeed");
+    fetch(&pkg_one, &FetchMode::Build, &runtime_config).expect("the first fetch must succeed");
     assert_eq!(
         cached_sha(&runtime_config, &url).as_deref(),
         Some(sha256(first).as_str()),
@@ -210,7 +210,7 @@ fn a_new_sha_for_the_same_url_replaces_the_cached_row() -> Result<()> {
     );
 
     let pkg_two = package(&url, &sha256(second));
-    let fetched = fetch(&pkg_two, FetchMode::Build, &runtime_config)
+    let fetched = fetch(&pkg_two, &FetchMode::Build, &runtime_config)
         .expect("a new sha for the same url must miss the cache and re-download");
     assert_eq!(
         std::fs::read(&fetched)?,
@@ -224,7 +224,7 @@ fn a_new_sha_for_the_same_url_replaces_the_cached_row() -> Result<()> {
     );
 
     // The entry now serves the second release, not the first.
-    let hit = fetch(&pkg_two, FetchMode::Build, &runtime_config)
+    let hit = fetch(&pkg_two, &FetchMode::Build, &runtime_config)
         .expect("the replaced row must serve the new file");
     assert_eq!(
         std::fs::read(&hit)?,

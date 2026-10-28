@@ -16,16 +16,15 @@ pub fn package_gen(
     runtime_config: &RuntimeConfig,
 ) -> Result<PathBuf> {
     let (manifest, payload) = payload_gen(pkgdir)?;
-    let metadata = metadata_gen(&recipe, package)?;
+    let metadata = metadata_gen(recipe, package)?;
     let signature = sign_artifacts(priv_key_path, &metadata, &payload, &manifest)?;
 
-    let output_path = PathBuf::from(
-        data_dir()
-            .context("Failed to derive user's data directory")?
-            .join("sisyphus")
-            .join("repo")
-            .join(format!("{}", package.architecture)),
-    );
+    let output_path = data_dir()
+        .context("Failed to derive user's data directory")?
+        .join("sisyphus")
+        .join("repo")
+        .join(format!("{}", package.architecture));
+
     std::fs::create_dir_all(&output_path)
         .context("Failed to recursively create the output directory for the sky file")?;
 
@@ -35,7 +34,7 @@ pub fn package_gen(
         &manifest,
         &signature,
         package,
-        output_path,
+        &output_path,
         runtime_config,
     )
     .context("Failed to generate sky file")?;

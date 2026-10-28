@@ -16,11 +16,11 @@ pub fn sky_gen(
     manifest: &String,
     signature: &Vec<u8>,
     package: &Package,
-    output_path: PathBuf,
+    output_path: &PathBuf,
     runtime_config: &RuntimeConfig,
 ) -> Result<PathBuf> {
     if !output_path.exists() {
-        std::fs::create_dir_all(&output_path).context("Failed to create sky output directory")?;
+        std::fs::create_dir_all(output_path).context("Failed to create sky output directory")?;
     }
     let output_path = output_path.join(PathBuf::from(format!(
         "{}-{}-{}-{}.sky",

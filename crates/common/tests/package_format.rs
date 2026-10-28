@@ -9,7 +9,7 @@ use common::{
 use std::{fs, io::Cursor, path::PathBuf};
 use tar::{Builder, Header};
 
-const METADATA: &[u8] = br#"format: 1
+const METADATA: &[u8] = br"format: 1
 name: example
 version: 1.2.3
 release: 4
@@ -22,15 +22,15 @@ build:
   recipe_sha256: deadbeef
   built_at: '2026-01-01T00:00:00Z'
   builder: tester
-"#;
+";
 
 #[test]
 fn metadata_verification_accepts_a_slice_and_identity_borrowed_from_owned_strings() -> Result<()> {
     let name = String::from("example");
     let version = String::from("1.2.3");
     let identity = PackageIdentity {
-        name: &name,
-        version: &version,
+        name: name.clone(),
+        version: version.clone(),
         release: 4,
         architecture: Architectures::X86_64,
     };
@@ -44,10 +44,49 @@ fn metadata_verification_accepts_a_slice_and_identity_borrowed_from_owned_string
 }
 
 #[test]
+fn package_identity_owns_escaped_strings_after_the_yaml_buffer_is_dropped() -> Result<()> {
+    let identity: PackageIdentity = {
+        let yaml = String::from(
+            "name: \"ex\\u0061mple\"\nversion: \"1.2.\\u0033\"\nrelease: 4\narchitecture: x86_64\n",
+        );
+        serde_saphyr::from_str(&yaml)?
+    };
+
+    let metadata = verify_metadata(METADATA, &identity)?;
+
+    assert_eq!(identity.name, "example");
+    assert_eq!(identity.version, "1.2.3");
+    assert_eq!(metadata.name, identity.name);
+    assert_eq!(metadata.version, identity.version);
+    Ok(())
+}
+
+#[test]
+fn cloning_a_package_identity_keeps_independent_strings_and_verification() -> Result<()> {
+    let original: PackageIdentity = serde_saphyr::from_str(
+        "name: example\nversion: 1.2.3\nrelease: 4\narchitecture: x86_64\n",
+    )?;
+    let mut cloned = original.clone();
+    cloned.name.push_str("-other");
+    cloned.version.push_str("-rc.1");
+
+    verify_metadata(METADATA, &original)?;
+    assert!(verify_metadata(METADATA, &cloned).is_err());
+    assert_eq!(original.name, "example");
+    assert_eq!(original.version, "1.2.3");
+    assert_eq!(cloned.release, original.release);
+    assert_eq!(cloned.architecture, original.architecture);
+    drop(original);
+    assert_eq!(cloned.name, "example-other");
+    assert_eq!(cloned.version, "1.2.3-rc.1");
+    Ok(())
+}
+
+#[test]
 fn each_identity_field_must_match_the_metadata() {
     let identity = PackageIdentity {
-        name: "example",
-        version: "1.2.3",
+        name: "example".to_string(),
+        version: "1.2.3".to_string(),
         release: 4,
         architecture: Architectures::X86_64,
     };
@@ -55,22 +94,22 @@ fn each_identity_field_must_match_the_metadata() {
         (
             "name",
             PackageIdentity {
-                name: "different",
-                ..identity
+                name: "different".to_string(),
+                ..identity.clone()
             },
         ),
         (
             "version",
             PackageIdentity {
-                version: "1.2.4",
-                ..identity
+                version: "1.2.4".to_string(),
+                ..identity.clone()
             },
         ),
         (
             "release",
             PackageIdentity {
                 release: 5,
-                ..identity
+                ..identity.clone()
             },
         ),
         (
@@ -88,14 +127,29 @@ fn each_identity_field_must_match_the_metadata() {
             err.to_string().contains("metadata does not match"),
             "{field}: {err:#}"
         );
+        let message = err.to_string();
+        for identity_value in ["example", "1.2.3", &mismatch.name, &mismatch.version] {
+            assert!(message.contains(identity_value), "{field}: {message}");
+        }
+        for non_identity_value in [
+            "source",
+            "https://example.invalid/source.tar.gz",
+            "unused",
+            "runtime",
+            "deadbeef",
+            "2026-01-01T00:00:00Z",
+            "tester",
+        ] {
+            assert!(!message.contains(non_identity_value), "{field}: {message}");
+        }
     }
 }
 
 #[test]
 fn malformed_or_incomplete_metadata_is_rejected() {
     let identity = PackageIdentity {
-        name: "example",
-        version: "1.2.3",
+        name: "example".to_string(),
+        version: "1.2.3".to_string(),
         release: 4,
         architecture: Architectures::X86_64,
     };
@@ -115,7 +169,7 @@ fn malformed_or_incomplete_metadata_is_rejected() {
 }
 
 #[test]
-fn display_and_manifest_format_preserve_the_file_type_wire_values() -> Result<()> {
+fn display_and_manifest_format_preserve_the_file_type_wire_values() {
     for (kind, marker, mode, target) in [
         (FileType::File, "f", 0o100644, "deadbeef"),
         (FileType::Dir, "d", 0o40755, "-"),
@@ -136,11 +190,10 @@ fn display_and_manifest_format_preserve_the_file_type_wire_values() -> Result<()
             _ => unreachable!(),
         };
         assert_eq!(
-            line.format()?,
+            line.format(),
             format!("{marker}\t{expected_mode}\t{target}\tpath with spaces\n")
         );
     }
-    Ok(())
 }
 
 fn append(builder: &mut Builder<Vec<u8>>, name: &str, contents: &[u8]) -> Result<()> {

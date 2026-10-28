@@ -102,8 +102,8 @@ pub fn verify(
 
             let (_, version, release, architecture) = package.context("Missing package info")?;
             let package_id = PackageIdentity {
-                name,
-                version: &version,
+                name: name.clone(),
+                version: version,
                 release,
                 architecture,
             };

@@ -18,26 +18,26 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
     let writer = Cursor::new(Vec::new());
     let mut archive = tar::Builder::new(zstd::Encoder::new(writer, 3)?);
 
-    for entry in WalkDir::new(&pkgdir) {
+    for entry in WalkDir::new(pkgdir) {
         let entry = entry.context("Failed to get entry")?;
         if entry.path() == pkgdir {
             continue;
         }
 
-        let file_type = symlink_metadata(&entry.path())?.file_type();
+        let file_type = symlink_metadata(entry.path())?.file_type();
         let path = entry.path();
 
-        let mode = symlink_metadata(&path)?.mode();
-        let relative_path = path.strip_prefix(&pkgdir)?.to_path_buf();
+        let mode = symlink_metadata(path)?.mode();
+        let relative_path = path.strip_prefix(pkgdir)?.to_path_buf();
 
         let manifest_line = match file_type {
             ft if ft.is_file() => {
-                let mut file = File::open(&path)?;
+                let mut file = File::open(path)?;
 
                 let manifest_line = ManifestLine {
                     file_type: FileType::File,
                     mode,
-                    target_or_hash: hex::encode(hash(&File::open(&path)?)?),
+                    target_or_hash: hex::encode(hash(&File::open(path)?)?),
                     path: relative_path.clone(),
                 };
 
@@ -112,7 +112,7 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
 
     let mut manifest = String::new();
     for line in metadata {
-        manifest.push_str(&line.format()?);
+        manifest.push_str(&line.format());
     }
 
     Ok((manifest, archive))

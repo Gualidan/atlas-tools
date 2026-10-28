@@ -8,6 +8,8 @@ use fixtures::{
 };
 use rusqlite::Connection;
 
+use crate::fixtures::seed_repo_db_with_deps;
+
 #[test]
 fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
     let tmp = tempdir();
@@ -30,7 +32,7 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    install(&"foo".to_string(), &config, tmp.path().join("root")).expect("install should succeed");
+    install(&"foo".to_string(), &config, &tmp.path().join("root")).expect("install should succeed");
 
     uninstall(&config, &"foo".to_string(), false).expect("uninstall should succeed");
 
@@ -98,8 +100,8 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
-    install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
+    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
+    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
 
     let result = uninstall(&config, &"A".to_string(), false);
     let err = result.expect_err("uninstalling A should fail because B depends on it");
@@ -130,7 +132,7 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
 }
 
 #[test]
-fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
+fn uninstall_dependent_also_uninstalls_non_explicitly_installed_dependencies() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
@@ -148,22 +150,19 @@ fn uninstall_dependency_after_dependent_removed_succeeds() -> Result<()> {
         vec!["A".to_string()],
         "bdir",
     )?;
-    seed_repo_db(
+    seed_repo_db_with_deps(
         &config.repo_db,
         &[
-            ("A", "1.0.0", 1, a_sky.to_str().unwrap()),
-            ("B", "1.0.0", 1, b_sky.to_str().unwrap()),
+            ("A", "1.0.0", 1, a_sky.to_str().unwrap(), &[]),
+            ("B", "1.0.0", 1, b_sky.to_str().unwrap(), &["A"]),
         ],
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, root.clone()).expect("installing A should succeed");
-    install(&"B".to_string(), &config, root.clone()).expect("installing B should succeed");
 
-    uninstall(&config, &"B".to_string(), false)
-        .expect("uninstalling B should succeed (nothing depends on B)");
-    uninstall(&config, &"A".to_string(), false)
-        .expect("uninstalling A should now succeed (B is gone)");
+    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
+
+    uninstall(&config, &"B".to_string(), false).expect("uninstalling B should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -205,6 +204,99 @@ fn uninstall_non_installed_package_fails() -> Result<()> {
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
     assert!(chain.contains("ghost"), "error chain was: {chain}");
+
+    Ok(())
+}
+
+#[test]
+fn uninstall_keeps_explicitly_installed_dependencies() -> Result<()> {
+    let tmp = tempdir();
+    let config = runtime_config(&tmp)?;
+    let (keypair, pub_key) = generate_keypair()?;
+    let _env = ConfigEnv::new(&tmp, &pub_key)?;
+    let sky_path_a = write_signed_sky(
+        &tmp,
+        &keypair,
+        "baz.sky",
+        "baz",
+        "1.0.0",
+        1,
+        b"baz\n",
+        vec![],
+    )?;
+    let sky_path_b = write_signed_sky_in_dir(
+        &tmp,
+        &keypair,
+        "bar.sky",
+        "bar",
+        "1.0.0",
+        1,
+        b"bar\n",
+        vec!["baz".to_string()],
+        "bardir",
+    )?;
+    seed_repo_db(
+        &config.repo_db,
+        &[("baz", "1.0.0", 1, sky_path_a.to_str().unwrap())],
+    );
+    seed_repo_db(
+        &config.repo_db,
+        &[("bar", "1.0.0", 1, sky_path_b.to_str().unwrap())],
+    );
+
+    let root = tmp.path().join("root");
+
+    install(&"baz".to_string(), &config, &root).expect("install should succeed");
+    install(&"bar".to_string(), &config, &root).expect("install should succeed");
+
+    uninstall(&config, &"bar".to_string(), false).expect("uninstall should succeed");
+
+    let conn = Connection::open(&config.install_db)?;
+
+    assert_eq!(
+        count(
+            &conn,
+            "SELECT COUNT(*) FROM installed_packages WHERE name = ?1",
+            &[&"baz"]
+        ),
+        1,
+        "baz should still be installed because it was explicitley installed by the user"
+    );
+
+    // The universe of this test is exactly {A, B}, so the tables must be
+    // completely empty afterwards. Blanket checks catch partial removals
+    // that a targeted check would miss.
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
+        1,
+        "installed_packages should contain baz"
+    );
+
+    println!(
+        "{}",
+        count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[])
+    );
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
+        0,
+        "package_dependencies should be empty"
+    );
+    assert_eq!(
+        count(&conn, "SELECT COUNT(*) FROM owned_files", &[]),
+        1,
+        "owned_files should contain baz's files"
+    );
+
+    // Disk must match the database — this is the check for your PR #5 bug class
+    // (right DB rows deleted, wrong/stale directories left behind).
+    assert!(
+        root.join("baz-1.0.0-1").exists(),
+        "baz's install_dir should be kept"
+    );
+    assert!(
+        !root.join("bar-1.0.0-1").exists(),
+        "bar's install_dir should be removed from disk"
+    );
 
     Ok(())
 }

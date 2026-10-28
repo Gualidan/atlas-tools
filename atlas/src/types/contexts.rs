@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use common::types::package::PackageIdentity;
 
 pub struct RemoveContext<'a> {
-    pub package_id: &'a PackageIdentity<'a>,
+    pub package_id: &'a PackageIdentity,
     pub install_conn: &'a Connection,
     pub install_dir: PathBuf,
 }

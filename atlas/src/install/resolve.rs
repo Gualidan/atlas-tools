@@ -76,13 +76,13 @@ fn visit(
     else {
         return Err(match stack.last() {
             Some(parent) => anyhow!("Dependency `{name}` of package `{parent}` not found"),
-            None => anyhow!("Package {name} not found"),
+            None => anyhow!("Package `{name}` not found"),
         });
     };
 
     let deps: Vec<String> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
 
-    stack.push(name.to_string());
+    stack.push(name.clone());
     let mut stmt = install_conn
         .prepare("SELECT name FROM installed_packages WHERE name = ?")
         .context("Failed to prepare database query")?;
@@ -97,7 +97,7 @@ fn visit(
         visit(
             repo_conn,
             install_conn,
-            dep.to_string(),
+            dep.clone(),
             stack,
             resolved,
             resolved_packages,
@@ -106,7 +106,7 @@ fn visit(
     }
 
     stack.pop();
-    resolved.insert(name.to_string());
+    resolved.insert(name.clone());
     resolved_packages.push(ResolvedPackage {
         name,
         version,
@@ -129,7 +129,7 @@ mod tests {
         create_packages_table(conn).unwrap();
 
         for (name, deps) in packages {
-            let deps: Vec<String> = deps.iter().map(|dep| dep.to_string()).collect();
+            let deps: Vec<String> = deps.iter().map(ToString::to_string).collect();
             let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
 
             conn.execute(
@@ -251,6 +251,6 @@ mod tests {
 
         let err = resolve_names(&conn, "nope").expect_err("the missing root must be rejected");
 
-        assert_eq!(format!("{err}"), "Package nope not found");
+        assert_eq!(format!("{err}"), "Package `nope` not found");
     }
 }
