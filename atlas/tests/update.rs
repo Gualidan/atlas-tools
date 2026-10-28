@@ -70,7 +70,7 @@ impl Installation {
             version,
             7,
             b"new\n",
-            deps.iter().map(|dep| dep.to_string()).collect(),
+            deps.iter().map(ToString::to_string).collect(),
             "dir",
             "new.txt",
         )?;

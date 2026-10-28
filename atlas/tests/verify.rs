@@ -25,7 +25,7 @@ use zstd::Encoder;
 const ARCH: Architectures = Architectures::X86_64;
 
 fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig> {
-    RuntimeConfig::build_at(&tmp.path().to_path_buf())
+    RuntimeConfig::build_at(tmp.path())
 }
 
 fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
@@ -294,8 +294,7 @@ fn setup() -> Result<(TempDir, RuntimeConfig, SisyphusConfig, PathBuf, PathBuf)>
 
     let file_hash = hex::encode(hash(Cursor::new(contents))?);
     let files = format!(
-        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
-        file_hash
+        "f\t0644\t{file_hash}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
     );
     let metadata_bytes = serde_saphyr::to_string(&test_metadata())?.into_bytes();
 
@@ -431,8 +430,7 @@ fn mode_match_happy_path() -> Result<()> {
 
     let file_hash = hex::encode(hash(Cursor::new(contents))?);
     let files = format!(
-        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
-        file_hash
+        "f\t0644\t{file_hash}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
     );
 
     let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "modes.sky")?;
@@ -459,8 +457,7 @@ fn mode_mismatch_failure() -> Result<()> {
 
     let file_hash = hex::encode(hash(Cursor::new(contents))?);
     let files = format!(
-        "f\t0755\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
-        file_hash
+        "f\t0755\t{file_hash}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
     );
 
     let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "mismatch.sky")?;
@@ -514,8 +511,7 @@ fn payload_contains_path_not_in_manifest() -> Result<()> {
 
     let file_hash = hex::encode(hash(Cursor::new(contents))?);
     let files = format!(
-        "f\t0644\t{}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
-        file_hash
+        "f\t0644\t{file_hash}\tdir/file.txt\nd\t0755\t-\tdir\nl\t0777\tfile.txt\tdir/lnk\n",
     );
 
     let (sky_path, pub_key_path) = write_signed_sky(&payload, &files, &tmp, "payload_extra.sky")?;

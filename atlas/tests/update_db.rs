@@ -95,7 +95,7 @@ impl Database {
                 "foo",
                 "2.0.0",
                 7,
-                deps.iter().map(|dep| dep.to_string()).collect(),
+                deps.iter().map(ToString::to_string).collect(),
             ),
             &PackageIdentity {
                 name: "foo".to_string(),
