@@ -76,7 +76,7 @@ fn visit(
     else {
         return Err(match stack.last() {
             Some(parent) => anyhow!("Dependency `{name}` of package `{parent}` not found"),
-            None => anyhow!("Package {name} not found"),
+            None => anyhow!("Package `{name}` not found"),
         });
     };
 
@@ -129,7 +129,7 @@ mod tests {
         create_packages_table(conn).unwrap();
 
         for (name, deps) in packages {
-            let deps: Vec<String> = deps.iter().map(|dep| dep.to_string()).collect();
+            let deps: Vec<String> = deps.iter().map(ToString::to_string).collect();
             let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
 
             conn.execute(
@@ -251,6 +251,6 @@ mod tests {
 
         let err = resolve_names(&conn, "nope").expect_err("the missing root must be rejected");
 
-        assert_eq!(format!("{err}"), "Package nope not found");
+        assert_eq!(format!("{err}"), "Package `nope` not found");
     }
 }

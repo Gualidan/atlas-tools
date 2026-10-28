@@ -31,7 +31,7 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) ->
         .context("Failed to prepare database query")?;
     let Some(name): Option<String> = stmt.query_row(params![name], |row| row.get(0)).optional()?
     else {
-        return Err(anyhow!("Package {name} not found"));
+        return Err(anyhow!("Package `{name}` not found"));
     };
 
     drop(stmt);
@@ -78,7 +78,7 @@ pub fn look_up_installed_package(
         })
         .optional()?
     else {
-        return Err(anyhow!("Package {name} not found"));
+        return Err(anyhow!("Package `{name}` not found"));
     };
 
     Ok((install_dir, version, release))

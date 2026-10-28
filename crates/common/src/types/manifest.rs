@@ -1,7 +1,5 @@
 use std::{fmt::Display, path::PathBuf};
 
-use anyhow::Result;
-
 #[derive(Clone)]
 pub struct ManifestLine {
     pub file_type: FileType,
