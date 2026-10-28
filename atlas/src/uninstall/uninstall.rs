@@ -24,12 +24,14 @@ use crate::{
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
     let mut install_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;
+
+    ensure_install_schema(&install_conn)?;
     let mut stmt = install_conn
         .prepare("SELECT name FROM installed_packages WHERE name = ?")
         .context("Failed to prepare database query")?;
     let Some(name): Option<String> = stmt.query_row(params![name], |row| row.get(0)).optional()?
     else {
-        return Err(anyhow!("Package {} not found", name));
+        return Err(anyhow!("Package {name} not found"));
     };
 
     drop(stmt);
@@ -40,7 +42,7 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) ->
         .map(|(pkg, _)| (pkg.name.as_str(), pkg.version.as_str()))
         .collect::<Vec<(&str, &str)>>();
 
-    if prompt && !confirmation_prompt(packages, 4, Action::Uninstall)? {
+    if prompt && !confirmation_prompt(packages, 4, &Action::Uninstall)? {
         return Ok(());
     }
 
