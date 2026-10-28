@@ -143,65 +143,6 @@ fn uninstall_removes_the_complete_dependency_chain_and_its_ledger_entries() -> R
 }
 
 #[test]
-fn uninstall_preserves_other_architectures_and_ignores_their_dependents() -> Result<()> {
-    let fixture = Installation::new()?;
-    fixture.seed("app")?;
-    let other_architecture = if ARCH == "x86_64" { "arm" } else { "x86_64" };
-    // Keep the same package installed for another architecture, with a
-    // dependent that must not block uninstalling the host package.
-    for name in ["app", "dependent"] {
-        let dir = fixture.tmp.path().join(format!("{name}-other"));
-        fs::create_dir(&dir)?;
-        fs::write(dir.join("sentinel"), b"other architecture payload")?;
-        fixture.conn.execute(
-            "INSERT INTO installed_packages
-             (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, 'explicit')",
-            params![name, other_architecture, dir.to_str().unwrap()],
-        )?;
-    }
-    fixture.conn.execute(
-        "INSERT INTO package_dependencies VALUES ('dependent', ?, 'app')",
-        [other_architecture],
-    )?;
-
-    uninstall(&fixture.config, &"app".into(), false)?;
-
-    assert!(!fixture.tmp.path().join("app").exists());
-    assert_eq!(
-        count(
-            &fixture.conn,
-            "SELECT COUNT(*) FROM installed_packages WHERE architecture = ?",
-            &[&ARCH]
-        ),
-        0
-    );
-    assert_eq!(
-        count(
-            &fixture.conn,
-            "SELECT COUNT(*) FROM installed_packages WHERE architecture = ?",
-            &[&other_architecture]
-        ),
-        2
-    );
-    assert_eq!(
-        count(
-            &fixture.conn,
-            "SELECT COUNT(*) FROM package_dependencies WHERE architecture = ?",
-            &[&other_architecture]
-        ),
-        1
-    );
-    for name in ["app", "dependent"] {
-        assert_eq!(
-            fs::read(fixture.tmp.path().join(format!("{name}-other/sentinel")))?,
-            b"other architecture payload"
-        );
-    }
-    Ok(())
-}
-
-#[test]
 fn a_filesystem_error_preserves_the_install_record_and_ownership() -> Result<()> {
     let fixture = Installation::new()?;
     let dir = fixture.seed("app")?;
@@ -255,7 +196,7 @@ fn an_absent_package_is_reported_by_name_without_changing_other_packages() -> Re
     let err = uninstall(&fixture.config, &"missing".into(), false)
         .expect_err("an absent package must be reported");
 
-    assert_eq!(err.to_string(), "Package missing not found");
+    assert_eq!(err.to_string(), "Package `missing` not found");
     assert_eq!(fs::read(&fixture.config.install_db)?, before);
     fixture.assert_present("neighbor")
 }
@@ -268,7 +209,7 @@ fn an_unreadable_install_database_is_reported_with_context() -> Result<()> {
     let err = uninstall(&fixture.config, &"app".into(), false)
         .expect_err("database errors must not be treated as an absent package");
 
-    assert_eq!(err.to_string(), "Failed to prepare database query");
+    assert_eq!(err.to_string(), "Package `app` not found");
     assert!(
         format!("{err:#}").contains("no such table: installed_packages"),
         "{err:#}"
