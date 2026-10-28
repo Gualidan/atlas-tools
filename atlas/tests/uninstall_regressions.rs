@@ -4,7 +4,8 @@ use std::{env::consts::ARCH, fs, io, path::PathBuf};
 
 use anyhow::Result;
 use atlas::{
-    install::db::ensure_install_schema, types::runtime_config::RuntimeConfig,
+    install::db::{InstallReason, ensure_install_schema},
+    types::runtime_config::RuntimeConfig,
     uninstall::uninstall::uninstall,
 };
 use fixtures::{count, runtime_config, tempdir};
@@ -27,15 +28,20 @@ impl Installation {
         Ok(Self { tmp, config, conn })
     }
 
-    fn seed(&self, name: &str) -> Result<PathBuf> {
+    fn seed(&self, name: &str, install_reason: InstallReason) -> Result<PathBuf> {
         let dir = self.tmp.path().join(name);
         fs::create_dir(&dir)?;
         fs::write(dir.join("sentinel"), name)?;
         self.conn.execute(
             "INSERT INTO installed_packages
              (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, 'explicit')",
-            params![name, ARCH.to_string(), dir.to_str().unwrap()],
+             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, ?)",
+            params![
+                name,
+                ARCH.to_string(),
+                dir.to_str().unwrap(),
+                install_reason.to_string()
+            ],
         )?;
         self.conn.execute(
             "INSERT INTO owned_files VALUES (?, ?, ?)",
@@ -72,8 +78,8 @@ impl Installation {
 #[test]
 fn a_missing_install_directory_still_removes_the_ledger_and_preserves_neighbors() -> Result<()> {
     let fixture = Installation::new()?;
-    let app_dir = fixture.seed("app")?;
-    fixture.seed("neighbor")?;
+    let app_dir = fixture.seed("app", InstallReason::Explicit)?;
+    fixture.seed("neighbor", InstallReason::Explicit)?;
     fs::remove_dir_all(&app_dir)?;
 
     uninstall(&fixture.config, &"app".into(), false)?;
@@ -102,7 +108,11 @@ fn a_missing_install_directory_still_removes_the_ledger_and_preserves_neighbors(
 fn uninstall_removes_the_complete_dependency_chain_and_its_ledger_entries() -> Result<()> {
     let fixture = Installation::new()?;
     for name in ["app", "middle", "leaf", "neighbor"] {
-        fixture.seed(name)?;
+        if name == "leaf" || name == "middle" {
+            fixture.seed(name, InstallReason::Dependency)?;
+        } else {
+            fixture.seed(name, InstallReason::Explicit)?;
+        }
     }
     for (name, dep) in [("app", "middle"), ("middle", "leaf")] {
         fixture.conn.execute(
@@ -145,7 +155,7 @@ fn uninstall_removes_the_complete_dependency_chain_and_its_ledger_entries() -> R
 #[test]
 fn a_filesystem_error_preserves_the_install_record_and_ownership() -> Result<()> {
     let fixture = Installation::new()?;
-    let dir = fixture.seed("app")?;
+    let dir = fixture.seed("app", InstallReason::Explicit)?;
     fs::remove_dir_all(&dir)?;
     fs::write(&dir, b"not a directory")?;
     let before = fs::read(&fixture.config.install_db)?;
@@ -165,8 +175,8 @@ fn a_filesystem_error_preserves_the_install_record_and_ownership() -> Result<()>
 #[test]
 fn dependents_are_rejected_before_confirmation_or_any_mutation() -> Result<()> {
     let fixture = Installation::new()?;
-    fixture.seed("app")?;
-    fixture.seed("dependent")?;
+    fixture.seed("app", InstallReason::Explicit)?;
+    fixture.seed("dependent", InstallReason::Explicit)?;
     fixture.conn.execute(
         "INSERT INTO package_dependencies VALUES ('dependent', ?, 'app')",
         [ARCH.to_string()],
@@ -190,7 +200,7 @@ fn dependents_are_rejected_before_confirmation_or_any_mutation() -> Result<()> {
 #[test]
 fn an_absent_package_is_reported_by_name_without_changing_other_packages() -> Result<()> {
     let fixture = Installation::new()?;
-    fixture.seed("neighbor")?;
+    fixture.seed("neighbor", InstallReason::Explicit)?;
     let before = fs::read(&fixture.config.install_db)?;
 
     let err = uninstall(&fixture.config, &"missing".into(), false)

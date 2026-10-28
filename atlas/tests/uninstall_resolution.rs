@@ -18,31 +18,13 @@ impl Database {
     fn new(packages: &[(&str, &[&str])]) -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         ensure_install_schema(&conn)?;
-        // Supply the serialized column read by the resolver to isolate its
-        // traversal and decoding. The production-schema regression below
-        // deliberately omits this addition and must also pass.
-        let has_deps: bool = conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM pragma_table_info('installed_packages') WHERE name = 'deps')",
-            [],
-            |row| row.get(0),
-        )?;
-        if !has_deps {
-            conn.execute(
-                "ALTER TABLE installed_packages ADD COLUMN deps TEXT NOT NULL DEFAULT '[]'",
-                [],
-            )?;
-        }
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
-        for (name, deps) in packages {
+        for (name, _deps) in packages {
             conn.execute(
                 "INSERT INTO installed_packages
-                 (name, version, release, architecture, sky_path, install_dir, install_reason, deps)
-                 VALUES (?, '2.1.0-rc.1', 7, 'x86_64', 'unused.sky', ?, 'dependency', ?)",
-                params![
-                    name,
-                    format!("/installed/{name}"),
-                    serde_saphyr::to_string(deps)?
-                ],
+                 (name, version, release, architecture, sky_path, install_dir, install_reason)
+                 VALUES (?, '2.1.0-rc.1', 7, 'x86_64', 'unused.sky', ?, 'dependency')",
+                params![name, format!("/installed/{name}")],
             )?;
         }
         for (name, deps) in packages {
@@ -250,7 +232,15 @@ fn a_missing_dependency_is_reported_instead_of_recursing_forever() -> Result<()>
         "a_missing_dependency_is_reported_instead_of_recursing_forever",
         || {
             let db = Database::new(&[("app", &[])])?;
-            db.0.execute("UPDATE installed_packages SET deps = '[missing]'", [])?;
+            // Foreign keys normally prevent an edge to a package that has no
+            // installed row. Disable them for this fixture to reproduce a
+            // corrupted ledger that the resolver must still reject.
+            db.0.execute_batch("PRAGMA foreign_keys = OFF")?;
+            db.0.execute(
+                "INSERT INTO package_dependencies VALUES ('app', 'x86_64', 'missing')",
+                [],
+            )?;
+            db.0.execute_batch("PRAGMA foreign_keys = ON")?;
             assert!(
                 db.resolve("app").is_err(),
                 "a broken ledger must fail resolution"
@@ -274,19 +264,6 @@ fn a_cycle_is_rejected_without_recursing_forever() -> Result<()> {
         );
         Ok(())
     })
-}
-
-#[test]
-fn malformed_dependency_yaml_is_reported_with_context() -> Result<()> {
-    for deps in ["[unfinished", "not: a-list"] {
-        let db = Database::new(&[("app", &[])])?;
-        db.0.execute("UPDATE installed_packages SET deps = ?", [deps])?;
-        let err = db
-            .resolve("app")
-            .expect_err("invalid dependencies must be rejected");
-        assert!(err.to_string().contains("Failed to deserialize"), "{err:#}");
-    }
-    Ok(())
 }
 
 #[test]
@@ -333,7 +310,10 @@ fn an_absent_package_returns_a_lookup_error() -> Result<()> {
 #[test]
 fn missing_install_tables_propagate_database_errors() -> Result<()> {
     for table in ["package_dependencies", "installed_packages"] {
-        let db = Database::new(&[])?;
+        // The resolver loads the installed row before touching
+        // package_dependencies, so the package must exist for a missing
+        // dependency table to be the error under test.
+        let db = Database::new(&[("app", &[])])?;
         db.0.execute(&format!("DROP TABLE {table}"), [])?;
         let err = db
             .resolve("app")
