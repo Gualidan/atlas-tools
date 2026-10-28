@@ -36,7 +36,7 @@ pub fn set_assume_yes(assume_yes: bool) {
 pub fn confirmation_prompt(
     packages: Vec<(&str, &str)>,
     indent: usize,
-    action: Action,
+    action: &Action,
 ) -> Result<bool> {
     if packages.is_empty() {
         return Ok(true);

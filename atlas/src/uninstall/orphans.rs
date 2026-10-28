@@ -31,7 +31,7 @@ pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
         .map(|orphan| (orphan.name.as_str(), orphan.version.as_str()))
         .collect();
 
-    if !confirmation_prompt(packages, 4, Action::Uninstall)? {
+    if !confirmation_prompt(packages, 4, &Action::Uninstall)? {
         return Ok(());
     }
 

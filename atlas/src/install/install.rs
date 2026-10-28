@@ -39,7 +39,7 @@ pub fn install(
         .query_row(params![package_name, ARCH], |row| row.get(0))
         .optional()?
     else {
-        return Err(anyhow!("Package {package_name} not found",));
+        return Err(anyhow!("Package {package_name} not found"));
     };
 
     let architecture = Architectures::try_from(ARCH.to_string())?;
@@ -65,7 +65,7 @@ pub fn install(
         .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
         .collect::<Vec<(&str, &str)>>();
 
-    let ans = confirmation_prompt(packages, 4, Action::Install)?;
+    let ans = confirmation_prompt(packages, 4, &Action::Install)?;
 
     if !ans {
         return Ok(());
