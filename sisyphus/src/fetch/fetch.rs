@@ -19,7 +19,7 @@ pub enum FetchMode {
 
 pub fn fetch(
     package: &Package,
-    fetch_mode: FetchMode,
+    fetch_mode: &FetchMode,
     runtime_config: &RuntimeConfig,
 ) -> Result<PathBuf> {
     let download_path = runtime_config.fetch_cache.clone();

@@ -64,7 +64,7 @@ pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Re
 
     // Phase 1: Fetch
     let fetched =
-        fetch(&package, FetchMode::Build, runtime_config).context("Failed to fetch package")?;
+        fetch(&package, &FetchMode::Build, runtime_config).context("Failed to fetch package")?;
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
@@ -99,7 +99,7 @@ pub fn run_planned_build(
 
     // Phase 1: Fetch
     let fetched =
-        fetch(&package, FetchMode::Build, runtime_config).context("Failed to fetch package")?;
+        fetch(&package, &FetchMode::Build, runtime_config).context("Failed to fetch package")?;
 
     // Phase 2: Extract
     let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
