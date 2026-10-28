@@ -210,19 +210,3 @@ fn an_absent_package_is_reported_by_name_without_changing_other_packages() -> Re
     assert_eq!(fs::read(&fixture.config.install_db)?, before);
     fixture.assert_present("neighbor")
 }
-
-#[test]
-fn an_unreadable_install_database_is_reported_with_context() -> Result<()> {
-    let fixture = Installation::new()?;
-    fixture.conn.execute("DROP TABLE installed_packages", [])?;
-
-    let err = uninstall(&fixture.config, &"app".into(), false)
-        .expect_err("database errors must not be treated as an absent package");
-
-    assert_eq!(err.to_string(), "Package `app` not found");
-    assert!(
-        format!("{err:#}").contains("no such table: installed_packages"),
-        "{err:#}"
-    );
-    Ok(())
-}

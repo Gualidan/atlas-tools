@@ -1,4 +1,4 @@
-use std::{env::consts::ARCH, path::PathBuf};
+use std::{env::consts::ARCH, fs::File, path::PathBuf};
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -22,10 +22,18 @@ use crate::{
 /// resolution, confirmation, database, and other filesystem errors.
 /// A database failure after directory removal does not restore the files.
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
-    let mut install_conn = Connection::open(&runtime_config.install_db)
-        .context("Failed to open connection to install database")?;
+    let mut install_conn = if runtime_config.install_db.exists() {
+        Connection::open(&runtime_config.install_db)
+            .context("Failed to open connection to install database, perhaps it is missing?")?
+    } else {
+        File::create_new(&runtime_config.install_db)?;
+        let conn = Connection::open(&runtime_config.install_db)
+            .context("Failed to open connection to install database, perhaps it is missing?")?;
+        ensure_install_schema(&conn)?;
 
-    ensure_install_schema(&install_conn)?;
+        conn
+    };
+
     let mut stmt = install_conn
         .prepare("SELECT name FROM installed_packages WHERE name = ?")
         .context("Failed to prepare database query")?;
