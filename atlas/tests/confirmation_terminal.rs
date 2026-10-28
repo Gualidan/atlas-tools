@@ -366,7 +366,7 @@ fn pressing_enter_accepts_the_default_confirmation() -> Result<()> {
             assert!(confirmation_prompt(
                 vec![("foo", "1.0.0")],
                 4,
-                Action::Install
+                &Action::Install
             )?);
             Ok(())
         },
@@ -411,7 +411,7 @@ fn escape_cancels_confirmation_cleanly() -> Result<()> {
             assert!(!confirmation_prompt(
                 vec![("foo", "1.0.0")],
                 4,
-                Action::Install
+                &Action::Install
             )?);
             Ok(())
         },
@@ -428,7 +428,7 @@ fn ctrl_c_cancels_confirmation_cleanly() -> Result<()> {
             assert!(!confirmation_prompt(
                 vec![("foo", "2.0.0")],
                 4,
-                Action::Update
+                &Action::Update
             )?);
             Ok(())
         },

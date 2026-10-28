@@ -101,7 +101,7 @@ fn empty_package_list_needs_no_terminal_or_assume_yes() -> Result<()> {
         "empty_package_list_needs_no_terminal_or_assume_yes",
         || {
             set_assume_yes(false);
-            assert!(confirmation_prompt(vec![], 4, Action::Install)?);
+            assert!(confirmation_prompt(vec![], 4, &Action::Install)?);
             Ok(())
         },
         |stdout| assert!(!stdout.contains("Packages:")),
@@ -114,7 +114,7 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
         "assume_yes_prints_names_versions_and_indentation_and_can_be_disabled",
         || {
             // A fresh process must require confirmation by default.
-            let err = confirmation_prompt(vec![("foo", "1.0.0")], 0, Action::Install)
+            let err = confirmation_prompt(vec![("foo", "1.0.0")], 0, &Action::Install)
                 .expect_err("a nonempty plan requires a terminal by default");
             assert_eq!(
                 err.to_string(),
@@ -125,16 +125,16 @@ fn assume_yes_prints_names_versions_and_indentation_and_can_be_disabled() -> Res
             assert!(confirmation_prompt(
                 vec![("foo", "1.0.0")],
                 0,
-                Action::Install
+                &Action::Install
             )?);
             assert!(confirmation_prompt(
                 vec![("bar", "2.0.0-rc.1"), ("baz", "3.0.0")],
                 4,
-                Action::Update
+                &Action::Update
             )?);
 
             set_assume_yes(false);
-            let err = confirmation_prompt(vec![("foo", "1.0.0")], 4, Action::Uninstall)
+            let err = confirmation_prompt(vec![("foo", "1.0.0")], 4, &Action::Uninstall)
                 .expect_err("disabling assume_yes must restore terminal confirmation");
             assert_eq!(
                 err.to_string(),
