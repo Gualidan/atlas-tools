@@ -1,4 +1,6 @@
 # Atlas Tools
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Gualidan/atlas-tools)
+
 >[!WARNING]
 > This is a work in progress and is not yet ready for use.
 
