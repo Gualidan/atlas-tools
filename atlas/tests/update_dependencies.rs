@@ -390,7 +390,18 @@ fn already_up_to_date_is_a_no_op() -> Result<()> {
     let workspace = Workspace::new()?;
 
     workspace.publish("app", "1.0.0", 1, &[])?;
+    workspace.install("app")?;
 
+    workspace.publish("base", "1.0.0", 1, &[])?;
+
+    // Same version as installed, but newer release. Also its archive is missing.
+    let app_99 = workspace.publish("app", "1.0.0", 99, &["base"])?;
+    std::fs::remove_file(app_99)?;
+
+    workspace.update("app")?;
+
+    workspace.assert_installed("app", "1.0.0", 1)?;
+    workspace.assert_no_staging_dirs()?;
     Ok(())
 }
 
@@ -490,8 +501,113 @@ fn dep_absent_from_the_repository_fails() -> Result<()> {
 }
 
 #[test]
-fn dependencies_are_not_downgraded() -> Result<()> {
+fn old_dependency_edges_are_replaced() -> Result<()> {
     let workspace = Workspace::new()?;
+
+    workspace.publish("old_base", "1.0.0", 1, &[])?;
+    workspace.publish("new_base", "2.0.0", 2, &[])?;
+    workspace.publish("app", "1.0.0", 1, &["old_base"])?;
+
+    workspace.install("app")?;
+    workspace.install("new_base")?;
+
+    let missing_sky = workspace.publish("old_base", "2.0.0", 2, &[])?;
+    workspace.publish("app", "2.0.0", 2, &["new_base"])?;
+
+    std::fs::remove_file(missing_sky)?;
+
+    workspace.update("app")?;
+
+    workspace.assert_installed("app", "2.0.0", 2)?;
+    workspace.assert_installed("old_base", "1.0.0", 1)?;
+    workspace.assert_installed("new_base", "2.0.0", 2)?;
+    assert_eq!(workspace.deps("app")?, vec!["new_base".to_string()]);
+    assert!(!workspace.deps("app")?.contains(&"old_base".to_string()));
+    workspace.assert_no_staging_dirs()?;
+
+    Ok(())
+}
+
+#[test]
+fn deps_are_never_downgraded() -> Result<()> {
+    let workspace = Workspace::new()?;
+
+    let lib_sky = workspace.publish("lib", "3.0.0", 1, &[])?;
+    workspace.publish("app", "1.0.0", 1, &["lib"])?;
+
+    workspace.install("app")?;
+
+    let repo = Connection::open(&workspace.config.repo_db)?;
+    repo.execute(
+        "DELETE FROM packages WHERE name = ? AND version = ?",
+        params!["lib", "3.0.0"],
+    )?;
+    std::fs::remove_file(lib_sky)?;
+
+    workspace.publish("lib", "2.0.0", 1, &[])?;
+    workspace.publish("app", "2.0.0", 2, &["lib"])?;
+
+    workspace.update("app")?;
+
+    workspace.assert_installed("app", "2.0.0", 2)?;
+    workspace.assert_installed("lib", "3.0.0", 1)?;
+    assert_eq!(workspace.deps("app")?, vec!["lib".to_string()]);
+    assert_eq!(workspace.deps("lib")?, Vec::<String>::new());
+    assert!(workspace.assert_installed("lib", "2.0.0", 1).is_err());
+
+    workspace.assert_no_staging_dirs()?;
+
+    Ok(())
+}
+
+#[test]
+fn metadata_and_incoming_edges_survive() -> Result<()> {
+    let workspace = Workspace::new()?;
+
+    workspace.publish("lib", "1.0.0", 1, &[])?;
+    workspace.publish("app", "1.0.0", 1, &["lib"])?;
+    workspace.publish("consumer", "1.0.0", 1, &["lib"])?;
+
+    workspace.install("app")?;
+    workspace.install("consumer")?;
+
+    workspace.set_metadata("lib", "2001-01-01", "explicit")?;
+    workspace.set_metadata("app", "2000-01-01", "explicit")?;
+    workspace.set_metadata("consumer", "2000-01-02", "dependency")?;
+
+    let lib_before = workspace.row("lib")?;
+    let app_before = workspace.row("app")?;
+    let consumer_before = workspace.row("consumer")?;
+
+    workspace.publish("app", "2.0.0", 2, &["lib"])?;
+
+    workspace.update("app")?;
+
+    let app = workspace.assert_installed("app", "2.0.0", 2)?;
+    let lib = workspace.assert_installed("lib", "1.0.0", 1)?;
+    let consumer = workspace.assert_installed("consumer", "1.0.0", 1)?;
+
+    assert_eq!(lib_before.install_dir, lib.install_dir, "lib install dir");
+    assert_eq!(
+        lib_before.installed_at, lib.installed_at,
+        "lib installed_at"
+    );
+    assert_eq!(
+        lib_before.install_reason, lib.install_reason,
+        "lib install_reason"
+    );
+
+    assert_eq!(app_before.install_dir, app.install_dir, "app install dir");
+    assert_eq!(
+        consumer_before.install_dir, consumer.install_dir,
+        "consumer install dir"
+    );
+
+    assert_eq!(workspace.deps("app")?, vec!["lib".to_string()]);
+    assert_eq!(workspace.deps("consumer")?, vec!["lib".to_string()]);
+    assert_eq!(workspace.deps("lib")?, Vec::<String>::new());
+
+    workspace.assert_no_staging_dirs()?;
 
     Ok(())
 }
