@@ -40,6 +40,8 @@ impl From<String> for InstallReason {
     }
 }
 
+/// # Errors
+/// This function might error due to database errors.
 pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS installed_packages (
@@ -56,6 +58,42 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
         [],
     )
     .context("Failed to create installed_packages table")?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS installed_packages_update_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            architecture TEXT NOT NULL,
+            version TEXT NOT NULL,
+            release INTEGER NOT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .context("Failed to create installed_packages_update_log table")?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS installed_packages_after_update
+         AFTER UPDATE ON installed_packages
+         BEGIN
+             INSERT INTO installed_packages_update_log (
+                 name,
+                 architecture,
+                 version,
+                 release,
+                 updated_at
+             )
+             VALUES (
+                 NEW.name,
+                 NEW.architecture,
+                 NEW.version,
+                 NEW.release,
+                 CURRENT_TIMESTAMP
+             );
+         END;",
+        [],
+    )
+    .context("Failed to create installed_packages_after_update trigger")?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS package_dependencies (
@@ -262,6 +300,8 @@ pub fn update_installed_package(
             params![package_id.name, package_id.architecture.to_string()],
         )
         .context("Failed to execute db query")?;
+
+    transaction.execute("DELETE FROM installed_packages_update_log", [])?;
 
     transaction
         .execute(
