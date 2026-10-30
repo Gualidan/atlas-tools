@@ -27,6 +27,9 @@ type InstalledRow = (String, u32, String, String, String);
 /// Returns an error for a missing installed row, database failures, an
 /// unsupported architecture, a dependency cycle, a dependency with no
 /// installed row, or an external dependent.
+///
+/// # Errors
+/// This function might error because of a failure during the resolution
 pub fn packages_to_uninstall(
     conn: &Connection,
     name: String,

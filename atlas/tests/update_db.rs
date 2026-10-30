@@ -1,7 +1,10 @@
 mod fixtures;
 
 use anyhow::Result;
-use atlas::install::db::{InstallReason, ensure_install_schema, update_installed_package};
+use atlas::{
+    install::db::{InstallReason, ensure_install_schema},
+    update::db::update_installed_package,
+};
 use common::types::package::PackageIdentity;
 use fixtures::{
     ARCH, generate_keypair, metadata_for, seed_repo_db, tempdir, write_signed_sky_with_file,

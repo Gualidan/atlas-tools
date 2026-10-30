@@ -93,12 +93,16 @@ impl Workspace {
         )
     }
 
-    fn conn(&self) -> Result<Connection> {
+    fn install_conn(&self) -> Result<Connection> {
         Ok(Connection::open(&self.config.install_db)?)
     }
 
+    fn repo_conn(&self) -> Result<Connection> {
+        Ok(Connection::open(&self.config.repo_db)?)
+    }
+
     fn row(&self, name: &str) -> Result<Installed> {
-        let conn = self.conn()?;
+        let conn = self.install_conn()?;
         let (version, release, sky_path, install_dir, installed_at, install_reason): (
             String,
             u32,
@@ -133,7 +137,7 @@ impl Workspace {
     }
 
     fn set_metadata(&self, name: &str, installed_at: &str, reason: &str) -> Result<()> {
-        self.conn()?.execute(
+        self.install_conn()?.execute(
             "UPDATE installed_packages SET installed_at = ?, install_reason = ?
              WHERE name = ? AND architecture = ?",
             params![installed_at, reason, name, ARCH.to_string()],
@@ -143,7 +147,7 @@ impl Workspace {
     }
 
     fn deps(&self, name: &str) -> Result<Vec<String>> {
-        let conn = self.conn()?;
+        let conn = self.install_conn()?;
         let mut stmt = conn.prepare(
             "SELECT dependency_name FROM package_dependencies
              WHERE package_name = ? AND architecture = ? ORDER BY dependency_name",
@@ -176,7 +180,7 @@ impl Workspace {
             "{name} payload contents"
         );
 
-        let conn = self.conn()?;
+        let conn = self.install_conn()?;
         let mut stmt = conn.prepare(
             "SELECT path FROM owned_files
              WHERE package_name = ? AND architecture = ? ORDER BY path",
@@ -202,7 +206,7 @@ impl Workspace {
     }
 
     fn assert_no_staging_dirs(&self) -> Result<()> {
-        let conn = self.conn()?;
+        let conn = self.install_conn()?;
         let mut stmt = conn.prepare("SELECT install_dir FROM installed_packages")?;
         let mut expected = stmt
             .query_map([], |row| row.get::<_, String>(0))?
@@ -226,10 +230,10 @@ impl Workspace {
     }
 
     fn get_update_log(&self) -> Result<Vec<UpdateLogRow>> {
-        let conn = self.conn()?;
+        let conn = self.install_conn()?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, version, release
+            "SELECT id, name, architecture, version, release
         FROM installed_packages_update_log
         ORDER BY id ASC",
         )?;
@@ -374,8 +378,8 @@ fn packages_are_updated_in_order() -> Result<()> {
     workspace.assert_installed("right", "2.0.0", 8)?;
     workspace.assert_installed("base", "2.0.0", 8)?;
 
-    assert!(workspace.deps("app")?.contains(&"mid".to_string()));
-    assert!(workspace.deps("mid")?.contains(&"base".to_string()));
+    assert!(workspace.deps("left")?.contains(&"base".to_string()));
+    assert!(workspace.deps("right")?.contains(&"base".to_string()));
     assert_eq!(
         workspace.deps("base")?,
         Vec::<String>::new(),
@@ -392,10 +396,7 @@ fn already_up_to_date_is_a_no_op() -> Result<()> {
     workspace.publish("app", "1.0.0", 1, &[])?;
     workspace.install("app")?;
 
-    workspace.publish("base", "1.0.0", 1, &[])?;
-
-    // Same version as installed, but newer release. Also its archive is missing.
-    let app_99 = workspace.publish("app", "1.0.0", 99, &["base"])?;
+    let app_99 = workspace.publish("app", "1.0.0", 99, &[])?;
     std::fs::remove_file(app_99)?;
 
     workspace.update("app")?;
@@ -425,7 +426,7 @@ fn installed_package_declares_a_new_dependency_and_updating_fails_and_tells_to_r
 
     assert_eq!(
         err.to_string(),
-        "New `app` version declares `base` as a depency but it is not yet installed, try reinstalling `app`"
+        "New `app` version declares `base` as a dependency but it is not yet installed, try reinstalling `app`"
     );
 
     workspace.assert_installed("app", "1.0.0", 1)?;
@@ -455,7 +456,7 @@ fn missing_transitive_dep_errors() -> Result<()> {
 
     assert_eq!(
         err.to_string(),
-        "New version of `mid` (dependdency of package `app`) has declared a new depency `base`, try reinstalling app"
+        "New `mid` version declares `base` as a dependency but it is not yet installed, try reinstalling `mid`"
     );
 
     workspace.assert_installed("app", "1.0.0", 1)?;
@@ -477,11 +478,11 @@ fn dep_absent_from_the_repository_fails() -> Result<()> {
     workspace.set_metadata("app", "2000-01-01", "explicit")?;
     workspace.set_metadata("base", "2000-01-01", "dependency")?;
 
-    let conn = workspace.conn()?;
+    let conn = workspace.repo_conn()?;
+    workspace.publish("base", "2.0.0", 2, &[])?;
 
     conn.execute("DELETE FROM packages WHERE name = ?", params!["base"])?;
 
-    workspace.publish("base", "2.0.0", 2, &[])?;
     workspace.publish("app", "2.0.0", 2, &["base"])?;
 
     let err = workspace
@@ -529,7 +530,7 @@ fn old_dependency_edges_are_replaced() -> Result<()> {
 }
 
 #[test]
-fn deps_are_never_downgraded() -> Result<()> {
+fn deps_are_never_downgraded_and_update_becomes_a_no_op() -> Result<()> {
     let workspace = Workspace::new()?;
 
     let lib_sky = workspace.publish("lib", "3.0.0", 1, &[])?;
@@ -547,13 +548,14 @@ fn deps_are_never_downgraded() -> Result<()> {
     workspace.publish("lib", "2.0.0", 1, &[])?;
     workspace.publish("app", "2.0.0", 2, &["lib"])?;
 
-    workspace.update("app")?;
+    workspace.update("app").expect_err(
+        "update should fail because a package downgrade possibility results in an error",
+    );
 
-    workspace.assert_installed("app", "2.0.0", 2)?;
+    workspace.assert_installed("app", "1.0.0", 1)?;
     workspace.assert_installed("lib", "3.0.0", 1)?;
     assert_eq!(workspace.deps("app")?, vec!["lib".to_string()]);
     assert_eq!(workspace.deps("lib")?, Vec::<String>::new());
-    assert!(workspace.assert_installed("lib", "2.0.0", 1).is_err());
 
     workspace.assert_no_staging_dirs()?;
 

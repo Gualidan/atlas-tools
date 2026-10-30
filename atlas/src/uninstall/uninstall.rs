@@ -5,9 +5,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     cli::confirmation::{Action, confirmation_prompt},
-    install::db::{ensure_install_schema, remove_uninstalled_package},
+    install::db::ensure_install_schema,
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
-    uninstall::resolve::packages_to_uninstall,
+    uninstall::{db::remove_uninstalled_package, resolve::packages_to_uninstall},
 };
 
 /// Removes the packages resolved from `name` by [`packages_to_uninstall`],
