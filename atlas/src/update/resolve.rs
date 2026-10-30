@@ -97,7 +97,8 @@ fn resolve_one(
         else {
             if let Some(parent) = parent {
                 return Err(anyhow!(
-                    "Dependency of package `{parent}` `{name}` not found in repository"
+                    "Dependency of package `{parent}` `{}` not found in repository",
+                    package.name
                 ));
             }
             return Err(anyhow!("Package `{name}` not found in repository"));
