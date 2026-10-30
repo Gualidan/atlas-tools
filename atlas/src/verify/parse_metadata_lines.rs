@@ -24,7 +24,7 @@ pub fn parse_metadata_lines(files: String) -> Result<Vec<ManifestLine>> {
                     "f" => FileType::File,
                     "l" => FileType::Symlink,
                     unknown => {
-                        return Err(anyhow!("Invalid file type: {}", unknown));
+                        return Err(anyhow!("Invalid file type: {unknown}"));
                     }
                 };
                 manifest_lines.push(ManifestLine {
