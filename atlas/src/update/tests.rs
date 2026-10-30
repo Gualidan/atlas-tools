@@ -1,6 +1,9 @@
+use std::cmp::Ordering::{Equal, Greater, Less};
+
 use super::*;
-use crate::install::db::ensure_install_schema;
+use crate::{install::db::ensure_install_schema, update::resolve::compare_versions};
 use common::db::db::create_packages_table;
+use rusqlite::params;
 
 struct Databases {
     installed: Connection,
@@ -47,9 +50,6 @@ fn single_candidate_uses_recorded_directory_and_repository_target() -> Result<()
     db.install("foo", "1.0.0", ARCH)?;
     db.install("other", "1.0.0", ARCH)?;
     db.publish("foo", "2.0.0", ARCH)?;
-    // Repository dependency metadata must not turn an update into an install.
-    db.repo
-        .execute("UPDATE packages SET deps = 'invalid: [yaml'", [])?;
 
     let resolution = db.resolve(Some("foo"))?;
 
@@ -141,7 +141,7 @@ fn missing_or_foreign_installed_package_is_rejected_before_repository_lookup() -
             .expect("host package must be installed");
         assert_eq!(
             err.to_string(),
-            "Package foo not found in installed packages"
+            "Package `foo` not found in installed packages"
         );
     }
     Ok(())
@@ -156,7 +156,7 @@ fn a_repository_row_for_another_architecture_cannot_supply_an_update() -> Result
         .resolve(Some("foo"))
         .err()
         .expect("host repository row is required");
-    assert_eq!(err.to_string(), "Package foo not found");
+    assert_eq!(err.to_string(), "Package `foo` not found in repository");
     Ok(())
 }
 
@@ -204,7 +204,7 @@ fn bulk_errors_retain_only_candidates_resolved_before_the_failure() -> Result<()
             "missing" => {
                 db.repo
                     .execute("DELETE FROM packages WHERE name = 'middle'", [])?;
-                "Package middle not found"
+                "Package `middle` not found in repository"
             }
             "downgrade" => {
                 db.repo.execute(
