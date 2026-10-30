@@ -250,7 +250,7 @@ fn a_missing_bulk_repository_package_aborts_before_applying_earlier_candidates()
         .update_all()
         .expect_err("a missing repository package must stop the loop");
 
-    assert_eq!(err.to_string(), "Package missing not found");
+    assert_eq!(err.to_string(), "Package `missing` not found in repository");
     fixture.assert_installed("alpha", "1.0.0", 1)?;
     fixture.assert_installed("missing", "1.0.0", 1)?;
     fixture.assert_installed("zeta", "1.0.0", 1)?;
@@ -361,7 +361,7 @@ fn a_repository_package_for_another_architecture_is_not_a_bulk_candidate() -> Re
         .update_all()
         .expect_err("the host architecture must be available");
 
-    assert_eq!(err.to_string(), "Package foo not found");
+    assert_eq!(err.to_string(), "Package `foo` not found in repository");
     fixture.assert_installed("foo", "1.0.0", 1)?;
     fixture.assert_no_staging_dirs(&["foo"])
 }
