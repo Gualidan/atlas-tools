@@ -104,13 +104,7 @@ pub fn run() -> Result<()> {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
 
-            let report = uninstall(&runtime_config, &args.package, true)?;
-            for package in report.skipped {
-                println!(
-                    "Skipped {} because it is required by {}",
-                    package.name, package.required_by
-                );
-            }
+            uninstall(&runtime_config, &args.package, true)?;
         }
         Commands::Update(args) => {
             let runtime_config =
