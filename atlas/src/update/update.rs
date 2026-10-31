@@ -38,7 +38,12 @@ use crate::{
 /// Propagates missing-package, version parsing, confirmation, database,
 /// configuration, verification, staging, and filesystem errors. Stops at the
 /// first update failure; earlier successful updates remain applied.
-pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
+///
+/// # Errors
+///
+/// Returns an error if update resolution, configuration, confirmation, archive
+/// verification, filesystem operations, or database updates fail.
+pub fn update(runtime_config: &RuntimeConfig, args: &UpdateArgs) -> Result<()> {
     let mut install_db_conn = Connection::open(&runtime_config.install_db)
         .context("Failed to connect to install database")?;
 
@@ -112,6 +117,11 @@ pub fn update(runtime_config: &RuntimeConfig, args: UpdateArgs) -> Result<()> {
 /// `install_dir` is expected to exist, and `tempdir` must share its filesystem.
 /// Recording failures trigger a best-effort swap back. Configuration,
 /// verification, staging, filesystem, and database errors propagate.
+///
+/// # Errors
+///
+/// Returns an error if configuration loading, package verification, staging,
+/// filesystem exchange, or database recording fails.
 pub fn update_one(
     package_id: &PackageIdentity,
     repo_conn: &Connection,

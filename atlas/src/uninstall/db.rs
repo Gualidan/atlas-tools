@@ -2,6 +2,12 @@ use anyhow::{Context, Result};
 use common::types::package::PackageIdentity;
 use rusqlite::{Connection, params};
 
+/// Removes a package's ownership, dependency, and installation records atomically.
+///
+/// # Errors
+///
+/// Returns an error if foreign keys cannot be enabled, a database operation
+/// fails, or the transaction cannot be committed.
 pub fn remove_uninstalled_package(
     conn: &mut Connection,
     package_id: &PackageIdentity,

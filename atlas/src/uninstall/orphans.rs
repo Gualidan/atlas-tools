@@ -18,6 +18,10 @@ use crate::{
 /// packages without individual prompts. An empty list or a declined prompt
 /// succeeds without removing packages. Propagates lookup, confirmation, and
 /// uninstall errors; stops at the first failure, retaining earlier removals.
+///
+/// # Errors
+///
+/// Returns an error if orphan lookup, confirmation, or any uninstall fails.
 pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     let orphans = get_orphaned_packages(runtime_config)?;
 
@@ -43,6 +47,16 @@ pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
     Ok(())
 }
 
+/// Returns installed packages not reachable from explicitly installed packages.
+///
+/// # Errors
+///
+/// Returns an error if the install database cannot be opened, its schema cannot
+/// be prepared, or orphan records cannot be read or converted.
+///
+/// # Panics
+///
+/// Panics if an installed package contains an invalid architecture value.
 pub fn get_orphaned_packages(runtime_config: &RuntimeConfig) -> Result<Vec<OrphanPackage>> {
     let conn = Connection::open(&runtime_config.install_db)
         .context("Failed to open connection to install database")?;

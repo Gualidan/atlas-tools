@@ -81,7 +81,7 @@ fn visit(
         if is_root {
             return Err(rusqlite::Error::QueryReturnedNoRows.into());
         }
-        let parent = stack.last().map(String::as_str).unwrap_or("unknown");
+        let parent = stack.last().map_or("unknown", String::as_str);
         return Err(anyhow!(
             "Dependency `{name}` of package `{parent}` not found"
         ));

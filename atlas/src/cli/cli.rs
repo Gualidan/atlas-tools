@@ -75,6 +75,11 @@ pub struct CleanArgs {}
 ///
 /// Propagates configuration and command errors. Argument parsing exits the
 /// process for help, version information, or invalid arguments.
+/// Runs the CLI command selected by the parsed arguments.
+///
+/// # Errors
+///
+/// Returns an error when configuration loading or the selected command fails.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     set_assume_yes(cli.assume_yes);
@@ -93,7 +98,7 @@ pub fn run() -> Result<()> {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
             let settings = load_config().context("Failed to load config")?;
-            verify(args, &runtime_config, settings)?;
+            verify(&args, &runtime_config, &settings)?;
         }
         Commands::Uninstall(args) => {
             let runtime_config =
@@ -104,7 +109,7 @@ pub fn run() -> Result<()> {
         Commands::Update(args) => {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
-            update(&runtime_config, args)?;
+            update(&runtime_config, &args)?;
         }
         Commands::Clean(_) => {
             let runtime_config =

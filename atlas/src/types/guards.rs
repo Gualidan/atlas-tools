@@ -3,7 +3,7 @@ use std::{fs::remove_dir_all, path::PathBuf};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 use tempfile::TempDir;
 
-/// Undoes the state machine's commit-exchange when the DatabaseRecord step
+/// Undoes the state machine's commit-exchange when the `DatabaseRecord` step
 /// fails: an armed drop swaps the previous install's content back into
 /// `install_dir`. `SwapBackGuard::new` captures the world *before* the
 /// exchange runs, so both paths and `install_dir_existed` describe the
@@ -22,6 +22,7 @@ impl<'a> SwapBackGuard<'a> {
     /// Arms rollback for directories that have been exchanged. `staging_dir`
     /// must hold the previous destination contents; `install_dir_existed`
     /// describes the destination before the exchange.
+    #[must_use]
     pub fn new(
         install_dir: &'a PathBuf,
         staging_dir: &'a TempDir,
@@ -42,7 +43,7 @@ impl<'a> SwapBackGuard<'a> {
     }
 }
 
-impl<'a> Drop for SwapBackGuard<'a> {
+impl Drop for SwapBackGuard<'_> {
     /// Attempts to exchange the directories back while armed, then removes the
     /// destination if it did not exist before installation. Rollback failures
     /// are swallowed; disarmed guards leave both directories untouched.
@@ -59,7 +60,7 @@ impl<'a> Drop for SwapBackGuard<'a> {
                 tempdir.path(),
                 RenameFlags::EXCHANGE,
             ) {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(_) => eprintln!("Swap back exchange failed"),
             }
             // The exchange put the previous install's content back into
@@ -69,7 +70,7 @@ impl<'a> Drop for SwapBackGuard<'a> {
             // user's lives behind this path.
             if !self.install_dir_existed {
                 match remove_dir_all(install_dir) {
-                    Ok(_) => {}
+                    Ok(()) => {}
                     Err(_) => eprintln!("Attempt at placeholder removal failed"),
                 }
             }
@@ -97,10 +98,10 @@ mod tests {
 
         fs::create_dir(&install_dir).expect("failed to create install dir");
         let staging_tempdir = Builder::new()
-            .tempdir_in(&parent.path())
+            .tempdir_in(parent.path())
             .expect("failed to create tempdir");
         fs::write(marker(&install_dir), b"old").expect("failed to write install marker");
-        fs::write(marker(&staging_tempdir.path()), b"new").expect("failed to write staging marker");
+        fs::write(marker(staging_tempdir.path()), b"new").expect("failed to write staging marker");
 
         (parent, install_dir, staging_tempdir)
     }

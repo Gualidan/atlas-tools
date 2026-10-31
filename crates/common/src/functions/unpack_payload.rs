@@ -13,6 +13,11 @@ use zstd::Decoder;
 /// `destination`. Succeeds without writing files if no payload is found.
 /// Propagates file I/O, archive, decompression, and extraction errors; files
 /// already extracted remain in the destination on failure.
+///
+/// # Errors
+///
+/// Returns an error if opening or reading the archive, decompression, or payload
+/// extraction fails.
 pub fn unpack_payload(path: &PathBuf, destination: &TempDir) -> Result<()> {
     let tar_gz = File::open(path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;

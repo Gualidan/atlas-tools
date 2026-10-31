@@ -25,6 +25,12 @@ use crate::{
 ///
 /// Propagates resolution, configuration, verification, filesystem, and database
 /// errors. Packages successfully installed before a later failure remain installed.
+///
+/// # Errors
+///
+/// Returns an error if repository resolution, confirmation, package verification,
+/// filesystem operations, or database updates fail.
+#[allow(clippy::too_many_lines)]
 pub fn install(
     package_name: &String,
     runtime_config: &RuntimeConfig,
@@ -161,7 +167,15 @@ pub fn install(
 /// trigger a best-effort swap back, removing a newly created destination.
 /// Verification, staging, filesystem, and database errors propagate.
 ///
+/// # Errors
+///
+/// Returns an error if package verification, staging, exchange, or database
+/// recording fails.
+///
+/// # Panics
+///
 /// Panics if `sky_path` is not valid UTF-8 when recording the installation.
+#[allow(clippy::too_many_arguments)]
 pub fn install_one(
     runtime_config: &RuntimeConfig,
     install_dir_existed: bool,
@@ -193,7 +207,7 @@ pub fn install_one(
         runtime_config,
         &metadata,
         package_id,
-        install_dir.to_string_lossy().to_string(),
+        install_dir.to_string_lossy().as_ref(),
         sky_path.to_str().unwrap(),
         install_reason,
     )?;

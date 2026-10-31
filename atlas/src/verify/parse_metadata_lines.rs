@@ -8,7 +8,11 @@ use common::types::manifest::{FileType, ManifestLine};
 /// Each line contains a type (`d`, `f`, or `l`), octal mode, target or hash, and
 /// path separated by tabs. Empty input yields no records. Returns an error for
 /// missing fields, unknown types, or invalid modes; paths and hashes are not validated.
-pub fn parse_metadata_lines(files: String) -> Result<Vec<ManifestLine>> {
+///
+/// # Errors
+///
+/// Returns an error if a line has missing fields, an unknown type, or an invalid mode.
+pub fn parse_metadata_lines(files: &str) -> Result<Vec<ManifestLine>> {
     let lines: Vec<&str> = files.lines().collect();
     let mut manifest_lines: Vec<ManifestLine> = Vec::new();
 

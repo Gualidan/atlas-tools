@@ -62,6 +62,11 @@ impl<'a> PackageState<'a> {
     /// identity, archive signature and metadata, archive paths, and manifest syntax.
     /// Propagates database, archive, key, and validation errors, including a missing
     /// repository row. Other starting states return an invalid-state error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database access, archive verification, or validation fails,
+    /// or if the state is not `NotInstalled`.
     pub fn verify(self) -> Result<PackageState<'a>> {
         match self {
             PackageState::NotInstalled {
@@ -95,7 +100,7 @@ impl<'a> PackageState<'a> {
                 let (_, _, files, _) =
                     read_sky(PathBuf::from(&sky_path)).context("Failed to read sky file")?;
                 let manifest_paths =
-                    parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
+                    parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
 
                 Ok(PackageState::Verified {
                     metadata,
@@ -118,6 +123,11 @@ impl<'a> PackageState<'a> {
     /// same architecture; paths already owned by this package are allowed.
     /// Propagates database and extraction errors. Other starting states return
     /// an invalid-state error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if ownership lookup or payload extraction fails, or if
+    /// the state is not `Verified`.
     pub fn stage(self) -> Result<PackageState<'a>> {
         match self {
             PackageState::Verified {
@@ -182,6 +192,11 @@ impl<'a> PackageState<'a> {
     ///
     /// Propagates directory creation and exchange errors. A failed exchange can
     /// leave a newly created destination behind. Other states return an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory creation or exchange fails, or if the state
+    /// is not `Staged`.
     pub fn commit(self) -> Result<(PackageState<'a>, Metadata, TempDir)> {
         match self {
             PackageState::Staged {
@@ -214,6 +229,11 @@ impl<'a> PackageState<'a> {
     /// record removal are left to the caller.
     /// Returns an error for another starting state and propagates filesystem
     /// errors other than `NotFound`; failed removal may leave some files deleted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if filesystem removal fails for a reason other than a
+    /// missing directory, or if the state is not `Installed`.
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {

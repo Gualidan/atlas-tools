@@ -1,6 +1,12 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
+/// Creates the repository package table if it does not already exist.
+///
+/// # Errors
+///
+/// Returns an error if the schema cannot be created or its transaction cannot
+/// be committed.
 pub fn create_packages_table(conn: &mut Connection) -> Result<()> {
     let transaction = conn
         .transaction()

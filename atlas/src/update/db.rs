@@ -18,6 +18,11 @@ use crate::{
 /// must exist for this architecture in both databases. Archive, manifest, and
 /// database errors propagate and leave the transaction uncommitted. An absent
 /// installed row can succeed when no file or dependency rows are added.
+///
+/// # Errors
+///
+/// Returns an error if the database transaction, archive manifest, or repository
+/// dependency validation fails.
 pub fn update_installed_package(
     conn: &mut Connection,
     repo_conn: &Connection,
@@ -67,7 +72,8 @@ pub fn update_installed_package(
         .context("Failed to execute database query")?;
 
     let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
-    let manifest_lines = parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
+    let manifest_lines =
+        parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
 
     for line in manifest_lines
         .iter()
@@ -112,6 +118,11 @@ pub fn update_installed_package(
     Ok(())
 }
 
+/// Clears the installed package update log in a transaction.
+///
+/// # Errors
+///
+/// Returns an error if the log cannot be deleted or the transaction cannot be committed.
 pub fn clear_update_log(conn: &mut Connection) -> Result<()> {
     let transaction = conn
         .transaction()

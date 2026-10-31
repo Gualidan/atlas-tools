@@ -33,6 +33,14 @@ pub fn set_assume_yes(assume_yes: bool) {
     ASSUME_YES.store(assume_yes, Ordering::Relaxed);
 }
 
+/// Displays the package list and asks whether to proceed with the action.
+/// An empty package list and an enabled assume-yes setting are accepted without
+/// prompting. A cancellation or interruption returns `Ok(false)`.
+///
+/// # Errors
+///
+/// Returns an error when confirmation cannot be read, including when running
+/// without a TTY and assume-yes is disabled.
 pub fn confirmation_prompt(
     packages: Vec<(&str, &str)>,
     indent: usize,
@@ -52,35 +60,30 @@ pub fn confirmation_prompt(
     }
 
     let ans = Confirm::new(&format!(
-        "This will {} these packages, do you wish to proceed?",
-        action
+        "This will {action} these packages, do you wish to proceed?"
     ))
     .with_default(true)
     .prompt();
 
     match ans {
-        Ok(true) => return Ok(true),
+        Ok(true) => Ok(true),
         Ok(false) => {
             println!("Transaction aborted");
-            return Ok(false);
+            Ok(false)
         }
         Err(e) => match e {
             OperationInterrupted => {
                 println!("Transaction aborted: user pressed Ctrl-C");
-                return Ok(false);
+                Ok(false)
             }
             OperationCanceled => {
                 println!("Transaction aborted: user pressed Esc");
-                return Ok(false);
+                Ok(false)
             }
-            NotTTY => {
-                return Err(anyhow!(
-                    "Command is running outside of a TTY try passing --yes"
-                ));
-            }
-            _ => {
-                return Err(anyhow!(e).context("Failed to read confirmation"));
-            }
+            NotTTY => Err(anyhow!(
+                "Command is running outside of a TTY try passing --yes"
+            )),
+            _ => Err(anyhow!(e).context("Failed to read confirmation")),
         },
     }
 }

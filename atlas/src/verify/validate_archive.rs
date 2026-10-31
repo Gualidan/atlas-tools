@@ -7,6 +7,12 @@ use anyhow::{Context, Result, anyhow};
 
 use common::functions::sky_verify::get_sky_archive;
 
+/// Validates that a sky archive contains only the expected, unique root entries.
+///
+/// # Errors
+///
+/// Returns an error if archive entries cannot be read, paths are unsafe, entries
+/// are unexpected or duplicated, or required entries are missing.
 pub fn validate_archive_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
     let mut archive = get_sky_archive(&sky_path)?;
     let mut seen_names: HashSet<String> = HashSet::new();
@@ -26,14 +32,11 @@ pub fn validate_archive_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
         }
 
         for component in path.components() {
-            match component {
-                component @ Component::ParentDir | component @ Component::CurDir => {
-                    return Err(anyhow!(
-                        "Archive member {} has a {component:?} component",
-                        path.display(),
-                    ));
-                }
-                _ => {}
+            if let component @ (Component::ParentDir | Component::CurDir) = component {
+                return Err(anyhow!(
+                    "Archive member {} has a {component:?} component",
+                    path.display(),
+                ));
             }
         }
 
@@ -42,16 +45,13 @@ pub fn validate_archive_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
         };
 
         match filename {
-            name @ "metadata.yaml"
-            | name @ "payload.tar.zst"
-            | name @ "files"
-            | name @ "signature.ed25519" => {
+            name @ ("metadata.yaml" | "payload.tar.zst" | "files" | "signature.ed25519") => {
                 if !seen_names.insert(name.to_string()) {
                     return Err(anyhow!("Duplicate archive member {name}"));
                 }
             }
             other => {
-                return Err(anyhow!("Unexpected archive member {}", other));
+                return Err(anyhow!("Unexpected archive member {other}"));
             }
         }
     }

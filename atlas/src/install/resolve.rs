@@ -20,6 +20,12 @@ pub struct ResolvedPackage {
     pub sky_path: String,
 }
 
+/// Resolves a package and its dependencies in dependency-first install order.
+///
+/// # Errors
+///
+/// Returns an error if package metadata is missing, dependency resolution fails,
+/// or a package version cannot be parsed.
 pub fn resolve_install_order(
     repo_conn: &Connection,
     install_conn: &Connection,

@@ -21,6 +21,11 @@ use crate::{
 /// Returns an error for an absent package or recorded dependent, and propagates
 /// resolution, confirmation, database, and other filesystem errors.
 /// A database failure after directory removal does not restore the files.
+///
+/// # Errors
+///
+/// Returns an error if the package is absent or has dependents, or if resolution,
+/// confirmation, database updates, or filesystem removal fails.
 pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
     let mut install_conn = if runtime_config.install_db.exists() {
         Connection::open(&runtime_config.install_db)
@@ -70,6 +75,11 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) ->
     Ok(())
 }
 
+/// Looks up an installed package's directory, version, and release for the host architecture.
+///
+/// # Errors
+///
+/// Returns an error if the install schema cannot be ensured or the package is absent.
 pub fn look_up_installed_package(
     conn: &Connection,
     name: &String,

@@ -40,10 +40,16 @@ use crate::{
 ///
 /// Returns an error for invalid arguments, missing packages, or verification
 /// failures, and propagates database, key, archive, and filesystem errors.
+///
+/// # Errors
+///
+/// Returns an error if argument validation, package lookup, signature checking,
+/// archive validation, or filesystem operations fail.
+#[allow(clippy::too_many_lines)]
 pub fn verify(
-    args: VerifyArgs,
+    args: &VerifyArgs,
     runtime_config: &RuntimeConfig,
-    settings: SisyphusConfig,
+    settings: &SisyphusConfig,
 ) -> Result<()> {
     if args.package.is_none() && args.sky_path.is_none() {
         return Err(anyhow!(
@@ -97,33 +103,34 @@ pub fn verify(
 
     match (args.package.as_ref(), args.sky_path.as_deref()) {
         (Some(name), None) => {
-            let data = data_to_sign(&metadata_bytes, payload_bytes, files.as_bytes())
+            let data = data_to_sign(&metadata_bytes, &payload_bytes, files.as_bytes())
                 .context("Failed to produce the data to sign")?;
 
             let (_, version, release, architecture) = package.context("Missing package info")?;
             let package_id = PackageIdentity {
                 name: name.clone(),
-                version: version,
+                version,
                 release,
                 architecture,
             };
 
             verify_metadata(&metadata_bytes, &package_id).context("Failed to verify metadata")?;
-            verify_signature(&data, &settings, signature_bytes)
+            verify_signature(&data, settings, &signature_bytes)
                 .context("Failed to verify signature")?;
         }
 
         (None, Some(_)) => {
-            let data = data_to_sign(&metadata_bytes, payload_bytes, files.as_bytes())
+            let data = data_to_sign(&metadata_bytes, &payload_bytes, files.as_bytes())
                 .context("Failed to produce the data to sign")?;
-            verify_signature(&data, &settings, signature_bytes)
+            verify_signature(&data, settings, &signature_bytes)
                 .context("Failed to verify signature")?;
         }
 
         _ => {}
     }
 
-    let manifest_lines = parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
+    let manifest_lines =
+        parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
     let destination = Builder::new()
         .tempdir()
         .context("Failed to create temporary directory")?;

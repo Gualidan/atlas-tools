@@ -132,11 +132,16 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
 /// Dependencies must exist for the package's architecture in both the repository
 /// and install databases. Filesystem, archive, manifest, and database errors
 /// propagate; an uncommitted transaction is rolled back.
+///
+/// # Errors
+///
+/// Returns an error if the database schema, package archive, manifest, or
+/// repository dependency records cannot be read or updated.
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: &Metadata,
     package: &PackageIdentity,
-    install_dir: String,
+    install_dir: &str,
     sky_path: &str,
     install_reason: InstallReason,
 ) -> Result<()> {
@@ -174,7 +179,8 @@ pub fn insert_installed_package(
 
     // Insert root package's paths into "owned files"
     let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
-    let manifest_lines = parse_metadata_lines(files).context("Failed to parse manifest's lines")?;
+    let manifest_lines =
+        parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
 
     for line in manifest_lines
         .iter()

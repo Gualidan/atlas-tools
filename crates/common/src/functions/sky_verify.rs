@@ -17,6 +17,11 @@ use crate::{
 /// Opens a sky file as a Zstandard-decoded tar reader without validating entries.
 /// Returns file-open and decoder initialization errors; errors encountered while
 /// reading archive contents are deferred to the returned reader.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or the Zstandard decoder
+/// cannot be initialized.
 pub fn get_sky_archive<P: AsRef<Path>>(path: &P) -> Result<Archive<Decoder<'_, BufReader<File>>>> {
     let tar_gz = File::open(path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
@@ -25,7 +30,14 @@ pub fn get_sky_archive<P: AsRef<Path>>(path: &P) -> Result<Archive<Decoder<'_, B
     Ok(archive)
 }
 
-pub fn read_sky<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, Vec<u8>, String, Vec<u8>)> {
+pub type SkyContents = (Vec<u8>, Vec<u8>, String, Vec<u8>);
+
+/// Reads the metadata, payload, manifest, and signature entries from a sky archive.
+///
+/// # Errors
+///
+/// Returns an error if the archive cannot be opened, decompressed, or read.
+pub fn read_sky<P: AsRef<Path>>(path: P) -> Result<SkyContents> {
     let mut metadata = Vec::new();
     let mut payload = Vec::new();
     let mut files = String::new();
@@ -76,10 +88,16 @@ pub fn read_sky<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, Vec<u8>, String, Ve
     Ok((metadata, payload, files, signature))
 }
 
+/// Verifies the Ed25519 signature against the configured public key.
+///
+/// # Errors
+///
+/// Returns an error if the key cannot be read, has an invalid size, or the
+/// signature does not verify.
 pub fn verify_signature(
     data: &[u8],
     settings: &SisyphusConfig,
-    signature_bytes: Vec<u8>,
+    signature_bytes: &[u8],
 ) -> Result<()> {
     let pub_key_file: Vec<u8> =
         fs::read(&settings.pub_key_path).context("Failed to read public key")?;
@@ -89,7 +107,7 @@ pub fn verify_signature(
     }
     let pub_key = UnparsedPublicKey::new(&ED25519, &pub_key_file);
     pub_key
-        .verify(data, &signature_bytes)
+        .verify(data, signature_bytes)
         .context("Failed to verify sky file signature")?;
 
     Ok(())
@@ -98,6 +116,11 @@ pub fn verify_signature(
 /// Deserializes YAML metadata and returns it if its name, version, release, and
 /// architecture match `package`. Returns deserialization or identity mismatch
 /// errors; this check does not authenticate the metadata's signature.
+///
+/// # Errors
+///
+/// Returns an error if metadata cannot be deserialized or does not match the
+/// expected package identity.
 pub fn verify_metadata(metadata_bytes: &[u8], package: &PackageIdentity) -> Result<Metadata> {
     let metadata: Metadata =
         serde_saphyr::from_slice(metadata_bytes).context("Failed to deserialize metadata")?;
@@ -121,14 +144,19 @@ pub fn verify_metadata(metadata_bytes: &[u8], package: &PackageIdentity) -> Resu
     Ok(metadata)
 }
 
+/// Produces the concatenated hashes used as the signed data for an archive.
+///
+/// # Errors
+///
+/// Returns an error if hashing any input fails.
 pub fn data_to_sign(
-    metadata_bytes: &Vec<u8>,
-    payload_bytes: Vec<u8>,
+    metadata_bytes: &[u8],
+    payload_bytes: &[u8],
     files_bytes: &[u8],
 ) -> Result<Vec<u8>> {
-    let metadata_hash = hash(Cursor::new(&metadata_bytes)).context("Failed to hash metadata")?;
-    let payload_hash = hash(Cursor::new(&payload_bytes)).context("Failed to hash payload")?;
-    let files_hash = hash(Cursor::new(&files_bytes)).context("Failed to hash manifest")?;
+    let metadata_hash = hash(Cursor::new(metadata_bytes)).context("Failed to hash metadata")?;
+    let payload_hash = hash(Cursor::new(payload_bytes)).context("Failed to hash payload")?;
+    let files_hash = hash(Cursor::new(files_bytes)).context("Failed to hash manifest")?;
 
     let data = [
         metadata_hash.as_ref(),
@@ -143,6 +171,11 @@ pub fn data_to_sign(
 /// `settings.pub_key_path` and matching the expected package identity.
 /// Propagates archive reading, public-key, signature, and metadata errors.
 /// Does not validate payload paths or manifest contents.
+///
+/// # Errors
+///
+/// Returns an error if archive reading, signature verification, or package
+/// metadata validation fails.
 pub fn sky_verify(
     file_name: &PathBuf,
     package: &PackageIdentity,
@@ -151,10 +184,10 @@ pub fn sky_verify(
     let (metadata_bytes, payload_bytes, files_bytes, signature_bytes) =
         read_sky(file_name).context("Failed to read sky file")?;
 
-    let data = data_to_sign(&metadata_bytes, payload_bytes, files_bytes.as_bytes())
+    let data = data_to_sign(&metadata_bytes, &payload_bytes, files_bytes.as_bytes())
         .context("Failed to produce the data to sign")?;
 
-    verify_signature(&data, settings, signature_bytes).context("Failed to verify signature")?;
+    verify_signature(&data, settings, &signature_bytes).context("Failed to verify signature")?;
 
     let metadata =
         verify_metadata(&metadata_bytes, package).context("Failed to verify metadata")?;

@@ -15,7 +15,7 @@ use crate::types::sandbox::Sandbox;
 pub fn build(
     runtime_config: &RuntimeConfig,
     package: &Package,
-    srcdir: &PathBuf,
+    srcdir: &Path,
     build_plan: &BuildPlan,
 ) -> Result<TempDir> {
     let mut artifacts: Vec<PathBuf> = build_plan

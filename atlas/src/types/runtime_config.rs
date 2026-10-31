@@ -10,6 +10,11 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Builds runtime paths from the invoking user's data directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's data directory cannot be determined.
     pub fn build() -> Result<Self> {
         Ok(RuntimeConfig {
             repo_db: data_dir()
@@ -30,7 +35,12 @@ impl RuntimeConfig {
         })
     }
     /// Derives `repo.db`, `installed.db`, and the `repo` directory beneath `path`
-    /// without accessing the filesystem. Always returns a configuration.
+    /// without accessing the filesystem.
+    ///
+    /// # Errors
+    ///
+    /// This method currently always succeeds; the `Result` return type is kept
+    /// for compatibility with `build` and existing callers.
     pub fn build_at(path: &Path) -> Result<Self> {
         Ok(RuntimeConfig {
             repo_db: path.join("repo").with_extension("db"),

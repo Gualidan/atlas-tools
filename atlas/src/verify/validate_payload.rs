@@ -21,6 +21,12 @@ use common::functions::sky_verify::get_sky_archive;
 /// Returns an error if no `payload.tar.zst` member is found or an outer entry's
 /// filename cannot be read as UTF-8. Archive, decompression, header, and I/O
 /// errors propagate.
+/// Validates that payload archive paths are safe, unique, and supported.
+///
+/// # Errors
+///
+/// Returns an error if the archive cannot be read or contains an unsafe,
+/// duplicate, or unsupported payload entry.
 pub fn validate_payload_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
     let mut archive = get_sky_archive(&sky_path).context("Failed to get the sky archive")?;
     let mut seen_paths: HashSet<PathBuf> = HashSet::new();
@@ -89,14 +95,11 @@ pub fn validate_payload_paths<P: AsRef<Path>>(sky_path: P) -> Result<()> {
                 }
 
                 for component in path.components() {
-                    match component {
-                        component @ Component::ParentDir | component @ Component::CurDir => {
-                            return Err(anyhow!(
-                                "Path {} contains a {component:?} component",
-                                path.display()
-                            ));
-                        }
-                        _ => {}
+                    if let component @ (Component::ParentDir | Component::CurDir) = component {
+                        return Err(anyhow!(
+                            "Path {} contains a {component:?} component",
+                            path.display()
+                        ));
                     }
                 }
 
