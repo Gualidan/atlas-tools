@@ -39,7 +39,8 @@ impl Database {
     }
 
     fn resolve(&self, name: &str) -> Result<Vec<(PackageIdentity, String)>> {
-        packages_to_uninstall(&self.0, name.into())
+        let (packages_to_uninstall, _) = packages_to_uninstall(&self.0, name.into())?;
+        Ok(packages_to_uninstall)
     }
 
     fn assert_plan(&self, root: &str, expected: &[&str]) -> Result<()> {
@@ -118,7 +119,7 @@ fn resolver_accepts_the_production_install_schema() -> Result<()> {
         [],
     )?;
 
-    let plan = packages_to_uninstall(&conn, "app".into())?;
+    let (plan, _) = packages_to_uninstall(&conn, "app".into())?;
 
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].0.name, "app");
@@ -161,17 +162,19 @@ fn package_names_are_bound_as_data() -> Result<()> {
 }
 
 #[test]
-fn a_direct_dependent_blocks_resolution_without_writes() -> Result<()> {
+fn a_direct_dependent_skips_removal_without_writes() -> Result<()> {
     let db = Database::new(&[("app", &["library"]), ("library", &[])])?;
     let changes_before = db.0.total_changes();
 
-    let err = db
-        .resolve("library")
-        .expect_err("app still requires library");
+    let (plan, report) = packages_to_uninstall(&db.0, "library".into())?;
 
-    let message = err.to_string();
-    assert!(message.contains("library"), "{message}");
-    assert!(message.contains("app depends on it"), "{message}");
+    assert!(
+        plan.is_empty(),
+        "library must be kept while app depends on it"
+    );
+    assert_eq!(report.skipped.len(), 1);
+    assert_eq!(report.skipped[0].name, "library");
+    assert_eq!(report.skipped[0].required_by, "app");
     assert_eq!(db.0.total_changes(), changes_before);
     Ok(())
 }
@@ -205,9 +208,9 @@ fn every_sibling_and_transitive_dependency_is_resolved_once() -> Result<()> {
 }
 
 #[test]
-fn an_external_dependent_of_a_transitive_dependency_blocks_the_plan() -> Result<()> {
+fn an_external_dependent_skips_a_transitive_dependency_from_the_plan() -> Result<()> {
     isolated(
-        "an_external_dependent_of_a_transitive_dependency_blocks_the_plan",
+        "an_external_dependent_skips_a_transitive_dependency_from_the_plan",
         || {
             let db = Database::new(&[
                 ("app", &["middle"]),
@@ -216,10 +219,13 @@ fn an_external_dependent_of_a_transitive_dependency_blocks_the_plan() -> Result<
                 ("neighbor", &["shared"]),
             ])?;
             let changes_before = db.0.total_changes();
-            let err = db.resolve("app").expect_err("neighbor still needs shared");
-            let message = err.to_string();
-            assert!(message.contains("shared"), "{message}");
-            assert!(message.contains("neighbor"), "{message}");
+            let (plan, report) = packages_to_uninstall(&db.0, "app".into())?;
+            let names: BTreeSet<_> = plan.iter().map(|(pkg, _)| pkg.name.as_str()).collect();
+
+            assert_eq!(names, ["app", "middle"].into_iter().collect());
+            assert_eq!(report.skipped.len(), 1);
+            assert_eq!(report.skipped[0].name, "shared");
+            assert_eq!(report.skipped[0].required_by, "neighbor");
             assert_eq!(db.0.total_changes(), changes_before);
             Ok(())
         },

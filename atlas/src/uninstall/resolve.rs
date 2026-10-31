@@ -16,6 +16,17 @@ enum VisitStatus {
 
 type InstalledRow = (String, u32, String, String, String);
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkippedPackage {
+    pub name: String,
+    pub required_by: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UninstallReport {
+    pub skipped: Vec<SkippedPackage>,
+}
+
 /// Resolves `name` to installed identities and directory paths for removal.
 ///
 /// The plan contains the requested package plus every non-explicit dependency
@@ -33,10 +44,11 @@ type InstalledRow = (String, u32, String, String, String);
 pub fn packages_to_uninstall(
     conn: &Connection,
     name: String,
-) -> Result<Vec<(PackageIdentity, String)>> {
+) -> Result<(Vec<(PackageIdentity, String)>, UninstallReport)> {
     let mut packages_to_uninstall: Vec<(PackageIdentity, String)> = Vec::new();
     let mut statuses: HashMap<String, VisitStatus> = HashMap::new();
     let mut stack: Vec<String> = Vec::new();
+    let mut skipped: Vec<SkippedPackage> = Vec::new();
 
     visit(
         conn,
@@ -47,9 +59,9 @@ pub fn packages_to_uninstall(
         true,
     )?;
 
-    reject_external_dependents(conn, &packages_to_uninstall)?;
+    reject_external_dependents(conn, &mut packages_to_uninstall, &mut skipped)?;
 
-    Ok(packages_to_uninstall)
+    Ok((packages_to_uninstall, UninstallReport { skipped }))
 }
 
 /// Appends `name` and its non-explicit dependencies to `packages_to_uninstall`
@@ -168,13 +180,9 @@ fn dependencies_of(conn: &Connection, name: &str) -> Result<Vec<String>> {
 /// dependency chain can be uninstalled as long as no external package needs it.
 fn reject_external_dependents(
     conn: &Connection,
-    packages_to_uninstall: &[(PackageIdentity, String)],
+    packages_to_uninstall: &mut Vec<(PackageIdentity, String)>,
+    skipped: &mut Vec<SkippedPackage>,
 ) -> Result<()> {
-    let removal_set: HashSet<&str> = packages_to_uninstall
-        .iter()
-        .map(|(package, _)| package.name.as_str())
-        .collect();
-
     let mut stmt = conn
         .prepare("SELECT package_name, dependency_name FROM package_dependencies")
         .context("Failed to prepare database query")?;
@@ -185,10 +193,23 @@ fn reject_external_dependents(
 
     for edge in edges {
         let (dependent, dependency) = edge?;
-        if removal_set.contains(dependency.as_str()) && !removal_set.contains(dependent.as_str()) {
-            return Err(anyhow!(
-                "Can't uninstall {dependency} because {dependent} depends on it"
-            ));
+        if packages_to_uninstall
+            .iter()
+            .map(|(package, _)| package.name.as_str())
+            .collect::<HashSet<_>>()
+            .contains(dependency.as_str())
+            && !packages_to_uninstall
+                .iter()
+                .map(|(package, _)| package.name.as_str())
+                .collect::<HashSet<_>>()
+                .contains(dependent.as_str())
+        {
+            skipped.push(SkippedPackage {
+                name: dependency.clone(),
+                required_by: dependent.clone(),
+            });
+            packages_to_uninstall
+                .retain(|(package, _)| package.name.as_str() != dependency.as_str());
         }
     }
 
