@@ -11,6 +11,15 @@ use fixtures::{
 };
 use rusqlite::{Connection, params};
 
+fn dep_sky_path(conn: &Connection, name: &str) -> String {
+    conn.query_row(
+        "SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1",
+        params![name, ARCH.to_string()],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
 fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>) {
     let identity = PackageIdentity {
         name: name.to_string(),
@@ -18,7 +27,7 @@ fn package_identity(name: &str, deps: &[&str]) -> (PackageIdentity, Vec<String>)
         release: 1,
         architecture: ARCH,
     };
-    let deps: Vec<String> = deps.iter().map(|dep| dep.to_string()).collect();
+    let deps: Vec<String> = deps.iter().map(std::string::ToString::to_string).collect();
     (identity, deps)
 }
 
@@ -43,6 +52,7 @@ fn metadata(identity: &PackageIdentity, deps: &[String]) -> Metadata {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;
@@ -58,7 +68,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         b"root\n",
         vec![],
     )?;
-    let dep_a_sky = write_signed_sky(
+    let alpha_archive = write_signed_sky(
         &tmp,
         &keypair,
         "dep-a.sky",
@@ -68,7 +78,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         b"dep-a\n",
         vec![],
     )?;
-    let dep_b_sky = write_signed_sky(
+    let beta_archive = write_signed_sky(
         &tmp,
         &keypair,
         "dep-b.sky",
@@ -83,8 +93,8 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         &config.repo_db,
         &[
             ("root", "1.0.0", 1, root_sky.to_str().unwrap()),
-            ("dep-a", "2.1.0", 3, dep_a_sky.to_str().unwrap()),
-            ("dep-b", "0.4.0", 1, dep_b_sky.to_str().unwrap()),
+            ("dep-a", "2.1.0", 3, alpha_archive.to_str().unwrap()),
+            ("dep-b", "0.4.0", 1, beta_archive.to_str().unwrap()),
         ],
     );
 
@@ -103,15 +113,6 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         )
         .context("Failed to look up package in repository database")?;
 
-    fn dep_sky_path(conn: &Connection, name: &str) -> String {
-        conn.query_row(
-            "SELECT sky_path FROM packages WHERE name = ? AND architecture = ? LIMIT 1",
-            params![name, ARCH.to_string()],
-            |row| row.get(0),
-        )
-        .unwrap()
-    }
-
     // The dependency-side foreign key on package_dependencies references the
     // ledger, so each dependency needs its own installed row before the root
     // records edges pointing at it — mirrors the real post-order install.
@@ -121,7 +122,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
             &config,
             &metadata(&dep_package, &dep_deps),
             &dep_package,
-            "/usr".to_string(),
+            "/usr",
             &dep_sky_path(&conn, dep_name),
             InstallReason::Dependency,
         )
@@ -132,7 +133,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         &config,
         &metadata(&package, &deps),
         &package,
-        "/usr".to_string(),
+        "/usr",
         &sky_path,
         InstallReason::Explicit,
     )
@@ -194,7 +195,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         &config,
         &metadata(&package, &deps),
         &package,
-        "/usr".to_string(),
+        "/usr",
         &sky_path,
         InstallReason::Explicit,
     )

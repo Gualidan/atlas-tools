@@ -272,7 +272,7 @@ fn write_signed_sky(
 ) -> Result<(PathBuf, PathBuf)> {
     let metadata_bytes = serde_saphyr::to_string(&test_metadata())?.into_bytes();
     let (keypair, pub_key) = generate_keypair()?;
-    let data = data_to_sign(&metadata_bytes, payload.to_vec(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join(name);
@@ -298,7 +298,7 @@ fn setup() -> Result<(TempDir, RuntimeConfig, SisyphusConfig, PathBuf, PathBuf)>
     );
     let metadata_bytes = serde_saphyr::to_string(&test_metadata())?.into_bytes();
 
-    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join("hello.sky");
@@ -352,7 +352,8 @@ fn mode1_happy_path() -> Result<()> {
         &[("hello", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    let result = verify(mode1_args("hello"), &config, settings);
+    let args = mode1_args("hello");
+    let result = verify(&args, &config, &settings);
     assert!(
         result.is_ok(),
         "unexpected verification failure: {result:?}"
@@ -368,7 +369,8 @@ fn mode1_metadata_mismatch() -> Result<()> {
         &[("hello", "2.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    let result = verify(mode1_args("hello"), &config, settings);
+    let args = mode1_args("hello");
+    let result = verify(&args, &config, &settings);
     let err = result.expect_err("verification should fail on metadata mismatch");
     let chain = format!("{err:#}");
     assert!(
@@ -386,7 +388,8 @@ fn mode1_signature_failure() -> Result<()> {
         &[("hello", "1.0.0", 1, tampered_path.to_str().unwrap())],
     );
 
-    let result = verify(mode1_args("hello"), &config, settings);
+    let args = mode1_args("hello");
+    let result = verify(&args, &config, &settings);
     assert_chain(&result, "Failed to verify sky file signature");
     Ok(())
 }
@@ -399,7 +402,8 @@ fn mode2_happy_path() -> Result<()> {
         &[("hello", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    let result = verify(mode2_args(&sky_path), &config, settings);
+    let args = mode2_args(&sky_path);
+    let result = verify(&args, &config, &settings);
     assert!(
         result.is_ok(),
         "unexpected verification failure: {result:?}"
@@ -415,7 +419,8 @@ fn mode2_signature_failure() -> Result<()> {
         &[("hello", "1.0.0", 1, tampered_path.to_str().unwrap())],
     );
 
-    let result = verify(mode2_args(&tampered_path), &config, settings);
+    let args = mode2_args(&tampered_path);
+    let result = verify(&args, &config, &settings);
     assert_chain(&result, "Failed to verify sky file signature");
     Ok(())
 }
@@ -439,7 +444,8 @@ fn mode_match_happy_path() -> Result<()> {
         pub_key_path,
     };
 
-    let result = verify(mode2_args(&sky_path), &config, settings);
+    let args = mode2_args(&sky_path);
+    let result = verify(&args, &config, &settings);
     assert!(
         result.is_ok(),
         "unexpected verification failure: {result:?}"
@@ -466,7 +472,8 @@ fn mode_mismatch_failure() -> Result<()> {
         pub_key_path,
     };
 
-    let result = verify(mode2_args(&sky_path), &config, settings);
+    let args = mode2_args(&sky_path);
+    let result = verify(&args, &config, &settings);
     assert_chain(&result, "Invalid record, mode mismatch");
     Ok(())
 }
@@ -493,7 +500,8 @@ fn manifest_references_path_not_in_payload() -> Result<()> {
         pub_key_path,
     };
 
-    let result = verify(mode2_args(&sky_path), &config, settings);
+    let args = mode2_args(&sky_path);
+    let result = verify(&args, &config, &settings);
     assert_chain(&result, "manifest references path");
     assert_chain(&result, "not in payload");
     assert_chain(&result, "dir/missing.txt");
@@ -520,7 +528,8 @@ fn payload_contains_path_not_in_manifest() -> Result<()> {
         pub_key_path,
     };
 
-    let result = verify(mode2_args(&sky_path), &config, settings);
+    let args = mode2_args(&sky_path);
+    let result = verify(&args, &config, &settings);
     assert_chain(&result, "payload contains path");
     assert_chain(&result, "not in manifest");
     assert_chain(&result, "dir/secret.txt");
@@ -797,7 +806,8 @@ fn symlink_target_mismatch_is_rejected_even_when_the_signature_is_valid() -> Res
         priv_key_path: tmp.path().join("unused.key"),
         pub_key_path,
     };
-    let result = verify(mode2_args(&sky), &config, settings);
+    let args = mode2_args(&sky);
+    let result = verify(&args, &config, &settings);
     assert_chain(&result, "symlink is pointing to the wrong file");
     Ok(())
 }

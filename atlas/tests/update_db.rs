@@ -201,7 +201,7 @@ fn update_replaces_version_files_and_outgoing_dependencies_in_place() -> Result<
         after, before,
         "other packages, architectures and incoming edges must survive"
     );
-    assert!(rows(&db.conn, "PRAGMA foreign_key_check")?.is_empty());
+    assert_eq!(rows(&db.conn, "PRAGMA foreign_key_check")?, [] as [std::vec::Vec<rusqlite::types::Value>; 0]);
     Ok(())
 }
 
@@ -209,7 +209,7 @@ fn update_replaces_version_files_and_outgoing_dependencies_in_place() -> Result<
 fn update_can_drop_all_dependencies_and_is_repeatable() -> Result<()> {
     let mut db = Database::new()?;
     db.update(&[])?;
-    assert!(rows(&db.conn, "SELECT * FROM package_dependencies WHERE package_name = 'foo' AND architecture = 'x86_64'")?.is_empty());
+    assert_eq!(rows(&db.conn, "SELECT * FROM package_dependencies WHERE package_name = 'foo' AND architecture = 'x86_64'")?, [] as [std::vec::Vec<rusqlite::types::Value>; 0]);
     let before = snapshot(&db.conn)?;
     db.update(&[])?;
     assert_eq!(snapshot(&db.conn)?, before);

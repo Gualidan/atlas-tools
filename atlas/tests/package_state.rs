@@ -57,7 +57,7 @@ impl StateFixture {
         })
     }
 
-    fn identity(&self) -> PackageIdentity {
+    fn identity() -> PackageIdentity {
         PackageIdentity {
             name: "foo".to_string(),
             version: "2.0.0".to_string(),
@@ -72,7 +72,7 @@ impl StateFixture {
 
     fn initial(&self, tempdir: TempDir) -> PackageState<'_> {
         PackageState::NotInstalled {
-            package_id: self.identity(),
+            package_id: Self::identity(),
             install_conn: &self.installed,
             tempdir,
             sky_path: &self.sky,
@@ -301,7 +301,7 @@ fn invalid_remove_transitions_leave_existing_files_alone() -> Result<()> {
     let fixture = StateFixture::new()?;
     fs::create_dir(&fixture.install_dir)?;
     fs::write(fixture.install_dir.join("old.txt"), b"old\n")?;
-    let identity = fixture.identity();
+    let identity = StateFixture::identity();
     let mut ctx = RemoveContext {
         package_id: &identity,
         install_conn: &fixture.installed,
@@ -335,7 +335,7 @@ fn installed_remove_deletes_the_tree_without_changing_dependency_records() -> Re
     fs::create_dir_all(fixture.install_dir.join("nested"))?;
     fs::write(fixture.install_dir.join("nested/file.txt"), b"payload")?;
     let changes_before = fixture.installed.total_changes();
-    let identity = fixture.identity();
+    let identity = StateFixture::identity();
     let mut ctx = RemoveContext {
         package_id: &identity,
         install_conn: &fixture.installed,
@@ -363,7 +363,7 @@ fn installed_remove_deletes_the_tree_without_changing_dependency_records() -> Re
 #[test]
 fn installed_remove_is_idempotent_when_the_directory_is_missing() -> Result<()> {
     let fixture = StateFixture::new()?;
-    let identity = fixture.identity();
+    let identity = StateFixture::identity();
     let mut ctx = RemoveContext {
         package_id: &identity,
         install_conn: &fixture.installed,
@@ -382,7 +382,7 @@ fn installed_remove_is_idempotent_when_the_directory_is_missing() -> Result<()> 
 fn installed_remove_propagates_errors_other_than_a_missing_directory() -> Result<()> {
     let fixture = StateFixture::new()?;
     fs::write(&fixture.install_dir, b"not a directory")?;
-    let identity = fixture.identity();
+    let identity = StateFixture::identity();
     let mut ctx = RemoveContext {
         package_id: &identity,
         install_conn: &fixture.installed,

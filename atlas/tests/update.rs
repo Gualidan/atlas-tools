@@ -84,7 +84,7 @@ impl Installation {
     fn update(&self) -> Result<()> {
         update(
             &self.config,
-            UpdateArgs {
+            &UpdateArgs {
                 package: Some("foo".into()),
             },
         )
@@ -425,7 +425,7 @@ fn updating_a_package_that_is_not_installed_reports_not_found() -> Result<()> {
     let fixture = Installation::new()?;
     let err = update(
         &fixture.config,
-        UpdateArgs {
+        &UpdateArgs {
             package: Some("unknown".into()),
         },
     )

@@ -329,7 +329,7 @@ fn install_with_file_conflict_fails() -> Result<()> {
     let chain = format!("{err:#}");
     assert!(chain.contains("already owns"), "error chain was: {chain}");
     assert!(chain.contains("dir/file.txt"), "error chain was: {chain}");
-    assert!(chain.contains("A"), "error chain was: {chain}");
+    assert!(chain.contains('A'), "error chain was: {chain}");
 
     Ok(())
 }
@@ -746,13 +746,15 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::similar_names)]
 fn installing_a_package_installs_its_dependencies() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;
     let (keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let baz_sky = write_signed_sky_in_dir(
+    let baz_archive = write_signed_sky_in_dir(
         &tmp,
         &keypair,
         "baz.sky",
@@ -763,7 +765,7 @@ fn installing_a_package_installs_its_dependencies() -> Result<()> {
         vec![],
         "bazdir",
     )?;
-    let bar_sky = write_signed_sky_in_dir(
+    let bar_archive = write_signed_sky_in_dir(
         &tmp,
         &keypair,
         "bar.sky",
@@ -789,8 +791,8 @@ fn installing_a_package_installs_its_dependencies() -> Result<()> {
         &config.repo_db,
         &[
             ("foo", "1.0.0", 1, foo_sky.to_str().unwrap(), &["bar"]),
-            ("bar", "1.0.0", 1, bar_sky.to_str().unwrap(), &["baz"]),
-            ("baz", "1.0.0", 1, baz_sky.to_str().unwrap(), &[]),
+            ("bar", "1.0.0", 1, bar_archive.to_str().unwrap(), &["baz"]),
+            ("baz", "1.0.0", 1, baz_archive.to_str().unwrap(), &[]),
         ],
     );
 
@@ -799,8 +801,8 @@ fn installing_a_package_installs_its_dependencies() -> Result<()> {
 
     let conn = Connection::open(&config.install_db)?;
     for (name, sky_path, dir) in [
-        ("baz", &baz_sky, "bazdir"),
-        ("bar", &bar_sky, "bardir"),
+        ("baz", &baz_archive, "bazdir"),
+        ("bar", &bar_archive, "bardir"),
         ("foo", &foo_sky, "foodir"),
     ] {
         assert_eq!(
@@ -894,6 +896,7 @@ fn install_works_on_a_fresh_install_root() -> Result<()> {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn skipped_deps_stay_put_but_root_reinstalls() -> Result<()> {
     let tmp = tempdir();
     let config = runtime_config(&tmp)?;

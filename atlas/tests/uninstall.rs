@@ -107,9 +107,9 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     let err = result.expect_err("uninstalling A should fail because B depends on it");
     let chain = format!("{err:#}");
     assert!(chain.contains("depends on"), "error chain was: {chain}");
-    assert!(chain.contains("A"), "error chain should mention A: {chain}");
+    assert!(chain.contains('A'), "error chain should mention A: {chain}");
     assert!(
-        chain.contains("B"),
+        chain.contains('B'),
         "error chain should mention B as the dependent: {chain}"
     );
 

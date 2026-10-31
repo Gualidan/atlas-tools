@@ -58,11 +58,11 @@ fn terminal_pair() -> io::Result<(File, File)> {
     // name/termios request no name output and the platform's default settings.
     if unsafe {
         openpty(
-            &mut master,
-            &mut slave,
+            &raw mut master,
+            &raw mut slave,
             std::ptr::null_mut(),
             std::ptr::null(),
-            &size,
+            &raw const size,
         )
     } != 0
     {
@@ -205,11 +205,11 @@ fn assert_unchanged(config: &RuntimeConfig, names: &[&str]) -> Result<()> {
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
-        names.len() as i64
+        i64::try_from(names.len()).expect("package count fits in SQLite integer range")
     );
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM owned_files", &[]),
-        names.len() as i64
+        i64::try_from(names.len()).expect("file count fits in SQLite integer range")
     );
     for name in names {
         let (version, dir): (String, String) = conn.query_row(
@@ -306,7 +306,7 @@ fn declining_single_update_preserves_files_and_install_records() -> Result<()> {
 
             update(
                 &config,
-                UpdateArgs {
+                &UpdateArgs {
                     package: Some("foo".into()),
                 },
             )?;
@@ -335,7 +335,7 @@ fn declining_bulk_update_preserves_every_candidate() -> Result<()> {
                 ],
             );
 
-            update(&config, UpdateArgs { package: None })?;
+            update(&config, &UpdateArgs { package: None })?;
 
             assert_unchanged(&config, &["alpha", "zeta"])
         },

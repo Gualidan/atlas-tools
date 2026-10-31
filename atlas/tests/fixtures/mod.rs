@@ -3,13 +3,17 @@
 use std::{
     env,
     ffi::OsString,
+    fs,
     io::Cursor,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
 };
 
 use anyhow::Result;
-use atlas::types::runtime_config::RuntimeConfig;
+use atlas::{
+    cli::cli::UpdateArgs, install::install::install, types::runtime_config::RuntimeConfig,
+    uninstall::uninstall::uninstall, update::update::update,
+};
 use common::{
     db::db::create_packages_table,
     functions::{hash::hash, sky_verify::data_to_sign},
@@ -26,6 +30,249 @@ use zstd::Encoder;
 
 pub const ARCH: Architectures = Architectures::X86_64;
 
+#[allow(dead_code)]
+#[allow(clippy::struct_field_names)]
+pub struct Installed {
+    pub version: String,
+    pub release: u32,
+    pub sky_path: String,
+    pub install_dir: PathBuf,
+    pub installed_at: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct UpdateLogRow {
+    pub id: i64,
+    pub name: String,
+    pub architecture: String,
+    pub version: String,
+    pub release: u32,
+}
+
+#[allow(dead_code)]
+pub struct Workspace {
+    tmp: TempDir,
+    pub config: RuntimeConfig,
+    root: PathBuf,
+    keypair: Ed25519KeyPair,
+    _env: ConfigEnv,
+}
+
+#[allow(dead_code)]
+impl Workspace {
+    pub fn new() -> Result<Self> {
+        let tmp = tempdir();
+        let config = runtime_config(&tmp)?;
+        let (keypair, public_key) = generate_keypair()?;
+        let env = ConfigEnv::new(&tmp, &public_key)?;
+        let root = tmp.path().join("root");
+        fs::create_dir(&root)?;
+
+        Ok(Self {
+            tmp,
+            config,
+            root,
+            keypair,
+            _env: env,
+        })
+    }
+
+    pub fn publish(
+        &self,
+        name: &str,
+        version: &str,
+        release: u32,
+        deps: &[&str],
+    ) -> Result<PathBuf> {
+        let sky = write_signed_sky_with_file(
+            &self.tmp,
+            &self.keypair,
+            &format!("{name}-{version}-{release}.sky"),
+            name,
+            version,
+            release,
+            format!("{name} {version}\\n").as_bytes(),
+            deps.iter().map(ToString::to_string).collect(),
+            name,
+            &format!("{version}.txt"),
+        )?;
+        seed_repo_db_with_deps(
+            &self.config.repo_db,
+            &[(name, version, release, sky.to_str().unwrap(), deps)],
+        );
+        Ok(sky)
+    }
+
+    pub fn install(&self, name: &str) -> Result<()> {
+        install(&name.to_string(), &self.config, &self.root)
+    }
+
+    pub fn uninstall(&self, name: &str) -> Result<()> {
+        uninstall(&self.config, &name.to_string(), false)
+    }
+
+    pub fn update(&self, name: &str) -> Result<()> {
+        update(
+            &self.config,
+            &UpdateArgs {
+                package: Some(name.into()),
+            },
+        )
+    }
+
+    pub fn install_conn(&self) -> Result<Connection> {
+        Ok(Connection::open(&self.config.install_db)?)
+    }
+
+    pub fn repo_conn(&self) -> Result<Connection> {
+        Ok(Connection::open(&self.config.repo_db)?)
+    }
+
+    pub fn row(&self, name: &str) -> Result<Installed> {
+        let conn = self.install_conn()?;
+        let (version, release, sky_path, install_dir, installed_at, install_reason): (
+            String,
+            u32,
+            String,
+            String,
+            String,
+            String,
+        ) = conn.query_row(
+            "SELECT version, release, sky_path, install_dir, installed_at, install_reason
+             FROM installed_packages WHERE name = ? AND architecture = ?",
+            params![name, ARCH.to_string()],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )?;
+        Ok(Installed {
+            version,
+            release,
+            sky_path,
+            install_dir: PathBuf::from(install_dir),
+            installed_at,
+            reason: install_reason,
+        })
+    }
+
+    pub fn set_metadata(&self, name: &str, installed_at: &str, reason: &str) -> Result<()> {
+        self.install_conn()?.execute(
+            "UPDATE installed_packages SET installed_at = ?, install_reason = ?
+             WHERE name = ? AND architecture = ?",
+            params![installed_at, reason, name, ARCH.to_string()],
+        )?;
+        Ok(())
+    }
+
+    pub fn deps(&self, name: &str) -> Result<Vec<String>> {
+        let conn = self.install_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT dependency_name FROM package_dependencies
+             WHERE package_name = ? AND architecture = ? ORDER BY dependency_name",
+        )?;
+        Ok(stmt
+            .query_map(params![name, ARCH.to_string()], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?)
+    }
+
+    pub fn assert_installed(&self, name: &str, version: &str, release: u32) -> Result<Installed> {
+        let row = self.row(name)?;
+        assert_eq!(row.version, version, "{name} version");
+        assert_eq!(row.release, release, "{name} release");
+
+        let payload = row.install_dir.join(name);
+        let mut files = fs::read_dir(&payload)?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<std::io::Result<Vec<OsString>>>()?;
+        files.sort();
+        assert_eq!(
+            files,
+            vec![OsString::from(format!("{version}.txt"))],
+            "{name} payload files"
+        );
+        assert_eq!(
+            fs::read(payload.join(format!("{version}.txt")))?,
+            format!("{name} {version}\\n").as_bytes(),
+            "{name} payload contents"
+        );
+
+        let conn = self.install_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT path FROM owned_files
+             WHERE package_name = ? AND architecture = ? ORDER BY path",
+        )?;
+        let owned = stmt
+            .query_map(params![name, ARCH.to_string()], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        assert_eq!(
+            owned,
+            vec![format!("{name}/{version}.txt")],
+            "{name} owned files"
+        );
+        Ok(row)
+    }
+
+    pub fn assert_not_installed(&self, name: &str) {
+        assert!(self.row(name).is_err(), "{name} should not be installed");
+    }
+
+    pub fn assert_deps(&self, name: &str, expected: &[&str]) -> Result<()> {
+        let mut expected = expected.iter().map(ToString::to_string).collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(self.deps(name)?, expected, "{name} dependencies");
+        Ok(())
+    }
+
+    pub fn assert_no_staging_dirs(&self) -> Result<()> {
+        let conn = self.install_conn()?;
+        let mut stmt = conn.prepare("SELECT install_dir FROM installed_packages")?;
+        let mut expected = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        expected.sort();
+        let mut actual = fs::read_dir(&self.root)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        actual.sort();
+        assert_eq!(
+            actual, expected,
+            "temporary staging directories must be removed"
+        );
+        Ok(())
+    }
+
+    pub fn get_update_log(&self) -> Result<Vec<UpdateLogRow>> {
+        let conn = self.install_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, architecture, version, release
+             FROM installed_packages_update_log ORDER BY id ASC",
+        )?;
+        Ok(stmt
+            .query_map([], |row| {
+                Ok(UpdateLogRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    architecture: row.get(2)?,
+                    version: row.get(3)?,
+                    release: row.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+}
+
 /// Builds a temporary directory on the same filesystem as the install staging
 /// directory (`/var/tmp`), so that the atomic `renameat_with` exchange used by
 /// the install state machine works.
@@ -37,7 +284,7 @@ pub fn tempdir() -> TempDir {
 }
 
 pub fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig> {
-    RuntimeConfig::build_at(&tmp.path().to_path_buf())
+    RuntimeConfig::build_at(tmp.path())
 }
 
 pub fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
@@ -147,7 +394,7 @@ pub fn write_signed_sky_with_raw_entry(
     let metadata_bytes =
         serde_saphyr::to_string(&metadata_for(package_name, version, release, vec![]))?
             .into_bytes();
-    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join(sky_name);
@@ -279,18 +526,16 @@ pub fn manifest_for_dir(dir: &str, contents: &[u8]) -> Result<String> {
 pub fn manifest_for_file(dir: &str, file_name: &str, contents: &[u8]) -> Result<String> {
     let file_hash = hex::encode(hash(Cursor::new(contents))?);
     Ok(format!(
-        "f\t0644\t{}\t{dir}/{file_name}\nd\t0755\t-\t{dir}\n",
-        file_hash
+        "f\t0644\t{file_hash}\t{dir}/{file_name}\nd\t0755\t-\t{dir}\n"
     ))
 }
 
 /// Builds the manifest matching [`build_payload_with_symlink`].
-pub fn manifest_for_symlink(dir: &str, link_name: &str, target: &str) -> Result<String> {
-    Ok(format!(
-        "l\t0777\t{target}\t{dir}/{link_name}\nd\t0755\t-\t{dir}\n"
-    ))
+pub fn manifest_for_symlink(dir: &str, link_name: &str, target: &str) -> String {
+    format!("l\t0777\t{target}\t{dir}/{link_name}\nd\t0755\t-\t{dir}\n")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_signed_sky(
     tmp: &TempDir,
     keypair: &Ed25519KeyPair,
@@ -305,7 +550,7 @@ pub fn write_signed_sky(
     let files = manifest_for(contents)?;
     let metadata_bytes =
         serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
-    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join(sky_name);
@@ -315,6 +560,7 @@ pub fn write_signed_sky(
 
 /// Like [`write_signed_sky`] but with a custom payload directory name, so two
 /// packages installed together don't conflict on the same paths.
+#[allow(clippy::too_many_arguments)]
 pub fn write_signed_sky_in_dir(
     tmp: &TempDir,
     keypair: &Ed25519KeyPair,
@@ -330,7 +576,7 @@ pub fn write_signed_sky_in_dir(
     let files = manifest_for_dir(dir, contents)?;
     let metadata_bytes =
         serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
-    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join(sky_name);
@@ -340,6 +586,7 @@ pub fn write_signed_sky_in_dir(
 
 /// Like [`write_signed_sky`] but with a custom payload directory and file
 /// name, so two packages can share a directory without colliding on a file.
+#[allow(clippy::too_many_arguments)]
 pub fn write_signed_sky_with_file(
     tmp: &TempDir,
     keypair: &Ed25519KeyPair,
@@ -356,7 +603,7 @@ pub fn write_signed_sky_with_file(
     let files = manifest_for_file(dir, file_name, contents)?;
     let metadata_bytes =
         serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
-    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join(sky_name);
@@ -366,6 +613,7 @@ pub fn write_signed_sky_with_file(
 
 /// Like [`write_signed_sky`] but shipping a single symlink instead of a
 /// regular file.
+#[allow(clippy::too_many_arguments)]
 pub fn write_signed_sky_with_symlink(
     tmp: &TempDir,
     keypair: &Ed25519KeyPair,
@@ -379,10 +627,10 @@ pub fn write_signed_sky_with_symlink(
     dir: &str,
 ) -> Result<PathBuf> {
     let payload = build_payload_with_symlink(dir, link_name, target)?;
-    let files = manifest_for_symlink(dir, link_name, target)?;
+    let files = manifest_for_symlink(dir, link_name, target);
     let metadata_bytes =
         serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
-    let data = data_to_sign(&metadata_bytes, payload.clone(), files.as_bytes())?;
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
     let signature = keypair.sign(&data).as_ref().to_vec();
 
     let sky_path = tmp.path().join(sky_name);
@@ -400,7 +648,9 @@ pub struct ConfigEnv {
 impl ConfigEnv {
     pub fn new(tmp: &TempDir, pub_key: &[u8]) -> Result<Self> {
         static LOCK: Mutex<()> = Mutex::new(());
-        let guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let guard = LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Integration tests run without a terminal; auto-accept confirmation
         // prompts so install/uninstall/update can be exercised directly.

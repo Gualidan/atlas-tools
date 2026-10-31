@@ -419,7 +419,7 @@ fn clean_with_assume_yes_removes_orphans_and_keeps_explicit_packages() -> Result
                 stdout.matches("Packages:").count(),
                 1,
                 "per-package prompts must be skipped: {stdout}"
-            )
+            );
         },
     )
 }
@@ -436,11 +436,11 @@ fn current_single_and_bulk_updates_skip_confirmation() -> Result<()> {
 
             update(
                 &config,
-                UpdateArgs {
+                &UpdateArgs {
                     package: Some("foo".into()),
                 },
             )?;
-            update(&config, UpdateArgs { package: None })?;
+            update(&config, &UpdateArgs { package: None })?;
 
             assert_installed_unchanged(&config, "foo")
         },
@@ -477,7 +477,7 @@ fn update_prompt_error_lists_only_upgrades_and_leaves_files_untouched() -> Resul
                 .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
 
             for package in [Some("foo".into()), None] {
-                let err = update(&config, UpdateArgs { package })
+                let err = update(&config, &UpdateArgs { package })
                     .expect_err("terminal failure must stop updates before staging");
                 assert_eq!(
                     err.to_string(),
@@ -547,7 +547,7 @@ fn bulk_resolution_errors_abort_before_confirmation_or_any_update() -> Result<()
                         .map(|entry| entry.map(|entry| entry.file_name()))
                         .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
 
-                    let err = update(&config, UpdateArgs { package: None })
+                    let err = update(&config, &UpdateArgs { package: None })
                         .expect_err("a resolution error must abort the whole plan");
 
                     assert!(
