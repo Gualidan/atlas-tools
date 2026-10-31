@@ -11,8 +11,11 @@ use std::{
 
 use anyhow::Result;
 use atlas::{
-    cli::cli::UpdateArgs, install::install::install, types::runtime_config::RuntimeConfig,
-    uninstall::uninstall::uninstall, update::update::update,
+    cli::cli::UpdateArgs,
+    install::install::install,
+    types::runtime_config::RuntimeConfig,
+    uninstall::{resolve::UninstallReport, uninstall::uninstall},
+    update::update::update,
 };
 use common::{
     db::db::create_packages_table,
@@ -109,7 +112,7 @@ impl Workspace {
         install(&name.to_string(), &self.config, &self.root)
     }
 
-    pub fn uninstall(&self, name: &str) -> Result<()> {
+    pub fn uninstall(&self, name: &str) -> Result<UninstallReport> {
         uninstall(&self.config, &name.to_string(), false)
     }
 

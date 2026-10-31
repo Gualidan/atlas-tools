@@ -173,31 +173,6 @@ fn a_filesystem_error_preserves_the_install_record_and_ownership() -> Result<()>
 }
 
 #[test]
-fn dependents_are_rejected_before_confirmation_or_any_mutation() -> Result<()> {
-    let fixture = Installation::new()?;
-    fixture.seed("app", InstallReason::Explicit)?;
-    fixture.seed("dependent", InstallReason::Explicit)?;
-    fixture.conn.execute(
-        "INSERT INTO package_dependencies VALUES ('dependent', ?, 'app')",
-        [ARCH.to_string()],
-    )?;
-    let before = fs::read(&fixture.config.install_db)?;
-
-    // A fresh test binary has assume_yes disabled. The dependency failure must
-    // occur before the prompt even when confirmation was requested.
-    let err = uninstall(&fixture.config, &"app".into(), true)
-        .expect_err("dependent must block removal before confirmation");
-
-    assert!(
-        err.to_string().contains("dependent depends on it"),
-        "{err:#}"
-    );
-    assert_eq!(fs::read(&fixture.config.install_db)?, before);
-    fixture.assert_present("app")?;
-    fixture.assert_present("dependent")
-}
-
-#[test]
 fn an_absent_package_is_reported_by_name_without_changing_other_packages() -> Result<()> {
     let fixture = Installation::new()?;
     fixture.seed("neighbor", InstallReason::Explicit)?;

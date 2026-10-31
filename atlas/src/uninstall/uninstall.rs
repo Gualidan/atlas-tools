@@ -7,7 +7,10 @@ use crate::{
     cli::confirmation::{Action, confirmation_prompt},
     install::db::ensure_install_schema,
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
-    uninstall::{db::remove_uninstalled_package, resolve::packages_to_uninstall},
+    uninstall::{
+        db::remove_uninstalled_package,
+        resolve::{UninstallReport, packages_to_uninstall},
+    },
 };
 
 /// Removes the packages resolved from `name` by [`packages_to_uninstall`],
@@ -26,7 +29,11 @@ use crate::{
 ///
 /// Returns an error if the package is absent or has dependents, or if resolution,
 /// confirmation, database updates, or filesystem removal fails.
-pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) -> Result<()> {
+pub fn uninstall(
+    runtime_config: &RuntimeConfig,
+    name: &String,
+    prompt: bool,
+) -> Result<UninstallReport> {
     let mut install_conn = if runtime_config.install_db.exists() {
         Connection::open(&runtime_config.install_db)
             .context("Failed to open connection to install database, perhaps it is missing?")?
@@ -49,14 +56,21 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) ->
 
     drop(stmt);
 
-    let to_uninstall = packages_to_uninstall(&install_conn, name.clone())?;
+    let (to_uninstall, report) = packages_to_uninstall(&install_conn, name.clone())?;
     let packages = to_uninstall
         .iter()
         .map(|(pkg, _)| (pkg.name.as_str(), pkg.version.as_str()))
         .collect::<Vec<(&str, &str)>>();
 
+    if !report.skipped.is_empty() {
+        println!("Skipped packages:");
+        for skipped in &report.skipped {
+            println!("  - {} (required by {})", skipped.name, skipped.required_by);
+        }
+    }
+
     if prompt && !confirmation_prompt(packages, 4, &Action::Uninstall)? {
-        return Ok(());
+        return Ok(report);
     }
 
     for (package, install_dir) in to_uninstall {
@@ -72,7 +86,7 @@ pub fn uninstall(runtime_config: &RuntimeConfig, name: &String, prompt: bool) ->
         remove_uninstalled_package(&mut install_conn, &package)?;
     }
 
-    Ok(())
+    Ok(report)
 }
 
 /// Looks up an installed package's directory, version, and release for the host architecture.

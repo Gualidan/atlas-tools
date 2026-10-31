@@ -1,7 +1,10 @@
 mod fixtures;
 
 use anyhow::Result;
-use atlas::{install::install::install, uninstall::uninstall::uninstall};
+use atlas::{
+    install::install::install,
+    uninstall::{resolve::SkippedPackage, uninstall::uninstall},
+};
 use fixtures::{
     ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
     write_signed_sky_in_dir,
@@ -100,17 +103,18 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
+
     install(&"A".to_string(), &config, &root).expect("installing A should succeed");
     install(&"B".to_string(), &config, &root).expect("installing B should succeed");
 
-    let result = uninstall(&config, &"A".to_string(), false);
-    let err = result.expect_err("uninstalling A should fail because B depends on it");
-    let chain = format!("{err:#}");
-    assert!(chain.contains("depends on"), "error chain was: {chain}");
-    assert!(chain.contains('A'), "error chain should mention A: {chain}");
-    assert!(
-        chain.contains('B'),
-        "error chain should mention B as the dependent: {chain}"
+    let report = uninstall(&config, &"A".to_string(), false)?;
+
+    assert_eq!(
+        report.skipped,
+        vec![SkippedPackage {
+            name: "A".to_string(),
+            required_by: "B".to_string(),
+        }]
     );
 
     let conn = Connection::open(&config.install_db)?;
