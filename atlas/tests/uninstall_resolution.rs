@@ -233,6 +233,71 @@ fn an_external_dependent_skips_a_transitive_dependency_from_the_plan() -> Result
 }
 
 #[test]
+fn retained_packages_keep_their_transitive_dependencies_in_any_edge_order() -> Result<()> {
+    for reverse in [false, true] {
+        let mut packages: Vec<(&str, &[&str])> = vec![
+            ("app", &["shared", "exclusive"]),
+            ("shared", &["middle", "leaf"]),
+            ("middle", &["leaf"]),
+            ("leaf", &[]),
+            ("exclusive", &[]),
+            ("neighbor", &["shared"]),
+            ("other", &["shared"]),
+        ];
+        if reverse {
+            packages.reverse();
+        }
+        let db = Database::new(&packages)?;
+        let changes_before = db.0.total_changes();
+        let (plan, report) = packages_to_uninstall(&db.0, "app".into())?;
+        let names: BTreeSet<_> = plan.iter().map(|(pkg, _)| pkg.name.as_str()).collect();
+        let skipped: BTreeSet<_> = report
+            .skipped
+            .iter()
+            .map(|pkg| (pkg.name.as_str(), pkg.required_by.as_str()))
+            .collect();
+
+        assert_eq!(names, ["app", "exclusive"].into_iter().collect());
+        assert_eq!(
+            skipped,
+            [
+                ("shared", "neighbor"),
+                ("middle", "shared"),
+                ("leaf", "shared")
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(report.skipped.len(), 3);
+        assert_eq!(db.0.total_changes(), changes_before);
+    }
+    Ok(())
+}
+
+#[test]
+fn externally_required_root_keeps_its_dependencies() -> Result<()> {
+    let db = Database::new(&[
+        ("app", &["middle"]),
+        ("middle", &["leaf"]),
+        ("leaf", &[]),
+        ("neighbor", &["app"]),
+    ])?;
+    let (plan, report) = packages_to_uninstall(&db.0, "app".into())?;
+    assert!(plan.is_empty());
+    assert_eq!(
+        report
+            .skipped
+            .iter()
+            .map(|pkg| (pkg.name.as_str(), pkg.required_by.as_str()))
+            .collect::<BTreeSet<_>>(),
+        [("app", "neighbor"), ("middle", "app"), ("leaf", "middle")]
+            .into_iter()
+            .collect()
+    );
+    Ok(())
+}
+
+#[test]
 fn a_missing_dependency_is_reported_instead_of_recursing_forever() -> Result<()> {
     isolated(
         "a_missing_dependency_is_reported_instead_of_recursing_forever",

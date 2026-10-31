@@ -1,7 +1,50 @@
 mod fixtures;
 
 use anyhow::Result;
+use atlas::uninstall::resolve::SkippedPackage;
 use fixtures::Workspace;
+
+#[test]
+fn uninstall_preserves_dependencies_of_a_retained_shared_package() -> Result<()> {
+    let workspace = Workspace::new()?;
+    workspace.publish("leaf", "1.0.0", 1, &[])?;
+    workspace.publish("middle", "1.0.0", 1, &["leaf"])?;
+    workspace.publish("shared", "1.0.0", 1, &["middle"])?;
+    workspace.publish("exclusive", "1.0.0", 1, &[])?;
+    workspace.publish("app", "1.0.0", 1, &["shared", "exclusive"])?;
+    workspace.publish("neighbor", "1.0.0", 1, &["shared"])?;
+    workspace.install("app")?;
+    workspace.install("neighbor")?;
+
+    let report = workspace.uninstall("app")?;
+
+    workspace.assert_not_installed("app");
+    workspace.assert_not_installed("exclusive");
+    for name in ["neighbor", "shared", "middle", "leaf"] {
+        workspace.assert_installed(name, "1.0.0", 1)?;
+    }
+    workspace.assert_deps("neighbor", &["shared"])?;
+    workspace.assert_deps("shared", &["middle"])?;
+    workspace.assert_deps("middle", &["leaf"])?;
+    assert_eq!(
+        report.skipped,
+        vec![
+            SkippedPackage {
+                name: "shared".into(),
+                required_by: "neighbor".into()
+            },
+            SkippedPackage {
+                name: "middle".into(),
+                required_by: "shared".into()
+            },
+            SkippedPackage {
+                name: "leaf".into(),
+                required_by: "middle".into()
+            },
+        ]
+    );
+    Ok(())
+}
 
 #[test]
 fn uninstall_package_keeps_dependency_that_is_still_needed_by_another_package() -> Result<()> {
