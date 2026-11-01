@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use atlas::{
     cli::cli::UpdateArgs, install::db::ensure_install_schema, install::install::install,
     types::runtime_config::RuntimeConfig, uninstall::uninstall::uninstall, update::update::update,
@@ -110,20 +110,30 @@ fn multiple_packages_coexist() -> Result<()> {
         mode: 0o755,
         contents: vec![],
     }];
-    let app2_entry = vec![PayloadEntry::File {
-        path: "usr/bin/tool2".to_string(),
-        mode: 0o755,
-        contents: vec![],
-    }];
+    let app2_entry = vec![
+        PayloadEntry::File {
+            path: "usr/bin/tool2".to_string(),
+            mode: 0o755,
+            contents: vec![],
+        },
+        PayloadEntry::Symlink {
+            path: "usr/bin/symtool3".to_string(),
+            target: "usr/bin/symtool".to_string(),
+        },
+    ];
 
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &app_entries)?;
     workspace.publish_with_entries("app2", "1.0.0", 1, &[], &app2_entry)?;
+    fs::create_dir_all(root.join("usr/bin"))
+        .context("failed to create symlink target directory")?;
+    File::create(root.join("usr/bin/symtool")).context("failed to create symlink target")?;
 
     workspace.install("app")?;
     workspace.install("app2")?;
 
     assert!(root.join("usr/bin/tool").exists());
     assert!(root.join("usr/bin/tool2").exists());
+    assert!(root.join("usr/bin/symtool3").exists());
     assert!(!root.join("var/lib/atlas/local/app-1.0.0-1").exists());
     assert!(!root.join("var/lib/atlas/local/app2-1.0.0-1").exists());
 
@@ -133,7 +143,6 @@ fn multiple_packages_coexist() -> Result<()> {
 #[test]
 fn unmanaged_files_are_protected() -> Result<()> {
     let workspace = Workspace::new()?;
-    let conn = workspace.install_conn()?;
     let root = workspace.root();
     let entries = vec![PayloadEntry::File {
         path: "usr/bin/tool".to_string(),
@@ -141,8 +150,9 @@ fn unmanaged_files_are_protected() -> Result<()> {
         contents: vec![],
     }];
     let unrelated_conflicting_file = root.join("usr/bin/tool");
+    fs::create_dir_all(unrelated_conflicting_file.parent().unwrap())
+        .context("failed to create symlink target directory")?;
     File::create(&unrelated_conflicting_file)?;
-    owned_paths(&conn, "app").expect_err("database should be empty");
 
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &entries)?;
     let err = workspace
@@ -155,7 +165,8 @@ fn unmanaged_files_are_protected() -> Result<()> {
 
     assert!(unrelated_conflicting_file.exists());
     assert!(!root.join("var/lib/atlas/local/app-1.0.0-1").exists());
-    owned_paths(&conn, "app").expect_err("database should still be empty");
+    let conn = workspace.install_conn()?;
+    assert_eq!(owned_paths(&conn, "app")?, Vec::<String>::new());
 
     Ok(())
 }
@@ -164,7 +175,6 @@ fn unmanaged_files_are_protected() -> Result<()> {
 fn conflicting_package_files_are_protected() -> Result<()> {
     let workspace = Workspace::new()?;
     let root = workspace.root();
-    let conn = workspace.install_conn()?;
     let entries = vec![PayloadEntry::File {
         path: "usr/bin/tool".to_string(),
         mode: 0o755,
@@ -174,6 +184,7 @@ fn conflicting_package_files_are_protected() -> Result<()> {
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &entries)?;
     workspace.publish_with_entries("base", "1.0.0", 1, &[], &entries)?;
     workspace.install("app")?;
+    let conn = workspace.install_conn()?;
     let app_owned_files = owned_paths(&conn, "app")?;
 
     let err = workspace
@@ -181,7 +192,7 @@ fn conflicting_package_files_are_protected() -> Result<()> {
         .expect_err("install should fail because of a conflicting file");
     assert_eq!(
         err.to_string(),
-        "Failed to install `base`: conflicting file of package `app` already exists"
+        "Failed to install `base`: conflicting file of package `app` already exists at `usr/bin/tool`"
     );
 
     assert!(root.join("usr/bin/tool").exists());

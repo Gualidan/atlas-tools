@@ -25,7 +25,7 @@ impl ManifestLine {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum FileType {
     File,
     Dir,
