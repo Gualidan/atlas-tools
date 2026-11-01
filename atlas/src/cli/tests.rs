@@ -1,5 +1,6 @@
 use super::*;
 use clap::error::ErrorKind;
+use std::{env, path::PathBuf, sync::Mutex};
 
 #[test]
 fn confirmation_is_required_by_default_for_mutating_commands() {
@@ -90,4 +91,51 @@ fn yes_after_the_option_terminator_is_a_package_name() {
         panic!("expected install command");
     };
     assert_eq!(args.package, "--yes");
+}
+
+#[test]
+fn install_root_defaults_to_slash_and_accepts_an_explicit_root() {
+    let cli = Cli::try_parse_from(["atlas", "install", "tool"]).unwrap();
+    let Commands::Install(args) = cli.commands else {
+        panic!("expected install command");
+    };
+    assert_eq!(
+        args.root.unwrap_or_else(|| PathBuf::from("/")),
+        PathBuf::from("/")
+    );
+
+    let cli = Cli::try_parse_from(["atlas", "install", "tool", "--root", "/tmp/atlas-test-root"])
+        .unwrap();
+    let Commands::Install(args) = cli.commands else {
+        panic!("expected install command");
+    };
+    assert_eq!(args.root, Some(PathBuf::from("/tmp/atlas-test-root")));
+}
+
+#[test]
+fn explicit_install_root_wins_over_legacy_install_dir_environment() {
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    let _lock = ENV_LOCK.lock().unwrap();
+    let previous = env::var_os("ATLAS_INSTALL_DIR");
+    unsafe { env::set_var("ATLAS_INSTALL_DIR", "/legacy/atlas/install-dir") };
+
+    let cli = Cli::try_parse_from([
+        "atlas",
+        "install",
+        "tool",
+        "--root",
+        "/tmp/atlas-explicit-root",
+    ])
+    .unwrap();
+    let parsed_root = match cli.commands {
+        Commands::Install(args) => args.root,
+        _ => panic!("expected install command"),
+    };
+
+    match previous {
+        Some(value) => unsafe { env::set_var("ATLAS_INSTALL_DIR", value) },
+        None => unsafe { env::remove_var("ATLAS_INSTALL_DIR") },
+    }
+
+    assert_eq!(parsed_root, Some(PathBuf::from("/tmp/atlas-explicit-root")));
 }

@@ -75,7 +75,7 @@ fn package(url: &str, sha256: &str) -> Package {
 }
 
 fn config(tmp: &TempDir) -> Result<RuntimeConfig> {
-    RuntimeConfig::build_at(&tmp.path().to_path_buf())
+    RuntimeConfig::build_at(tmp.path())
 }
 
 fn source_rows(config: &RuntimeConfig) -> i64 {

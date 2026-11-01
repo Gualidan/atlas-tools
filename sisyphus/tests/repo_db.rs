@@ -57,7 +57,7 @@ fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
 #[test]
 fn republishing_replaces_the_previous_row() -> Result<()> {
     let tmp = tempdir()?;
-    let config = RuntimeConfig::build_at(&tmp.path().to_path_buf())?;
+    let config = RuntimeConfig::build_at(tmp.path())?;
     let foo_1_9 = package("foo", "1.9.0", Architectures::X86_64);
     let foo_1_10 = package("foo", "1.10.0", Architectures::X86_64);
     let a_sky = tmp.path().join("a.sky");
@@ -91,7 +91,7 @@ fn republishing_replaces_the_previous_row() -> Result<()> {
 #[test]
 fn publishing_the_same_name_for_two_architectures_keeps_both_rows() -> Result<()> {
     let tmp = tempdir()?;
-    let config = RuntimeConfig::build_at(&tmp.path().to_path_buf())?;
+    let config = RuntimeConfig::build_at(tmp.path())?;
     let foo_x86 = package("foo", "1.0.0", Architectures::X86_64);
     let foo_arm = package("foo", "1.0.0", Architectures::ARM);
     let x86_sky = tmp.path().join("x86.sky");
