@@ -92,6 +92,7 @@ impl StateFixture {
                     tempdir: self.staging()?,
                     metadata: metadata_for("foo", "2.0.0", 3, vec![]),
                     install_dir: &self.install_dir,
+                    sky_path: &self.sky,
                 },
             ),
             ("installed", PackageState::Installed),

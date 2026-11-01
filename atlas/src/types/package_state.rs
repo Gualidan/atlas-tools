@@ -1,7 +1,8 @@
 use std::{
-    fs::{self},
-    io::ErrorKind::NotFound,
-    path::PathBuf,
+    fs::{self, File},
+    io::{ErrorKind::NotFound, Read, Write},
+    os::unix,
+    path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context as AnyhowContext, Result, anyhow};
@@ -19,7 +20,6 @@ use common::{
 };
 
 use rusqlite::{Connection, OptionalExtension, params};
-use rustix::fs::{CWD, RenameFlags, renameat_with};
 use tempfile::TempDir;
 
 use crate::{
@@ -53,8 +53,61 @@ pub enum PackageState<'a> {
         tempdir: TempDir,
         metadata: Metadata,
         install_dir: &'a PathBuf,
+        sky_path: &'a PathBuf,
     },
     Installed,
+}
+
+fn has_parent_dir(path: &Path) -> bool {
+    path.components().any(|c| c == Component::ParentDir)
+}
+
+fn touches_atlas_state(path: &Path, file_type: &FileType) -> bool {
+    let atlas_state = Path::new("var/lib/atlas");
+
+    path == atlas_state
+        || path.starts_with(atlas_state)
+        || (file_type != &FileType::Dir && atlas_state.starts_with(path))
+}
+
+fn ensure_no_symlink_components(root: &Path, relative: &Path) -> Result<()> {
+    if relative.is_absolute() {
+        return Err(anyhow!("Path {} is absolute", relative.display()));
+    }
+
+    let mut current = root.to_path_buf();
+    let mut components = relative.components().peekable();
+
+    while let Some(component) = components.next() {
+        let Component::Normal(name) = component else {
+            return Err(anyhow!(
+                "Path {} contains an unsafe component",
+                relative.display()
+            ));
+        };
+        current.push(name);
+
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(anyhow!(
+                    "Path {} traverses symlink {}",
+                    relative.display(),
+                    current.display()
+                ));
+            }
+            Ok(metadata) if components.peek().is_some() && !metadata.is_dir() => {
+                return Err(anyhow!(
+                    "Parent of {} is not a directory",
+                    relative.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    Ok(())
 }
 
 impl<'a> PackageState<'a> {
@@ -119,8 +172,9 @@ impl<'a> PackageState<'a> {
     }
 
     /// Advances `Verified` to `Staged` by extracting the payload into its temporary
-    /// directory. Rejects non-directory paths owned by another package for the
-    /// same architecture; paths already owned by this package are allowed.
+    /// directory. Rejects non-directory paths owned by another package or
+    /// colliding with unowned filesystem entries; paths owned by this package
+    /// are allowed.
     /// Propagates database and extraction errors. Other starting states return
     /// an invalid-state error.
     ///
@@ -140,35 +194,50 @@ impl<'a> PackageState<'a> {
                 install_dir,
             } => {
                 let mut stmt = install_conn
-                                    .prepare(
-                                        "SELECT package_name FROM owned_files WHERE path = ? AND package_name != ? AND architecture = ?",
-                                    )
-                                    .context("Failed to prepare database query")?;
+                    .prepare(
+                        "SELECT package_name FROM owned_files WHERE path = ? AND architecture = ?",
+                    )
+                    .context("Failed to prepare database query")?;
 
-                // File conflict check
                 for line in manifest_paths {
                     if matches!(line.file_type, FileType::Dir) {
                         continue;
                     }
 
-                    let Some(owner) = stmt
+                    let owner = stmt
                         .query_row(
                             params![
                                 line.path.to_string_lossy(),
-                                package_id.name,
                                 package_id.architecture.to_string(),
                             ],
                             |row| row.get::<_, String>(0),
                         )
-                        .optional()?
-                    else {
-                        continue;
-                    };
+                        .optional()?;
 
-                    return Err(anyhow!(
-                        "Another package {owner} already owns this path {}",
-                        line.path.display()
-                    ));
+                    if let Some(owner) = owner {
+                        if owner != package_id.name {
+                            return Err(anyhow!(
+                                "Failed to install `{}`: conflicting file of package `{owner}` already exists at `{}`",
+                                package_id.name,
+                                line.path.display()
+                            ));
+                        }
+                        continue;
+                    }
+
+                    match fs::symlink_metadata(install_dir.join(&line.path)) {
+                        Ok(_) => {
+                            return Err(anyhow!(
+                                "Failed to install `{}`: conflicting file `{}` already exists",
+                                package_id.name,
+                                line.path.display()
+                            ));
+                        }
+                        Err(error) if error.kind() == NotFound => {}
+                        Err(error) => {
+                            return Err(error).context("Failed to inspect install destination");
+                        }
+                    }
                 }
 
                 unpack_payload(sky_path, &tempdir)?;
@@ -177,6 +246,7 @@ impl<'a> PackageState<'a> {
                     tempdir,
                     metadata,
                     install_dir,
+                    sky_path,
                 })
             }
             _ => Err(anyhow!(
@@ -203,20 +273,94 @@ impl<'a> PackageState<'a> {
                 tempdir,
                 metadata,
                 install_dir,
+                sky_path,
             } => {
+                let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
+                let manifest_lines =
+                    parse_metadata_lines(&files).context("Failed to parse metadata lines")?;
+
+                for line in &manifest_lines {
+                    if touches_atlas_state(&line.path, &line.file_type) {
+                        return Err(anyhow!(
+                            "Path {} conflicts with reserved Atlas state directory /var/lib/atlas",
+                            line.path.display()
+                        ));
+                    }
+                    ensure_no_symlink_components(install_dir, &line.path)?;
+                }
+
                 fs::create_dir_all(install_dir)
                     .context("Failed to create the install directory")?;
 
-                match renameat_with(
-                    CWD,
-                    tempdir.path(),
-                    CWD,
-                    install_dir.clone(),
-                    RenameFlags::EXCHANGE,
-                ) {
-                    Ok(()) => Ok((PackageState::Installed, metadata, tempdir)),
-                    Err(e) => Err(e.into()),
+                for line in manifest_lines
+                    .iter()
+                    .filter(|l| l.file_type == FileType::Dir)
+                {
+                    if has_parent_dir(&line.path) {
+                        return Err(anyhow!(
+                            "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
+                            line.path.display()
+                        ));
+                    }
+
+                    fs::create_dir_all(install_dir.join(&line.path))
+                        .context("Failed to create directory")?;
                 }
+
+                for line in manifest_lines
+                    .iter()
+                    .filter(|l| l.file_type == FileType::File)
+                {
+                    if has_parent_dir(&line.path) {
+                        return Err(anyhow!(
+                            "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
+                            line.path.display()
+                        ));
+                    }
+
+                    let temp_path = tempdir.path().join(&line.path);
+                    let install_path = install_dir.join(&line.path);
+                    fs::create_dir_all(
+                        install_path
+                            .parent()
+                            .context("Failed to get parent directory")?,
+                    )
+                    .context("Failed to create directory")?;
+                    let mut destination =
+                        File::create(&install_path).context("Failed to create file")?;
+
+                    let mut file_bytes: Vec<u8> = Vec::new();
+                    File::open(&temp_path)
+                        .context("Failed to open file")?
+                        .read_to_end(&mut file_bytes)
+                        .context("Failed to read file")?;
+
+                    destination
+                        .write_all(&file_bytes)
+                        .context("Failed to write file")?;
+                }
+
+                for line in manifest_lines
+                    .iter()
+                    .filter(|l| l.file_type == FileType::Symlink)
+                {
+                    if has_parent_dir(&line.path) || has_parent_dir(Path::new(&line.target_or_hash))
+                    {
+                        return Err(anyhow!(
+                            "Symlink {} has target {} meaning it is potentially trying to escape the installation directory",
+                            line.path.display(),
+                            line.target_or_hash
+                        ));
+                    }
+
+                    let install_target = install_dir.join(&line.target_or_hash);
+                    let install_path = install_dir.join(&line.path);
+
+                    unix::fs::symlink(install_target, install_path)
+                        .context("Failed to create symlink")?;
+                }
+
+                Ok((PackageState::Installed, metadata, tempdir))
             }
             _ => Err(anyhow!(
                 "Invalid transaction not allowed to commit from this state"

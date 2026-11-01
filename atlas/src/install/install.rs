@@ -118,10 +118,6 @@ pub fn install(
             InstallReason::Dependency
         };
 
-        let install_dir = install_dir.join(format!(
-            "{}-{}-{}",
-            package.name, package.version, package.release
-        ));
         let install_dir_existed = install_dir.exists();
 
         let package_id = PackageIdentity {
@@ -131,13 +127,22 @@ pub fn install(
             architecture: package.architecture,
         };
 
+        let tempdir_location = if install_dir
+            .to_str()
+            .context("Failed to convert install dir to string")?
+            == "/"
+        {
+            install_dir
+        } else {
+            &install_dir
+                .parent()
+                .context("Failed to get install dir's parent")?
+                .to_path_buf()
+        };
+
         let tempdir = Builder::new()
             .prefix("sisyphus_install_tmp_dir_")
-            .tempdir_in(
-                install_dir
-                    .parent()
-                    .context("Failed to get install dir's parent")?,
-            )
+            .tempdir_in(tempdir_location)
             .context("Failed to create temporary directory")?;
 
         install_one(
@@ -146,7 +151,7 @@ pub fn install(
             install_reason,
             &package_id,
             &PathBuf::from(&package.sky_path),
-            &install_dir,
+            install_dir,
             tempdir,
             &config,
             &repo_conn,
