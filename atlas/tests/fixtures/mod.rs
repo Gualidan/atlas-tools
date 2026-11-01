@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
 use std::{
+    collections::BTreeMap,
     env,
     ffi::OsString,
+    fmt::Write as _,
     fs,
     io::Cursor,
     path::{Path, PathBuf},
@@ -32,6 +34,67 @@ use tempfile::{Builder as TempBuilder, TempDir};
 use zstd::Encoder;
 
 pub const ARCH: Architectures = Architectures::X86_64;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PayloadEntry {
+    File {
+        path: String,
+        mode: u32,
+        contents: Vec<u8>,
+    },
+    Directory {
+        path: String,
+        mode: u32,
+    },
+    Symlink {
+        path: String,
+        target: String,
+    },
+}
+
+impl PayloadEntry {
+    pub fn file(path: impl Into<String>, contents: impl Into<Vec<u8>>) -> Self {
+        Self::file_with_mode(path, 0o644, contents)
+    }
+
+    pub fn file_with_mode(
+        path: impl Into<String>,
+        mode: u32,
+        contents: impl Into<Vec<u8>>,
+    ) -> Self {
+        Self::File {
+            path: path.into(),
+            mode,
+            contents: contents.into(),
+        }
+    }
+
+    pub fn directory(path: impl Into<String>) -> Self {
+        Self::directory_with_mode(path, 0o755)
+    }
+
+    pub fn directory_with_mode(path: impl Into<String>, mode: u32) -> Self {
+        Self::Directory {
+            path: path.into(),
+            mode,
+        }
+    }
+
+    pub fn symlink(path: impl Into<String>, target: impl Into<String>) -> Self {
+        Self::Symlink {
+            path: path.into(),
+            target: target.into(),
+        }
+    }
+
+    fn path(&self) -> &str {
+        match self {
+            Self::File { path, .. } | Self::Directory { path, .. } | Self::Symlink { path, .. } => {
+                path
+            }
+        }
+    }
+}
 
 #[allow(dead_code)]
 #[allow(clippy::struct_field_names)]
@@ -108,8 +171,51 @@ impl Workspace {
         Ok(sky)
     }
 
+    pub fn publish_with_entries(
+        &self,
+        name: &str,
+        version: &str,
+        release: u32,
+        deps: &[&str],
+        entries: &[PayloadEntry],
+    ) -> Result<PathBuf> {
+        let sky = write_signed_sky_with_entries(
+            &self.tmp,
+            &self.keypair,
+            &format!("{name}-{version}-{release}.sky"),
+            name,
+            version,
+            release,
+            deps.iter().map(ToString::to_string).collect(),
+            entries,
+        )?;
+        seed_repo_db_with_deps(
+            &self.config.repo_db,
+            &[(name, version, release, sky.to_str().unwrap(), deps)],
+        );
+        Ok(sky)
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn target_path(&self, relative_path: impl AsRef<Path>) -> PathBuf {
+        self.root.join(relative_path)
+    }
+
+    pub fn create_target_root(&self, name: &str) -> Result<PathBuf> {
+        let root = self.tmp.path().join(name);
+        fs::create_dir_all(&root)?;
+        Ok(root)
+    }
+
     pub fn install(&self, name: &str) -> Result<()> {
         install(&name.to_string(), &self.config, &self.root)
+    }
+
+    pub fn install_into(&self, name: &str, target_root: &Path) -> Result<()> {
+        install(&name.to_string(), &self.config, &target_root.to_path_buf())
     }
 
     pub fn uninstall(&self, name: &str) -> Result<UninstallReport> {
@@ -127,6 +233,11 @@ impl Workspace {
 
     pub fn install_conn(&self) -> Result<Connection> {
         Ok(Connection::open(&self.config.install_db)?)
+    }
+
+    pub fn owned_paths(&self, name: &str) -> Result<Vec<String>> {
+        let conn = self.install_conn()?;
+        owned_paths(&conn, name)
     }
 
     pub fn repo_conn(&self) -> Result<Connection> {
@@ -276,13 +387,13 @@ impl Workspace {
     }
 }
 
-/// Builds a temporary directory on the same filesystem as the install staging
-/// directory (`/var/tmp`), so that the atomic `renameat_with` exchange used by
-/// the install state machine works.
+/// Builds a temporary directory in the platform's configured temporary area.
+/// Install staging directories are created beside their target directory, so
+/// atomic exchanges remain on the target's filesystem.
 pub fn tempdir() -> TempDir {
     TempBuilder::new()
         .prefix("atlas_test_")
-        .tempdir_in("/var/tmp")
+        .tempdir()
         .expect("failed to create test temporary directory")
 }
 
@@ -292,6 +403,19 @@ pub fn runtime_config(tmp: &TempDir) -> Result<RuntimeConfig> {
 
 pub fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
     conn.query_row(sql, params, |row| row.get(0)).unwrap()
+}
+
+pub fn owned_paths(conn: &Connection, package_name: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT path FROM owned_files WHERE package_name = ? AND architecture = ? ORDER BY path",
+    )?;
+    Ok(stmt
+        .query_map(params![package_name, ARCH.to_string()], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn read_target_file(root: &Path, relative_path: impl AsRef<Path>) -> Result<Vec<u8>> {
+    Ok(fs::read(root.join(relative_path))?)
 }
 
 pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
@@ -489,6 +613,102 @@ pub fn build_payload_with_file(dir: &str, file_name: &str, contents: &[u8]) -> R
 
     builder.into_inner()?.finish()?;
     Ok(payload)
+}
+
+/// Builds a payload archive and sorted manifest from arbitrary regular files,
+/// directories, and symlinks. Parent directories are added automatically with
+/// mode 0755 unless an explicit directory entry supplies another mode.
+pub fn build_payload_and_manifest(entries: &[PayloadEntry]) -> Result<(Vec<u8>, String)> {
+    let mut by_path = BTreeMap::<String, PayloadEntry>::new();
+    for entry in entries {
+        let path = entry.path().to_owned();
+        if by_path.insert(path.clone(), entry.clone()).is_some() {
+            anyhow::bail!("duplicate test payload path {path}");
+        }
+    }
+
+    let paths = by_path.keys().cloned().collect::<Vec<_>>();
+    for path in paths {
+        let mut parent = Path::new(&path).parent();
+        while let Some(parent_path) = parent {
+            let parent_name = parent_path.to_string_lossy().into_owned();
+            if parent_name.is_empty() || parent_name == "." {
+                break;
+            }
+
+            match by_path.get(&parent_name) {
+                Some(PayloadEntry::Directory { .. }) => {}
+                Some(_) => {
+                    anyhow::bail!("test payload parent {parent_name} is not a directory");
+                }
+                None => {
+                    by_path.insert(parent_name.clone(), PayloadEntry::directory(&parent_name));
+                }
+            }
+            parent = parent_path.parent();
+        }
+    }
+
+    let mut payload = Vec::new();
+    let encoder = Encoder::new(&mut payload, 3)?;
+    let mut archive = Builder::new(encoder);
+    let mut manifest = String::new();
+
+    for (path, entry) in by_path {
+        match entry {
+            PayloadEntry::File { mode, contents, .. } => {
+                let mut header = Header::new_gnu();
+                header.set_mode(mode);
+                header.set_size(contents.len() as u64);
+                archive.append_data(&mut header, &path, Cursor::new(&contents))?;
+                let file_hash = hex::encode(hash(Cursor::new(&contents))?);
+                writeln!(&mut manifest, "f\t{mode:04o}\t{file_hash}\t{path}")?;
+            }
+            PayloadEntry::Directory { mode, .. } => {
+                let mut header = Header::new_gnu();
+                header.set_mode(mode);
+                header.set_size(0);
+                header.set_entry_type(EntryType::dir());
+                archive.append_data(&mut header, &path, std::io::empty())?;
+                writeln!(&mut manifest, "d\t{mode:04o}\t-\t{path}")?;
+            }
+            PayloadEntry::Symlink { target, .. } => {
+                let mut header = Header::new_gnu();
+                header.set_mode(0o777);
+                header.set_size(0);
+                header.set_entry_type(EntryType::symlink());
+                archive.append_link(&mut header, &path, &target)?;
+                writeln!(&mut manifest, "l\t0777\t{target}\t{path}")?;
+            }
+        }
+    }
+
+    archive.into_inner()?.finish()?;
+    Ok((payload, manifest))
+}
+
+/// Builds a signed package with arbitrary regular files, directories, and
+/// symlinks. Parent directories are synthesized by
+/// [`build_payload_and_manifest`].
+#[allow(clippy::too_many_arguments)]
+pub fn write_signed_sky_with_entries(
+    tmp: &TempDir,
+    keypair: &Ed25519KeyPair,
+    sky_name: &str,
+    package_name: &str,
+    version: &str,
+    release: u32,
+    deps: Vec<String>,
+    entries: &[PayloadEntry],
+) -> Result<PathBuf> {
+    let (payload, files) = build_payload_and_manifest(entries)?;
+    let metadata_bytes =
+        serde_saphyr::to_string(&metadata_for(package_name, version, release, deps))?.into_bytes();
+    let data = data_to_sign(&metadata_bytes, &payload, files.as_bytes())?;
+    let signature = keypair.sign(&data).as_ref().to_vec();
+    let sky_path = tmp.path().join(sky_name);
+    write_sky(&sky_path, &payload, &metadata_bytes, &files, &signature)?;
+    Ok(sky_path)
 }
 
 /// Builds a payload containing `<dir>/` and the symlink `<dir>/<link_name>`
