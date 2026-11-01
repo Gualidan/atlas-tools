@@ -158,7 +158,7 @@ fn answer_prompt_with_keys(
         match terminal.read(&mut buffer) {
             Ok(0) => break,
             Ok(size) => output.extend_from_slice(&buffer[..size]),
-            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
             Err(err)
                 if err.kind() == io::ErrorKind::WouldBlock
                     || err.raw_os_error() == Some(rustix::io::Errno::IO.raw_os_error()) =>

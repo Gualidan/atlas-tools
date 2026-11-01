@@ -6,6 +6,11 @@ use crate::fetch::fetch::{FetchMode, fetch};
 use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
 
+/// Fetches a package source and prints its SHA-256 checksum.
+///
+/// # Errors
+///
+/// Returns an error if fetching, opening, or hashing the source fails.
 pub fn checksum_gen(package: &Package, runtime_config: &RuntimeConfig) -> Result<()> {
     let fetched = fetch(package, &FetchMode::Checksum, runtime_config)?;
 
@@ -15,11 +20,7 @@ pub fn checksum_gen(package: &Package, runtime_config: &RuntimeConfig) -> Result
 
     println!(
         "Checksum: {}, paste this into your recipe",
-        hasher
-            .as_ref()
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>()
+        hex::encode(hasher.as_ref())
     );
 
     Ok(())

@@ -269,6 +269,11 @@ fn stable_names(names: &[String]) -> Vec<String> {
 /// The caller must execute this plan separately. In particular, do not call
 /// `run_build` from this module: the complete graph must be known before the
 /// first package build starts.
+///
+/// # Errors
+///
+/// Returns an error if a dependency recipe or repository record cannot be read,
+/// a dependency is invalid, or the dependency graph contains a cycle.
 pub fn resolve(
     config: &RuntimeConfig,
     root_package: &Package,

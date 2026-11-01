@@ -10,6 +10,11 @@ use common::{
 
 use crate::types::package::Package;
 
+/// Generates repository metadata for a package recipe.
+///
+/// # Errors
+///
+/// Returns an error if the recipe cannot be opened or hashed.
 pub fn metadata_gen(recipe: &PathBuf, package: &Package) -> Result<Metadata> {
     let reader = File::open(recipe).context("Failed to open recipe file")?;
 

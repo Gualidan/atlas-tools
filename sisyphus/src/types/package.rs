@@ -24,15 +24,25 @@ pub struct Package {
 }
 
 impl Package {
+    /// Validates the package schema and required recipe fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the schema, package name, version, source URL, or
+    /// required package phase is invalid, or if the package depends on itself.
     pub fn validate(&self) -> Result<()> {
         if self.schema == 0 || self.schema > 1 {
             return Err(anyhow!("Only schema version 1 is supported"));
         }
 
-        if self.name.is_empty()
-            || !self.name.chars().next().unwrap().is_ascii_lowercase()
-                && !self.name.chars().next().unwrap().is_ascii_digit()
-            || !self.name.chars().skip(1).all(|c| {
+        let mut name_chars = self.name.chars();
+        let Some(first_char) = name_chars.next() else {
+            return Err(anyhow!(
+                "Name field is invalid refer to the package naming documentation"
+            ));
+        };
+        if (!first_char.is_ascii_lowercase() && !first_char.is_ascii_digit())
+            || !name_chars.all(|c| {
                 c.is_ascii_lowercase()
                     || c.is_ascii_digit()
                     || c == '+'

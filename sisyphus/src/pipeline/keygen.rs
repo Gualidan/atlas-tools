@@ -7,6 +7,12 @@ use inquire::{
 };
 use std::{fs::File, io::Write, path::PathBuf};
 
+/// Generates a signing key pair and writes the Sisyphus configuration file.
+///
+/// # Errors
+///
+/// Returns an error if key generation or configuration file I/O fails, or if
+/// confirmation cannot be obtained when required.
 pub fn run_keygen(path: &Option<PathBuf>) -> Result<()> {
     let config_dir = config_dir()
         .context("Failed to derive user's config directory")?

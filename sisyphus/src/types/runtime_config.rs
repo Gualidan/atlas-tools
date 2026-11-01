@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use common::functions::dirs::{cache_dir, data_dir};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -15,7 +15,13 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    pub fn build(recipe: &PathBuf) -> Result<RuntimeConfig> {
+    /// Builds runtime paths from the location of a recipe.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipe cannot be canonicalized or its repository
+    /// root cannot be derived.
+    pub fn build(recipe: &Path) -> Result<RuntimeConfig> {
         let recipe = recipe.canonicalize()?;
         Ok(RuntimeConfig {
             recipe_repo: recipe
@@ -53,7 +59,12 @@ impl RuntimeConfig {
         })
     }
 
-    pub fn build_at(path: &PathBuf) -> Result<RuntimeConfig> {
+    /// Builds runtime paths rooted at an explicit directory.
+    ///
+    /// # Errors
+    ///
+    /// This currently cannot fail; the `Result` is retained for API consistency.
+    pub fn build_at(path: &Path) -> Result<RuntimeConfig> {
         Ok(RuntimeConfig {
             recipe_repo: path.join("recipes"),
             sky_repo: path.join("repo"),

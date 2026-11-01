@@ -21,7 +21,7 @@ fn with_umask<T>(mask: libc::mode_t, run: impl FnOnce() -> T) -> T {
     let lock: MutexGuard<'static, ()> = UMASK_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let previous = unsafe { libc::umask(mask) };
     let result = run();
     unsafe { libc::umask(previous) };

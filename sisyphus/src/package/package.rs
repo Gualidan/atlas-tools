@@ -8,6 +8,12 @@ use crate::{
 };
 use common::functions::dirs::data_dir;
 
+/// Creates and records a signed package archive from a package directory.
+///
+/// # Errors
+///
+/// Returns an error if the payload, metadata, signature, archive, or repository
+/// database cannot be generated or written.
 pub fn package_gen(
     recipe: &PathBuf,
     pkgdir: &PathBuf,

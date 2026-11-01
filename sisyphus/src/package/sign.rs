@@ -5,6 +5,12 @@ use common::{functions::hash::hash, types::metadata::Metadata};
 
 use crate::signing::signing::sign;
 
+/// Signs the hashes of package metadata, payload, and file manifest.
+///
+/// # Errors
+///
+/// Returns an error if metadata cannot be serialized or hashed, or if the
+/// private key cannot be read or used to create a signature.
 pub fn sign_artifacts(
     priv_key_path: &PathBuf,
     metadata: &Metadata,

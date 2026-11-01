@@ -120,9 +120,8 @@ fn each_identity_field_must_match_the_metadata() {
             },
         ),
     ] {
-        let err = verify_metadata(METADATA, &mismatch)
-            .err()
-            .expect("identity mismatch must be rejected");
+        let err =
+            verify_metadata(METADATA, &mismatch).expect_err("identity mismatch must be rejected");
         assert!(
             err.to_string().contains("metadata does not match"),
             "{field}: {err:#}"
@@ -158,9 +157,7 @@ fn malformed_or_incomplete_metadata_is_rejected() {
         b"name: example\n".as_slice(),
         b"".as_slice(),
     ] {
-        let err = verify_metadata(bytes, &identity)
-            .err()
-            .expect("invalid metadata must be rejected");
+        let err = verify_metadata(bytes, &identity).expect_err("invalid metadata must be rejected");
         assert!(
             format!("{err:#}").contains("Failed to deserialize metadata"),
             "{err:#}"
@@ -171,9 +168,9 @@ fn malformed_or_incomplete_metadata_is_rejected() {
 #[test]
 fn display_and_manifest_format_preserve_the_file_type_wire_values() {
     for (kind, marker, mode, target) in [
-        (FileType::File, "f", 0o100644, "deadbeef"),
-        (FileType::Dir, "d", 0o40755, "-"),
-        (FileType::Symlink, "l", 0o120777, "../lib/example"),
+        (FileType::File, "f", 0o100_644, "deadbeef"),
+        (FileType::Dir, "d", 0o40_755, "-"),
+        (FileType::Symlink, "l", 0o120_777, "../lib/example"),
     ] {
         assert_eq!(format!("{kind}"), marker);
         assert_eq!(kind.to_string(), marker);

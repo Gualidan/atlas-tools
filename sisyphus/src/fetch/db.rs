@@ -3,6 +3,12 @@ use rusqlite::{Connection, params};
 
 use crate::types::runtime_config::RuntimeConfig;
 
+/// Inserts or replaces a fetched source in the cache database.
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be opened, the table or row cannot
+/// be written, or the transaction cannot be committed.
 pub fn insert_source(
     url: &String,
     sha256: &String,

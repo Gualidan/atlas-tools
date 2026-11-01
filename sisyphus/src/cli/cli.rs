@@ -52,6 +52,11 @@ struct ChecksumArgs {
     recipe_path: PathBuf,
 }
 
+/// Parses command-line arguments and dispatches the selected command.
+///
+/// # Errors
+///
+/// Returns an error if a selected command fails.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
 

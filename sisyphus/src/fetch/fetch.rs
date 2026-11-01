@@ -17,6 +17,12 @@ pub enum FetchMode {
     Checksum,
 }
 
+/// Fetches a package source, using and updating the build cache when requested.
+///
+/// # Errors
+///
+/// Returns an error if the source cannot be downloaded or verified, or if the
+/// cache database cannot be read or updated.
 pub fn fetch(
     package: &Package,
     fetch_mode: &FetchMode,
@@ -52,7 +58,7 @@ pub fn fetch(
             }
 
             let (fetched, fetched_at) = fetch_payload(
-                package.source.url.to_string(),
+                package.source.url.clone(),
                 download_path.join(&package.name),
             )?;
 
@@ -86,7 +92,7 @@ fn fetch_payload(url: String, download_path: PathBuf) -> Result<(PathBuf, String
         destination: download_path,
     }) as Box<dyn Fetcher>;
 
-    let (fetched, fetched_at) = fetcher.fetch().context("Failed to fetch source")?;
+    let (downloaded_path, fetched_at) = fetcher.fetch().context("Failed to fetch source")?;
 
-    Ok((fetched, fetched_at))
+    Ok((downloaded_path, fetched_at))
 }

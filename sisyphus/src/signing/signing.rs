@@ -9,6 +9,12 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+/// Generates an Ed25519 key pair and writes the private and public keys.
+///
+/// # Errors
+///
+/// Returns an error if key generation fails, either key cannot be written, or
+/// the target paths already exist.
 pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
     let path = if let Some(keypath) = keypath {
         std::path::PathBuf::from(keypath)
@@ -83,6 +89,11 @@ pub fn keygen(keypath: &Option<PathBuf>) -> Result<(PathBuf, PathBuf)> {
     Ok((path, pub_key_path))
 }
 
+/// Signs data with the Ed25519 private key at `priv_key_path`.
+///
+/// # Errors
+///
+/// Returns an error if the key cannot be read or parsed.
 pub fn sign(priv_key_path: &PathBuf, data: &[u8]) -> Result<Vec<u8>> {
     let priv_key = std::fs::read(priv_key_path).context("Failed to read private key")?;
     let pkcs8 = Ed25519KeyPair::from_pkcs8(&priv_key)

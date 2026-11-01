@@ -10,6 +10,12 @@ use crate::{
 };
 use common::types::metadata::Metadata;
 
+/// Writes a signed package archive and records it in the repository database.
+///
+/// # Errors
+///
+/// Returns an error if the output directory, archive, zstd stream, or repository
+/// database cannot be written.
 pub fn sky_gen(
     metadata: &Metadata,
     payload: &Vec<u8>,

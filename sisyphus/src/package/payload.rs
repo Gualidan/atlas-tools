@@ -12,6 +12,12 @@ use walkdir::WalkDir;
 
 use common::types::manifest::{FileType, ManifestLine};
 
+/// Builds a compressed payload archive and its file manifest.
+///
+/// # Errors
+///
+/// Returns an error if package entries cannot be read, hashed, or added to the
+/// archive, or if an unsupported file type is encountered.
 pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
     let mut metadata: Vec<ManifestLine> = vec![];
 
@@ -63,13 +69,12 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
 
                 archive.append_data(&mut header, &relative_path, data)?;
 
-                let manifest_line = ManifestLine {
+                ManifestLine {
                     file_type: FileType::Dir,
                     mode,
                     target_or_hash: "-".to_string(),
                     path: relative_path,
-                };
-                manifest_line
+                }
             }
             ft if ft.is_symlink() => {
                 let target = read_link(path)?;
@@ -86,13 +91,12 @@ pub fn payload_gen(pkgdir: &PathBuf) -> Result<(String, Vec<u8>)> {
 
                 archive.append_data(&mut header, &relative_path, data)?;
 
-                let manifest_line = ManifestLine {
+                ManifestLine {
                     file_type: FileType::Symlink,
                     mode,
                     target_or_hash: read_link(path)?.to_string_lossy().to_string(),
                     path: relative_path,
-                };
-                manifest_line
+                }
             }
             _ => {
                 return Err(anyhow!(

@@ -4,6 +4,12 @@ use rusqlite::{Connection, params};
 
 use crate::types::{package::Package, runtime_config::RuntimeConfig};
 
+/// Records a published package in the repository database.
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be updated or the package metadata
+/// cannot be serialized.
 pub fn insert_package(
     runtime_config: &RuntimeConfig,
     package: &Package,

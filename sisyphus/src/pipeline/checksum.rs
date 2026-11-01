@@ -7,6 +7,12 @@ use crate::{
     types::{recipe::Recipe, runtime_config::RuntimeConfig},
 };
 
+/// Generates a checksum for the source referenced by a recipe.
+///
+/// # Errors
+///
+/// Returns an error if the recipe is invalid, runtime configuration cannot be
+/// built, or the source cannot be fetched and hashed.
 pub fn run_checksum(recipe_path: &PathBuf) -> Result<()> {
     let package = Recipe { path: recipe_path }.parse()?;
     let runtime_config =

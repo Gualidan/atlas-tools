@@ -14,6 +14,11 @@ use crate::{
 };
 use std::path::PathBuf;
 
+/// Runs the full fetch, dependency resolution, build, and packaging pipeline.
+///
+/// # Errors
+///
+/// Returns an error if the recipe is invalid or any pipeline phase fails.
 pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Result<()> {
     let package = Recipe { path: recipe }.parse()?;
     let binding = RuntimeConfig::build(recipe)?;
@@ -89,6 +94,11 @@ pub fn run_build(recipe: &PathBuf, runtime_config: Option<&RuntimeConfig>) -> Re
     Ok(())
 }
 
+/// Builds and packages a recipe using the supplied dependency artifacts.
+///
+/// # Errors
+///
+/// Returns an error if the recipe is invalid or any pipeline phase fails.
 pub fn run_planned_build(
     recipe: &PathBuf,
     runtime_config: &RuntimeConfig,

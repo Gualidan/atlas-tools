@@ -7,7 +7,12 @@ pub struct Recipe<'a> {
     pub path: &'a PathBuf,
 }
 
-impl<'a> Recipe<'a> {
+impl Recipe<'_> {
+    /// Reads, deserializes, and validates the package recipe.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipe cannot be read, parsed, or validated.
     pub fn parse(self) -> Result<Package> {
         let contents = fs::read_to_string(self.path).context("Failed to read recipe file")?;
         let package: Package = from_str(&contents).context("Failed to parse recipe file")?;

@@ -12,6 +12,11 @@ use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
 use crate::types::sandbox::Sandbox;
 
+/// Builds the requested package and any dependencies not already available as artifacts.
+///
+/// # Errors
+///
+/// Returns an error if a dependency or the requested package cannot be built.
 pub fn build(
     runtime_config: &RuntimeConfig,
     package: &Package,
@@ -41,6 +46,11 @@ pub fn build(
 /// the sandbox's `/usr`. The source directory can be modified by the phases.
 /// Propagates temporary-directory, artifact extraction, sandbox startup, and
 /// phase execution errors, including nonzero phase exit statuses.
+///
+/// # Errors
+///
+/// Returns an error if temporary directories cannot be created, artifacts cannot
+/// be unpacked, or a sandboxed phase fails.
 pub fn build_package(package: &Package, srcdir: &Path, artifacts: &[PathBuf]) -> Result<TempDir> {
     let builddir = Builder::new()
         .prefix("sisyphus_builddir")
@@ -90,6 +100,12 @@ pub fn build_package(package: &Package, srcdir: &Path, artifacts: &[PathBuf]) ->
     Ok(pkgdir)
 }
 
+/// Unpacks each package artifact into the temporary build root.
+///
+/// # Errors
+///
+/// Returns an error if the root directory cannot be created or an artifact
+/// cannot be unpacked.
 pub fn extract_artifacts(artifacts: &[PathBuf], temp_root: &TempDir) -> Result<()> {
     fs::create_dir_all(temp_root.path().join("usr"))?;
     for artifact in artifacts {

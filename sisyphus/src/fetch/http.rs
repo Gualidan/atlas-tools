@@ -5,7 +5,7 @@ use url::Url;
 use crate::types::fetcher::Fetcher;
 use std::{
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub struct HttpFetcher {
@@ -33,7 +33,10 @@ impl Fetcher for HttpFetcher {
             }
         }
 
-        if url.path().ends_with(".git") {
+        if Path::new(url.path())
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("git"))
+        {
             return Err(anyhow!(
                 "Git sources are not supported in v1 — build from a release tarball; devel packages are planned for v2"
             ));
@@ -47,8 +50,8 @@ impl Fetcher for HttpFetcher {
         let fname = response
             .url()
             .path_segments()
-            .and_then(|segments| segments.last())
-            .and_then(|name| if name.is_empty() { None } else { Some(name) })
+            .and_then(|mut segments| segments.next_back())
+            .filter(|name| !name.is_empty())
             .unwrap_or("tmp.bin");
         let fname = self.destination.join(fname);
 

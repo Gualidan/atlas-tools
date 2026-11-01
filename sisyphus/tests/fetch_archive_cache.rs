@@ -137,7 +137,7 @@ fn a_miss_downloads_and_a_second_build_hits_the_cache() -> Result<()> {
     Ok(())
 }
 
-/// Arc 2: checksum_gen end-to-end — it fetches without touching the cache db
+/// Arc 2: `checksum_gen` end-to-end — it fetches without touching the cache db
 /// and without verification, leaving no row behind.
 #[test]
 fn checksum_gen_end_to_end() -> Result<()> {
@@ -161,7 +161,7 @@ fn checksum_gen_end_to_end() -> Result<()> {
     Ok(())
 }
 
-/// Arc 3: checksum_gen run twice — the regression pin. A second run must not
+/// Arc 3: `checksum_gen` run twice — the regression pin. A second run must not
 /// crash and must not touch the cache db: Checksum mode only downloads and
 /// hashes, so the table stays empty.
 #[test]
