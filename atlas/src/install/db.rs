@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use common::{
     functions::sky_verify::read_sky,
-    types::{manifest::FileType, metadata::Metadata, package::PackageIdentity},
+    types::{metadata::Metadata, package::PackageIdentity},
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -182,10 +182,7 @@ pub fn insert_installed_package(
     let manifest_lines =
         parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
 
-    for line in manifest_lines
-        .iter()
-        .filter(|l| !matches!(l.file_type, FileType::Dir))
-    {
+    for line in manifest_lines {
         transaction.execute(
             "INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
             params![line.path.to_str().context("Failed to get the path as a string")?, package.name, package.architecture.to_string()],

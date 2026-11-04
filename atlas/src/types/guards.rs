@@ -43,8 +43,10 @@ impl Drop for SwapBackGuard<'_> {
         {
             for file in owned_files {
                 let path = Path::new(install_dir).join(file);
-                if path.exists() {
+                if path.exists() && !path.is_dir() {
                     fs::remove_file(&path).expect("Failed to remove file");
+                } else if path.is_dir() && path.read_dir().unwrap().next().is_none() {
+                    fs::remove_dir(&path).expect("Failed to remove directory");
                 }
             }
         }
