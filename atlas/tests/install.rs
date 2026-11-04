@@ -734,10 +734,9 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
         !root.join("A-1.0.0-1").exists(),
         "A's install dir should be gone"
     );
-    let b_dir = root.join("B-1.0.0-1");
-    assert!(b_dir.exists(), "B's install dir should still exist");
+
     assert_eq!(
-        std::fs::read_to_string(b_dir.join("usr").join("b.txt"))?,
+        std::fs::read_to_string(root.join("usr").join("b.txt"))?,
         "b\n",
         "B's files must still be on disk"
     );

@@ -381,17 +381,20 @@ impl<'a> PackageState<'a> {
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {
-                match fs::remove_dir_all(ctx.install_dir.clone()) {
-                    Ok(()) => Ok(()),
-                    Err(e) => {
-                        // Treat the fact that the dir is not there as something that means its already be done
-                        //  and tolerate it to avoid a scenario where updating a package bricks uninstall
-                        if e.kind() == NotFound {
-                            return Ok(());
-                        }
-                        Err(anyhow!(e))
-                    }
+                let mut owned_files_query = ctx
+                    .install_conn
+                    .prepare("SELECT path FROM owned_files WHERE package_name = ? ORDER BY path")
+                    .context("Failed to prepare owned files query")?;
+                let owned_files: Vec<String> = owned_files_query
+                    .query_map([&ctx.package_id.name], |row| row.get(0))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .context("Failed to query owned files")?;
+                for file in owned_files {
+                    let path = ctx.install_dir.join(&file);
+                    fs::remove_file(&path).context("Failed to remove file")?;
                 }
+
+                Ok(())
             }
 
             _ => Err(anyhow!(
