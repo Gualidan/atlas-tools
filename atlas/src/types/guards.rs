@@ -11,11 +11,6 @@ use std::{
 pub struct SwapBackGuard<'a> {
     install_dir: Option<&'a PathBuf>,
     owned_files: Option<Vec<String>>,
-    /// Whether `install_dir` existed before the exchange took place. A
-    /// directory that never existed is a placeholder; one that did holds the
-    /// previous install's content after the swap-back and must never be
-    /// deleted.
-    install_dir_existed: bool,
 }
 
 impl<'a> SwapBackGuard<'a> {
@@ -23,14 +18,9 @@ impl<'a> SwapBackGuard<'a> {
     /// must hold the previous destination contents; `install_dir_existed`
     /// describes the destination before the exchange.
     #[must_use]
-    pub fn new(
-        install_dir: &'a PathBuf,
-        install_dir_existed: bool,
-        owned_files: Vec<String>,
-    ) -> Self {
+    pub fn new(install_dir: &'a PathBuf, owned_files: Vec<String>) -> Self {
         SwapBackGuard {
             install_dir: Some(install_dir),
-            install_dir_existed,
             owned_files: Some(owned_files),
         }
     }
@@ -55,9 +45,6 @@ impl Drop for SwapBackGuard<'_> {
                 let path = Path::new(install_dir).join(file);
                 if path.exists() {
                     fs::remove_file(&path).expect("Failed to remove file");
-                }
-                if !self.install_dir_existed {
-                    fs::remove_dir_all(install_dir).expect("Failed to remove install dir");
                 }
             }
         }
@@ -94,7 +81,6 @@ mod tests {
         fs::write(&unowned_file, b"unowned").expect("failed to write unowned file");
         drop(SwapBackGuard::new(
             &install_dir,
-            true,
             vec!["owned-file".to_owned(), "owned-symlink".to_owned()],
         ));
 
@@ -112,7 +98,7 @@ mod tests {
         let (_parent, install_dir) = setup();
         let owned_file = install_dir.join("owned-file");
         fs::write(&owned_file, b"owned").expect("failed to write owned file");
-        let mut guard = SwapBackGuard::new(&install_dir, true, vec!["owned-file".to_owned()]);
+        let mut guard = SwapBackGuard::new(&install_dir, vec!["owned-file".to_owned()]);
         guard.disarm();
         drop(guard);
 
@@ -128,7 +114,7 @@ mod tests {
         let file = install_dir.join("file");
         fs::write(&file, b"keep").expect("failed to write file");
 
-        drop(SwapBackGuard::new(&install_dir, false, Vec::new()));
+        drop(SwapBackGuard::new(&install_dir, Vec::new()));
 
         assert!(
             file.exists(),

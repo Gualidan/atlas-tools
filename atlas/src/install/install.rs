@@ -118,8 +118,6 @@ pub fn install(
             InstallReason::Dependency
         };
 
-        let install_dir_existed = install_dir.exists();
-
         let package_id = PackageIdentity {
             name: package.name,
             version: package.version,
@@ -147,7 +145,6 @@ pub fn install(
 
         install_one(
             runtime_config,
-            install_dir_existed,
             install_reason,
             &package_id,
             &PathBuf::from(&package.sky_path),
@@ -167,8 +164,7 @@ pub fn install(
 /// `conn` supplies repository identities; `install_conn` supplies file ownership
 /// records for conflict checks.
 ///
-/// `tempdir` must share a filesystem with `install_dir`. `install_dir_existed`
-/// describes the destination before the exchange. Database recording failures
+/// `tempdir` must share a filesystem with `install_dir`. Database recording failures
 /// trigger a best-effort swap back, removing a newly created destination.
 /// Verification, staging, filesystem, and database errors propagate.
 ///
@@ -183,7 +179,6 @@ pub fn install(
 #[allow(clippy::too_many_arguments)]
 pub fn install_one(
     runtime_config: &RuntimeConfig,
-    install_dir_existed: bool,
     install_reason: InstallReason,
     package_id: &PackageIdentity,
     sky_path: &PathBuf,
@@ -213,7 +208,7 @@ pub fn install_one(
         .collect::<Result<Vec<_>, _>>()
         .context("Failed to query owned files")?;
 
-    let mut guard = SwapBackGuard::new(install_dir, install_dir_existed, owned_files);
+    let mut guard = SwapBackGuard::new(install_dir, owned_files);
 
     insert_installed_package(
         runtime_config,

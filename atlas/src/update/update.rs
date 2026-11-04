@@ -154,7 +154,7 @@ pub fn update_one(
         .context("Failed to query owned files")?;
 
     drop(owned_files_query);
-    let mut guard = SwapBackGuard::new(install_dir, true, owned_files);
+    let mut guard = SwapBackGuard::new(install_dir, owned_files);
 
     update_installed_package(
         install_conn,
