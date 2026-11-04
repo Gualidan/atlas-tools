@@ -368,16 +368,17 @@ impl<'a> PackageState<'a> {
         }
     }
 
-    /// Recursively removes `ctx.install_dir` from the `Installed` state.
-    /// A missing directory counts as success. Dependency checks and database
-    /// record removal are left to the caller.
+    /// Removes the package's owned paths from `ctx.install_dir` in the
+    /// `Installed` state. A missing path counts as success; an owned directory
+    /// is removed only while it is empty. Dependency checks and database record
+    /// removal are left to the caller.
     /// Returns an error for another starting state and propagates filesystem
-    /// errors other than `NotFound`; failed removal may leave some files deleted.
+    /// errors; failed removal may leave some paths deleted.
     ///
     /// # Errors
     ///
-    /// Returns an error if filesystem removal fails for a reason other than a
-    /// missing directory, or if the state is not `Installed`.
+    /// Returns an error if filesystem removal or directory listing fails, or if
+    /// the state is not `Installed`.
     pub fn remove(self, ctx: &mut RemoveContext) -> Result<()> {
         match self {
             PackageState::Installed => {
@@ -391,7 +392,20 @@ impl<'a> PackageState<'a> {
                     .context("Failed to query owned files")?;
                 for file in owned_files {
                     let path = ctx.install_dir.join(&file);
-                    fs::remove_file(&path).context("Failed to remove file")?;
+                    if path.exists() && !path.is_dir() {
+                        fs::remove_file(&path)
+                            .context(format!("Failed to remove file at {}", path.display()))?;
+                    } else if path.is_dir()
+                        && fs::read_dir(&path)
+                            .context(format!("Failed to read directory at {}", path.display()))?
+                            .next()
+                            .is_none()
+                    {
+                        fs::remove_dir(&path).context(format!(
+                            "Failed to remove directory at {}",
+                            path.display()
+                        ))?;
+                    }
                 }
 
                 Ok(())
