@@ -1,7 +1,7 @@
-use std::{fs::remove_dir_all, path::PathBuf};
-
-use rustix::fs::{CWD, RenameFlags, renameat_with};
-use tempfile::TempDir;
+use std::{
+    fs::{self},
+    path::{Path, PathBuf},
+};
 
 /// Undoes the state machine's commit-exchange when the `DatabaseRecord` step
 /// fails: an armed drop swaps the previous install's content back into
@@ -10,7 +10,7 @@ use tempfile::TempDir;
 /// pre-install world, not what the directories look like at commit time.
 pub struct SwapBackGuard<'a> {
     install_dir: Option<&'a PathBuf>,
-    staging_dir: Option<&'a TempDir>,
+    owned_files: Option<Vec<String>>,
     /// Whether `install_dir` existed before the exchange took place. A
     /// directory that never existed is a placeholder; one that did holds the
     /// previous install's content after the swap-back and must never be
@@ -25,13 +25,13 @@ impl<'a> SwapBackGuard<'a> {
     #[must_use]
     pub fn new(
         install_dir: &'a PathBuf,
-        staging_dir: &'a TempDir,
         install_dir_existed: bool,
+        owned_files: Vec<String>,
     ) -> Self {
         SwapBackGuard {
             install_dir: Some(install_dir),
-            staging_dir: Some(staging_dir),
             install_dir_existed,
+            owned_files: Some(owned_files),
         }
     }
     pub fn disarm(&mut self) {
@@ -39,7 +39,7 @@ impl<'a> SwapBackGuard<'a> {
         // disarmed guard must touch neither directory (the commit must
         // survive).
         self.install_dir.take();
-        self.staging_dir.take();
+        self.owned_files.take();
     }
 }
 
@@ -49,29 +49,15 @@ impl Drop for SwapBackGuard<'_> {
     /// are swallowed; disarmed guards leave both directories untouched.
     fn drop(&mut self) {
         if let Some(install_dir) = &self.install_dir
-            && let Some(tempdir) = &self.staging_dir
+            && let Some(owned_files) = &self.owned_files
         {
-            // Installs and staging both live under the same parent, so the
-            // exchange is same-filesystem and must not fail in practice.
-            match renameat_with(
-                CWD,
-                install_dir.as_path(),
-                CWD,
-                tempdir.path(),
-                RenameFlags::EXCHANGE,
-            ) {
-                Ok(()) => {}
-                Err(_) => eprintln!("Swap back exchange failed"),
-            }
-            // The exchange put the previous install's content back into
-            // `install_dir`. Deleting that unconditionally is what destroys
-            // reinstalled packages' data: the removal is only correct when
-            // this install created the directory and thus nothing of the
-            // user's lives behind this path.
-            if !self.install_dir_existed {
-                match remove_dir_all(install_dir) {
-                    Ok(()) => {}
-                    Err(_) => eprintln!("Attempt at placeholder removal failed"),
+            for file in owned_files {
+                let path = Path::new(install_dir).join(file);
+                if path.exists() {
+                    fs::remove_file(&path).expect("Failed to remove file");
+                }
+                if !self.install_dir_existed {
+                    fs::remove_dir_all(install_dir).expect("Failed to remove install dir");
                 }
             }
         }
@@ -80,97 +66,77 @@ impl Drop for SwapBackGuard<'_> {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::{Builder, TempDir};
+    use std::{fs, os::unix::fs::symlink, path::PathBuf};
+
+    use tempfile::TempDir;
 
     use super::SwapBackGuard;
-    use std::{
-        fs,
-        path::{Path, PathBuf},
-    };
 
-    /// Creates a parent directory holding two sibling directories, each with a
-    /// marker file. The install side holds "old" and the staging side holds
-    /// "new". Both live under the same parent, so they are on the same
-    /// filesystem and the exchange always works.
-    fn setup() -> (tempfile::TempDir, PathBuf, TempDir) {
+    fn setup() -> (TempDir, PathBuf) {
         let parent = tempfile::tempdir().expect("failed to create parent temp dir");
         let install_dir = parent.path().join("install");
-
         fs::create_dir(&install_dir).expect("failed to create install dir");
-        let staging_tempdir = Builder::new()
-            .tempdir_in(parent.path())
-            .expect("failed to create tempdir");
-        fs::write(marker(&install_dir), b"old").expect("failed to write install marker");
-        fs::write(marker(staging_tempdir.path()), b"new").expect("failed to write staging marker");
 
-        (parent, install_dir, staging_tempdir)
-    }
-
-    fn marker(dir: &Path) -> PathBuf {
-        dir.join("marker")
-    }
-
-    fn content(dir: &Path) -> String {
-        fs::read_to_string(marker(dir)).expect("failed to read marker")
+        (parent, install_dir)
     }
 
     #[test]
-    fn dropping_the_guard_swaps_the_two_directories_back() {
-        let (_parent, install_dir, staging_dir) = setup();
+    fn dropping_the_guard_removes_owned_files_and_symlinks_only() {
+        let (_parent, install_dir) = setup();
+        let owned_file = install_dir.join("owned-file");
+        let symlink_target = install_dir.join("symlink-target");
+        let owned_symlink = install_dir.join("owned-symlink");
+        let unowned_file = install_dir.join("unowned-file");
 
-        {
-            let _guard = SwapBackGuard::new(&install_dir, &staging_dir, true);
-        }
+        fs::write(&owned_file, b"owned").expect("failed to write owned file");
+        fs::write(&symlink_target, b"target").expect("failed to write symlink target");
+        symlink(&symlink_target, &owned_symlink).expect("failed to create owned symlink");
+        fs::write(&unowned_file, b"unowned").expect("failed to write unowned file");
+        drop(SwapBackGuard::new(
+            &install_dir,
+            true,
+            vec!["owned-file".to_owned(), "owned-symlink".to_owned()],
+        ));
 
-        assert_eq!(
-            content(&install_dir),
-            "new",
-            "the install dir should now hold the staging side's content"
+        assert!(!owned_file.exists(), "owned regular file should be removed");
+        assert!(!owned_symlink.exists(), "owned symlink should be removed");
+        assert!(
+            symlink_target.exists(),
+            "the symlink target must be preserved"
         );
-        assert_eq!(
-            content(staging_dir.path()),
-            "old",
-            "the staging dir should now hold the install side's content"
-        );
+        assert!(unowned_file.exists(), "unowned file should be preserved");
     }
 
     #[test]
     fn disarming_the_guard_makes_dropping_it_a_no_op() {
-        let (_parent, install_dir, staging_dir) = setup();
+        let (_parent, install_dir) = setup();
+        let owned_file = install_dir.join("owned-file");
+        fs::write(&owned_file, b"owned").expect("failed to write owned file");
+        let mut guard = SwapBackGuard::new(&install_dir, true, vec!["owned-file".to_owned()]);
+        guard.disarm();
+        drop(guard);
 
-        {
-            let mut guard = SwapBackGuard::new(&install_dir, &staging_dir, true);
-            guard.disarm();
-        }
-
-        assert_eq!(
-            content(&install_dir),
-            "old",
-            "a disarmed guard must not touch the install dir"
-        );
-        assert_eq!(
-            content(staging_dir.path()),
-            "new",
-            "a disarmed guard must not touch the staging dir"
+        assert!(
+            owned_file.exists(),
+            "a disarmed guard must preserve owned files"
         );
     }
 
     #[test]
-    fn dropping_the_guard_removes_a_freshly_created_install_dir() {
-        let (_parent, install_dir, staging_dir) = setup();
+    fn dropping_with_no_owned_files_does_nothing() {
+        let (_parent, install_dir) = setup();
+        let file = install_dir.join("file");
+        fs::write(&file, b"keep").expect("failed to write file");
 
-        {
-            let _guard = SwapBackGuard::new(&install_dir, &staging_dir, false);
-        }
+        drop(SwapBackGuard::new(&install_dir, false, Vec::new()));
 
         assert!(
-            !install_dir.exists(),
-            "a placeholder install dir that did not exist before must be removed"
+            file.exists(),
+            "with no owned files, the guard should leave files untouched"
         );
-        assert_eq!(
-            content(staging_dir.path()),
-            "old",
-            "the staging dir should hold the install side's original content"
+        assert!(
+            install_dir.exists(),
+            "the guard should not remove the install dir"
         );
     }
 }

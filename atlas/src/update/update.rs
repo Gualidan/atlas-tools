@@ -6,7 +6,6 @@ use common::types::{
     package::{Architectures, PackageIdentity},
 };
 use rusqlite::Connection;
-use rustix::path::Arg;
 
 use tempfile::{Builder, TempDir};
 
@@ -144,8 +143,18 @@ pub fn update_one(
 
     let state = state.verify()?;
     let state = state.stage()?;
-    let (_, metadata, staging_dir) = state.commit()?;
-    let mut guard = SwapBackGuard::new(install_dir, &staging_dir, true);
+    let (_, metadata, _) = state.commit()?;
+
+    let mut owned_files_query = install_conn
+        .prepare("SELECT path FROM owned_files WHERE package_name = ? ORDER BY path")
+        .context("Failed to prepare owned files query")?;
+    let owned_files: Vec<String> = owned_files_query
+        .query_map([&package_id.name], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Failed to query owned files")?;
+
+    drop(owned_files_query);
+    let mut guard = SwapBackGuard::new(install_dir, true, owned_files);
 
     update_installed_package(
         install_conn,
