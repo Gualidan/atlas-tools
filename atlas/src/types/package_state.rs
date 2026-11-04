@@ -401,10 +401,8 @@ impl<'a> PackageState<'a> {
                             .next()
                             .is_none()
                     {
-                        fs::remove_dir(&path).context(format!(
-                            "Failed to remove directory at {}",
-                            path.display()
-                        ))?;
+                        fs::remove_dir(&path)
+                            .context(format!("Failed to remove directory at {}", path.display()))?;
                     }
                 }
 
