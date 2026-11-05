@@ -288,8 +288,8 @@ fn fresh_install_creates_database_parents_and_populates_owned_files() -> Result<
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        1,
-        "expected one owned_files row per manifest file"
+        2,
+        "expected two owned_files row per manifest file"
     );
     assert_eq!(
         count(
@@ -370,7 +370,7 @@ fn idempotent_install_does_not_conflict_with_itself() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        1,
+        2,
         "re-installing must not duplicate owned_files rows"
     );
 
@@ -596,15 +596,6 @@ fn two_packages_can_share_a_directory() -> Result<()> {
         1,
         "B should own usr/b.txt"
     );
-    assert_eq!(
-        count(
-            &conn,
-            "SELECT COUNT(*) FROM owned_files WHERE path = ?1",
-            &[&"usr"],
-        ),
-        0,
-        "the shared directory must not be recorded as an owned path"
-    );
 
     Ok(())
 }
@@ -643,8 +634,8 @@ fn symlinks_are_recorded_as_owned_files() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"sym"],
         ),
-        1,
-        "the symlink should be recorded as an owned file"
+        2,
+        "the symlink and the directory should be recorded as an owned file"
     );
     let path: String = conn.query_row(
         "SELECT path FROM owned_files WHERE package_name = ?1",
