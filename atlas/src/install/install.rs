@@ -118,12 +118,6 @@ pub fn install(
             InstallReason::Dependency
         };
 
-        let install_dir = install_dir.join(format!(
-            "{}-{}-{}",
-            package.name, package.version, package.release
-        ));
-        let install_dir_existed = install_dir.exists();
-
         let package_id = PackageIdentity {
             name: package.name,
             version: package.version,
@@ -131,22 +125,14 @@ pub fn install(
             architecture: package.architecture,
         };
 
-        let tempdir = Builder::new()
-            .prefix("sisyphus_install_tmp_dir_")
-            .tempdir_in(
-                install_dir
-                    .parent()
-                    .context("Failed to get install dir's parent")?,
-            )
-            .context("Failed to create temporary directory")?;
+        let tempdir = staging_directory(install_dir)?;
 
         install_one(
             runtime_config,
-            install_dir_existed,
             install_reason,
             &package_id,
             &PathBuf::from(&package.sky_path),
-            &install_dir,
+            install_dir,
             tempdir,
             &config,
             &repo_conn,
@@ -162,8 +148,7 @@ pub fn install(
 /// `conn` supplies repository identities; `install_conn` supplies file ownership
 /// records for conflict checks.
 ///
-/// `tempdir` must share a filesystem with `install_dir`. `install_dir_existed`
-/// describes the destination before the exchange. Database recording failures
+/// `tempdir` must share a filesystem with `install_dir`. Database recording failures
 /// trigger a best-effort swap back, removing a newly created destination.
 /// Verification, staging, filesystem, and database errors propagate.
 ///
@@ -178,7 +163,6 @@ pub fn install(
 #[allow(clippy::too_many_arguments)]
 pub fn install_one(
     runtime_config: &RuntimeConfig,
-    install_dir_existed: bool,
     install_reason: InstallReason,
     package_id: &PackageIdentity,
     sky_path: &PathBuf,
@@ -192,16 +176,23 @@ pub fn install_one(
         package_id: package_id.clone(),
         sky_path,
         install_dir,
-        tempdir,
+        tempdir: &tempdir,
         config,
         repo_conn: conn,
         install_conn,
     };
     let state = state.verify()?;
     let state = state.stage()?;
-    let (_, metadata, staging_dir) = state.commit()?;
+    let (_, metadata, _, entries) = state.commit()?;
 
-    let mut guard = SwapBackGuard::new(install_dir, &staging_dir, install_dir_existed);
+    let created_dirs = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            crate::types::guards::GuardedEntry::CreatedDir(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let mut guard = SwapBackGuard::new(install_dir, tempdir, entries);
 
     insert_installed_package(
         runtime_config,
@@ -210,8 +201,23 @@ pub fn install_one(
         install_dir.to_string_lossy().as_ref(),
         sky_path.to_str().unwrap(),
         install_reason,
+        &created_dirs,
     )?;
 
     guard.disarm();
     Ok(())
+}
+
+pub(crate) fn staging_directory(install_dir: &std::path::Path) -> Result<TempDir> {
+    let location = install_dir.join("var/lib/atlas/tmp");
+    crate::types::package_state::ensure_no_symlink_components(
+        install_dir,
+        std::path::Path::new("var/lib/atlas/tmp"),
+        false,
+    )?;
+    create_dir_all(&location).context("Failed to create staging directory")?;
+    Builder::new()
+        .prefix("sisyphus_install_tmp_dir_")
+        .tempdir_in(location)
+        .context("Failed to create temporary directory")
 }

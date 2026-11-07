@@ -288,8 +288,8 @@ fn fresh_install_creates_database_parents_and_populates_owned_files() -> Result<
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        1,
-        "expected one owned_files row per manifest file"
+        2,
+        "expected two owned_files row per manifest file"
     );
     assert_eq!(
         count(
@@ -327,7 +327,10 @@ fn install_with_file_conflict_fails() -> Result<()> {
     let result = install(&"B".to_string(), &config, &root);
     let err = result.expect_err("installing B should fail on the file conflict");
     let chain = format!("{err:#}");
-    assert!(chain.contains("already owns"), "error chain was: {chain}");
+    assert!(
+        chain.contains("conflicting file of package"),
+        "error chain was: {chain}"
+    );
     assert!(chain.contains("dir/file.txt"), "error chain was: {chain}");
     assert!(chain.contains('A'), "error chain was: {chain}");
 
@@ -367,7 +370,7 @@ fn idempotent_install_does_not_conflict_with_itself() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        1,
+        2,
         "re-installing must not duplicate owned_files rows"
     );
 
@@ -461,7 +464,7 @@ fn reinstall_rollback_preserves_the_previous_version() -> Result<()> {
     let root = tmp.path().join("root");
     install(&"foo".to_string(), &config, &root).expect("first install should succeed");
 
-    let install_dir = root.join("foo-1.0.0-1");
+    let install_dir = root.clone();
     let installed_file = install_dir.join("dir").join("file.txt");
     assert_eq!(
         std::fs::read_to_string(&installed_file)?,
@@ -523,7 +526,7 @@ fn reinstall_rollback_preserves_the_previous_version() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        1,
+        2,
         "the failed reinstall must not have changed the owned files"
     );
 
@@ -575,6 +578,15 @@ fn two_packages_can_share_a_directory() -> Result<()> {
         .expect("installing B should succeed even though it shares a directory with A");
 
     let conn = Connection::open(&config.install_db)?;
+    let directory_owner: String = conn.query_row(
+        "SELECT package_name FROM owned_files WHERE path = 'usr'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        directory_owner, "A",
+        "co-install must preserve the creator's directory ownership"
+    );
     assert_eq!(
         count(
             &conn,
@@ -592,15 +604,6 @@ fn two_packages_can_share_a_directory() -> Result<()> {
         ),
         1,
         "B should own usr/b.txt"
-    );
-    assert_eq!(
-        count(
-            &conn,
-            "SELECT COUNT(*) FROM owned_files WHERE path = ?1",
-            &[&"usr"],
-        ),
-        0,
-        "the shared directory must not be recorded as an owned path"
     );
 
     Ok(())
@@ -640,11 +643,11 @@ fn symlinks_are_recorded_as_owned_files() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"sym"],
         ),
-        1,
-        "the symlink should be recorded as an owned file"
+        2,
+        "the symlink and the directory should be recorded as an owned file"
     );
     let path: String = conn.query_row(
-        "SELECT path FROM owned_files WHERE package_name = ?1",
+        "SELECT path FROM owned_files WHERE package_name = ?1 AND path = 'dir/link'",
         [&"sym"],
         |row| row.get(0),
     )?;
@@ -734,10 +737,9 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
         !root.join("A-1.0.0-1").exists(),
         "A's install dir should be gone"
     );
-    let b_dir = root.join("B-1.0.0-1");
-    assert!(b_dir.exists(), "B's install dir should still exist");
+
     assert_eq!(
-        std::fs::read_to_string(b_dir.join("usr").join("b.txt"))?,
+        std::fs::read_to_string(root.join("usr").join("b.txt"))?,
         "b\n",
         "B's files must still be on disk"
     );
@@ -826,10 +828,7 @@ fn installing_a_package_installs_its_dependencies() -> Result<()> {
             "{name} must point at its own sky"
         );
 
-        let installed_file = root
-            .join(format!("{name}-1.0.0-1"))
-            .join(dir)
-            .join("file.txt");
+        let installed_file = root.join(dir).join("file.txt");
         assert_eq!(
             std::fs::read_to_string(&installed_file)?,
             format!("{name}\n"),
@@ -887,7 +886,7 @@ fn install_works_on_a_fresh_install_root() -> Result<()> {
     install(&"foo".to_string(), &config, &root).expect("installing into a fresh root must work");
 
     assert_eq!(
-        std::fs::read_to_string(root.join("foo-1.0.0-1").join("dir").join("file.txt"))?,
+        std::fs::read_to_string(root.join("dir").join("file.txt"))?,
         "foo\n",
         "the payload must land under the freshly created root"
     );
@@ -936,8 +935,8 @@ fn skipped_deps_stay_put_but_root_reinstalls() -> Result<()> {
     let root = tmp.path().join("root");
     install(&"foo".to_string(), &config, &root)?;
 
-    let bar_file = root.join("bar-1.0.0-1").join("bardir").join("file.txt");
-    let foo_file = root.join("foo-1.0.0-1").join("foodir").join("file.txt");
+    let bar_file = root.join("bardir").join("file.txt");
+    let foo_file = root.join("foodir").join("file.txt");
     assert_eq!(std::fs::read_to_string(&bar_file)?, "old-bar\n");
     assert_eq!(std::fs::read_to_string(&foo_file)?, "old-foo\n");
 
@@ -1181,9 +1180,8 @@ fn mid_chain_failure_keeps_earlier_deps() -> Result<()> {
     let chain = format!("{err:#}");
     assert!(chain.contains("setuid"), "error chain was: {chain}");
 
-    let bar_dir = root.join("bar-1.0.0-1");
     assert!(
-        bar_dir.join("bardir").join("file.txt").is_file(),
+        root.join("bardir").join("file.txt").is_file(),
         "the dependency installed before the failure must survive"
     );
     let conn = Connection::open(&config.install_db)?;
@@ -1197,10 +1195,10 @@ fn mid_chain_failure_keeps_earlier_deps() -> Result<()> {
         "bar must stay in the ledger"
     );
 
-    for name in ["evil", "foo"] {
+    for (name, path) in [("evil", "dir/evil.bin"), ("foo", "foodir/file.txt")] {
         assert!(
-            !root.join(format!("{name}-1.0.0-1")).exists(),
-            "{name} must not leave an install dir behind"
+            !root.join(path).exists(),
+            "{name} must not leave payload files behind"
         );
         assert_eq!(
             count(

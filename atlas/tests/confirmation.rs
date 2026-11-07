@@ -71,14 +71,15 @@ fn without_terminal(
 fn seed_installed(config: &RuntimeConfig, name: &str, reason: &str) -> Result<()> {
     let conn = Connection::open(&config.install_db)?;
     ensure_install_schema(&conn)?;
-    let dir = config.install_db.parent().unwrap().join(name);
+    let root = config.install_db.parent().unwrap();
+    let dir = root.join(name);
     fs::create_dir(&dir)?;
     fs::write(dir.join("sentinel"), b"original")?;
     conn.execute(
         "INSERT INTO installed_packages
          (name, version, release, architecture, sky_path, install_dir, install_reason)
          VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?)",
-        params![name, ARCH.to_string(), dir.to_str().unwrap(), reason],
+        params![name, ARCH.to_string(), root.to_str().unwrap(), reason],
     )?;
     conn.execute(
         "INSERT INTO owned_files VALUES (?, ?, ?)",
@@ -89,14 +90,18 @@ fn seed_installed(config: &RuntimeConfig, name: &str, reason: &str) -> Result<()
 
 fn assert_installed_unchanged(config: &RuntimeConfig, name: &str) -> Result<()> {
     let conn = Connection::open(&config.install_db)?;
-    let (version, dir): (String, String) = conn.query_row(
-        "SELECT version, install_dir FROM installed_packages WHERE name = ?",
+    let (version, dir, path): (String, String, String) = conn.query_row(
+        "SELECT p.version, p.install_dir, o.path
+         FROM installed_packages p
+         JOIN owned_files o
+           ON o.package_name = p.name AND o.architecture = p.architecture
+         WHERE p.name = ?",
         [name],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
     assert_eq!(version, "1.0.0");
     assert_eq!(
-        fs::read(std::path::Path::new(&dir).join("sentinel"))?,
+        fs::read(std::path::Path::new(&dir).join(path))?,
         b"original"
     );
     assert_eq!(
@@ -320,7 +325,7 @@ fn uninstall_can_skip_its_prompt_without_global_assume_yes() -> Result<()> {
 
             uninstall(&config, &"foo".into(), false)?;
 
-            assert!(!tmp.path().join("foo").exists());
+            assert!(!tmp.path().join("foo").join("sentinel").exists());
             let conn = Connection::open(&config.install_db)?;
             assert_eq!(
                 count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
@@ -404,7 +409,7 @@ fn clean_with_assume_yes_removes_orphans_and_keeps_explicit_packages() -> Result
             uninstall_orphans(&config)?;
 
             for name in ["alpha", "zeta"] {
-                assert!(!tmp.path().join(name).exists());
+                assert!(!tmp.path().join(name).join("sentinel").exists());
             }
             let conn = Connection::open(&config.install_db)?;
             assert_eq!(

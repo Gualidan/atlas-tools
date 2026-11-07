@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use common::{
     functions::sky_verify::read_sky,
-    types::{manifest::FileType, metadata::Metadata, package::PackageIdentity},
+    types::{metadata::Metadata, package::PackageIdentity},
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -126,7 +126,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Records a package, its non-directory manifest paths, and its dependency edges
+/// Records a package, its files and created directories, and its dependency edges
 /// in one install database transaction, creating the database and schema as needed.
 ///
 /// Dependencies must exist for the package's architecture in both the repository
@@ -137,6 +137,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
 ///
 /// Returns an error if the database schema, package archive, manifest, or
 /// repository dependency records cannot be read or updated.
+#[allow(clippy::too_many_arguments)]
 pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: &Metadata,
@@ -144,6 +145,7 @@ pub fn insert_installed_package(
     install_dir: &str,
     sky_path: &str,
     install_reason: InstallReason,
+    created_dirs: &[std::path::PathBuf],
 ) -> Result<()> {
     if !runtime_config
         .install_db
@@ -177,20 +179,7 @@ pub fn insert_installed_package(
 
     transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason) VALUES (?, ?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir, install_reason.to_string()]).context("Failed to insert root package into install database")?;
 
-    // Insert root package's paths into "owned files"
-    let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
-    let manifest_lines =
-        parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
-
-    for line in manifest_lines
-        .iter()
-        .filter(|l| !matches!(l.file_type, FileType::Dir))
-    {
-        transaction.execute(
-            "INSERT OR REPLACE INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
-            params![line.path.to_str().context("Failed to get the path as a string")?, package.name, package.architecture.to_string()],
-        ).context("Failed to insert owned files into install database")?;
-    }
+    write_owned_files(&transaction, sky_path, package, created_dirs)?;
 
     let repo_conn = Connection::open(&runtime_config.repo_db)
         .context("Failed to open connection to the repository database")?;
@@ -217,5 +206,55 @@ pub fn insert_installed_package(
         .commit()
         .context("Failed to commit changes to install database")?;
 
+    Ok(())
+}
+
+// Both writers retain directories already owned by this identity, and claim
+// previously unowned directories only when commit actually created them.
+pub(crate) fn write_owned_files(
+    conn: &Connection,
+    sky_path: &str,
+    package: &PackageIdentity,
+    created_dirs: &[std::path::PathBuf],
+) -> Result<()> {
+    let architecture = package.architecture.to_string();
+    let mut stmt =
+        conn.prepare("SELECT path FROM owned_files WHERE package_name = ? AND architecture = ?")?;
+    let previous = stmt
+        .query_map(params![package.name, architecture], |row| {
+            row.get::<_, String>(0)
+        })?
+        .collect::<rusqlite::Result<std::collections::HashSet<_>>>()?;
+    drop(stmt);
+    conn.execute(
+        "DELETE FROM owned_files WHERE package_name = ? AND architecture = ?",
+        params![package.name, architecture],
+    )?;
+    let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
+    let mut paths = Vec::new();
+    for line in parse_metadata_lines(&files).context("Failed to parse manifest's lines")? {
+        if line.file_type != common::types::manifest::FileType::Dir
+            || created_dirs.contains(&line.path)
+            || previous.contains(line.path.to_str().context("Invalid path")?)
+        {
+            paths.push(line.path);
+        }
+    }
+    for path in created_dirs {
+        if !paths.contains(path) {
+            paths.push(path.clone());
+        }
+    }
+    for path in paths {
+        conn.execute(
+            "INSERT INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
+            params![
+                path.to_str().context("Invalid path")?,
+                package.name,
+                architecture
+            ],
+        )
+        .context("Failed to insert owned files into install database")?;
+    }
     Ok(())
 }

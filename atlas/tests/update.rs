@@ -50,7 +50,7 @@ impl Installation {
         );
         let root = tmp.path().join("root");
         install(&"foo".to_string(), &config, &root)?;
-        let dir = root.join("foo-1.0.0-1");
+        let dir = root.clone();
         Ok(Self {
             tmp,
             config,
@@ -98,10 +98,19 @@ impl Installation {
         let entries: Vec<_> = fs::read_dir(&self.root)?.collect::<std::io::Result<_>>()?;
         assert_eq!(
             entries.len(),
-            1,
-            "only the original install directory should remain"
+            2,
+            "the payload and reserved state directory should remain"
         );
-        assert_eq!(entries[0].path(), self.dir);
+        let mut paths = entries
+            .iter()
+            .map(|entry| entry.file_name())
+            .collect::<Vec<_>>();
+        paths.sort();
+        assert_eq!(paths, ["dir", "var"]);
+        assert_eq!(
+            fs::read_dir(self.root.join("var/lib/atlas/tmp"))?.count(),
+            0
+        );
         Ok(())
     }
 
@@ -122,12 +131,11 @@ impl Installation {
                 self.dir.to_str().unwrap().into()
             )
         );
-        let owned: String = conn.query_row(
-            "SELECT path FROM owned_files WHERE package_name = 'foo'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(owned, "dir/old.txt");
+        let owned: Vec<String> = conn
+            .prepare("SELECT path FROM owned_files WHERE package_name = 'foo' ORDER BY path")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        assert_eq!(owned, ["dir", "dir/old.txt"]);
         assert_eq!(
             count(
                 &conn,
@@ -180,7 +188,7 @@ fn upgrade_keeps_the_install_location_and_preserves_incoming_dependencies() -> R
         1
     );
     let owned: String = conn.query_row(
-        "SELECT path FROM owned_files WHERE package_name = 'foo'",
+        "SELECT path FROM owned_files WHERE package_name = 'foo' AND path = 'dir/new.txt'",
         [],
         |row| row.get(0),
     )?;
@@ -340,7 +348,8 @@ fn conflicting_file_is_rejected_before_changing_the_installation() -> Result<()>
         .update()
         .expect_err("another package owns the new file");
     assert!(
-        format!("{err:#}").contains("Another package neighbor already owns this path dir/new.txt"),
+        format!("{err:#}")
+            .contains("conflicting file of package `neighbor` already exists at `dir/new.txt`"),
         "{err:#}"
     );
     assert_eq!(

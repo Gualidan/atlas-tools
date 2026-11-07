@@ -7,7 +7,8 @@ use common::types::{
     package::{PackageIdentity, Source},
 };
 use fixtures::{
-    ARCH, count, generate_keypair, runtime_config, seed_repo_db, tempdir, write_signed_sky,
+    ARCH, count, generate_keypair, runtime_config, seed_repo_db, tempdir,
+    write_signed_sky_with_file,
 };
 use rusqlite::{Connection, params};
 
@@ -58,7 +59,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
     let config = runtime_config(&tmp)?;
     let (keypair, _pub_key) = generate_keypair()?;
 
-    let root_sky = write_signed_sky(
+    let root_sky = write_signed_sky_with_file(
         &tmp,
         &keypair,
         "root.sky",
@@ -67,8 +68,10 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         1,
         b"root\n",
         vec![],
+        "root",
+        "file.txt",
     )?;
-    let alpha_archive = write_signed_sky(
+    let alpha_archive = write_signed_sky_with_file(
         &tmp,
         &keypair,
         "dep-a.sky",
@@ -77,8 +80,10 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         3,
         b"dep-a\n",
         vec![],
+        "dep-a",
+        "file.txt",
     )?;
-    let beta_archive = write_signed_sky(
+    let beta_archive = write_signed_sky_with_file(
         &tmp,
         &keypair,
         "dep-b.sky",
@@ -87,6 +92,8 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         1,
         b"dep-b\n",
         vec![],
+        "dep-b",
+        "file.txt",
     )?;
 
     seed_repo_db(
@@ -125,6 +132,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
             "/usr",
             &dep_sky_path(&conn, dep_name),
             InstallReason::Dependency,
+            &[],
         )
         .expect("installing the dependency should succeed");
     }
@@ -136,6 +144,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         "/usr",
         &sky_path,
         InstallReason::Explicit,
+        &[],
     )
     .expect("first install should succeed");
 
@@ -198,6 +207,7 @@ fn insert_installed_package_records_root_deps_and_edges() -> Result<()> {
         "/usr",
         &sky_path,
         InstallReason::Explicit,
+        &[],
     )
     .expect("second install should succeed");
 

@@ -264,8 +264,7 @@ fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()
     let root = tmp.path().join("root");
     install(&"A".to_string(), &config, &root).expect("installing A should succeed");
 
-    let a_dir = root.join("A-1.0.0-1");
-    let a_file = a_dir.join("dir").join("file.txt");
+    let a_file = root.join("dir").join("file.txt");
     assert_eq!(
         std::fs::read_to_string(&a_file)?,
         "a\n",
@@ -281,7 +280,6 @@ fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()
         !root.join("B-1.0.0-1").exists(),
         "the failed install must not leave B's placeholder directory behind"
     );
-    assert!(a_dir.exists(), "A's install directory must survive");
     assert_eq!(
         std::fs::read_to_string(&a_file)?,
         "a\n",

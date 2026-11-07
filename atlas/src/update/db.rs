@@ -1,19 +1,15 @@
 use anyhow::{Context, Result, anyhow};
-use common::{
-    functions::sky_verify::read_sky,
-    types::{manifest::FileType, metadata::Metadata, package::PackageIdentity},
-};
+use common::types::{metadata::Metadata, package::PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::{
-    install::db::ensure_install_schema, verify::parse_metadata_lines::parse_metadata_lines,
-};
+use crate::install::db::{ensure_install_schema, write_owned_files};
 
 /// Updates the installed row matching the package's name and architecture and
 /// replaces its owned files and outgoing dependency edges in one transaction.
 /// The installation timestamp, reason, and incoming dependency edges are retained.
 ///
-/// `sky_path` supplies the new non-directory manifest paths; `install_dir` is
+/// `sky_path` supplies the manifest paths; created and previously owned directories
+/// are retained in the ledger. `install_dir` is
 /// recorded without moving files. Enables foreign keys on `conn`. Dependencies
 /// must exist for this architecture in both databases. Archive, manifest, and
 /// database errors propagate and leave the transaction uncommitted. An absent
@@ -30,6 +26,7 @@ pub fn update_installed_package(
     package_id: &PackageIdentity,
     sky_path: &str,
     install_dir: &str,
+    created_dirs: &[std::path::PathBuf],
 ) -> Result<()> {
     conn.execute("PRAGMA foreign_keys = ON", [])
         .context("Failed to enable foreign key enforcement")?;
@@ -43,14 +40,6 @@ pub fn update_installed_package(
         .execute(
             "DELETE FROM package_dependencies
     WHERE package_name = ? AND architecture = ?",
-            params![package_id.name, package_id.architecture.to_string()],
-        )
-        .context("Failed to execute db query")?;
-
-    transaction
-        .execute(
-            "DELETE FROM owned_files
-               WHERE package_name = ? AND architecture = ?",
             params![package_id.name, package_id.architecture.to_string()],
         )
         .context("Failed to execute db query")?;
@@ -71,27 +60,7 @@ pub fn update_installed_package(
         )
         .context("Failed to execute database query")?;
 
-    let (_, _, files, _) = read_sky(sky_path).context("Failed to read sky file")?;
-    let manifest_lines =
-        parse_metadata_lines(&files).context("Failed to parse manifest's lines")?;
-
-    for line in manifest_lines
-        .iter()
-        .filter(|l| !matches!(l.file_type, FileType::Dir))
-    {
-        transaction
-            .execute(
-                "INSERT INTO owned_files (path, package_name, architecture) VALUES (?, ?, ?)",
-                params![
-                    line.path
-                        .to_str()
-                        .context("Failed to get the path as a string")?,
-                    package_id.name,
-                    package_id.architecture.to_string()
-                ],
-            )
-            .context("Failed to insert owned files into install database")?;
-    }
+    write_owned_files(&transaction, sky_path, package_id, created_dirs)?;
 
     for dep in &metadata.deps {
         let exists: Option<()> = repo_conn
