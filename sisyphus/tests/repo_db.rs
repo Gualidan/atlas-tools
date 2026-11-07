@@ -23,6 +23,7 @@ fn package(name: &str, version: &str, architecture: Architectures) -> Package {
         },
         makedeps: vec![],
         deps: vec![],
+        groups: vec![],
         prepare: None,
         build: None,
         check: None,
