@@ -578,6 +578,15 @@ fn two_packages_can_share_a_directory() -> Result<()> {
         .expect("installing B should succeed even though it shares a directory with A");
 
     let conn = Connection::open(&config.install_db)?;
+    let directory_owner: String = conn.query_row(
+        "SELECT package_name FROM owned_files WHERE path = 'usr'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        directory_owner, "A",
+        "co-install must preserve the creator's directory ownership"
+    );
     assert_eq!(
         count(
             &conn,
@@ -638,7 +647,7 @@ fn symlinks_are_recorded_as_owned_files() -> Result<()> {
         "the symlink and the directory should be recorded as an owned file"
     );
     let path: String = conn.query_row(
-        "SELECT path FROM owned_files WHERE package_name = ?1",
+        "SELECT path FROM owned_files WHERE package_name = ?1 AND path = 'dir/link'",
         [&"sym"],
         |row| row.get(0),
     )?;

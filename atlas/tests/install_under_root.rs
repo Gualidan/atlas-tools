@@ -289,7 +289,11 @@ fn invalid_packages_do_not_modify_target_or_install_records() -> Result<()> {
         ],
     );
 
-    let target_before = snapshot_tree(&root)?;
+    let mut target_before = snapshot_tree(&root)?;
+    // Staging reserves this tree even when package verification fails.
+    for path in ["var", "var/lib", "var/lib/atlas", "var/lib/atlas/tmp"] {
+        target_before.insert(PathBuf::from(path), TreeEntry::Directory);
+    }
 
     for package in [
         "invalid-signature",
@@ -560,7 +564,11 @@ fn target_root_escape_attempts_leave_outside_paths_unchanged() -> Result<()> {
     );
 
     symlink(&outside, root.join("usr"))?;
-    let target_before = snapshot_tree(&root)?;
+    let mut target_before = snapshot_tree(&root)?;
+    // Staging reserves this tree even when package verification fails.
+    for path in ["var", "var/lib", "var/lib/atlas", "var/lib/atlas/tmp"] {
+        target_before.insert(PathBuf::from(path), TreeEntry::Directory);
+    }
     for package in ["traversal", "absolute", "symlink-parent"] {
         let _err = install(&package.to_string(), &config, &root)
             .expect_err("target-root escapes must be rejected");

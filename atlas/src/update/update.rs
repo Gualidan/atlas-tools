@@ -11,7 +11,7 @@ use common::{
 use rusqlite::{Connection, params};
 use rustix::fs::{CWD, RenameFlags, renameat_with};
 
-use tempfile::{Builder, TempDir};
+use tempfile::TempDir;
 
 use crate::{
     cli::{
@@ -96,14 +96,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: &UpdateArgs) -> Result<()> {
 
         let install_dir = PathBuf::from(package.install_dir);
 
-        let tempdir = Builder::new()
-            .prefix("sisyphus_install_tmp_dir_")
-            .tempdir_in(
-                install_dir
-                    .parent()
-                    .context("Failed to get install dir's parent")?,
-            )
-            .context("Failed to create temporary directory")?;
+        let tempdir = crate::install::install::staging_directory(&install_dir)?;
 
         update_one(
             &package_id,
@@ -170,6 +163,13 @@ pub fn update_one(
     let state = state.stage()?;
     let (_, metadata, _, entries) = state.commit()?;
 
+    let created_dirs = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            crate::types::guards::GuardedEntry::CreatedDir(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let mut guard = SwapBackGuard::new(install_dir, tempdir, entries);
     let staging_root = guard
         .staging_dir_path()
@@ -211,6 +211,7 @@ pub fn update_one(
         &package_id.clone(),
         &sky_path.to_string_lossy(),
         &install_dir.to_string_lossy(),
+        &created_dirs,
     )?;
 
     guard.disarm();

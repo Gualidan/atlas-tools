@@ -98,10 +98,19 @@ impl Installation {
         let entries: Vec<_> = fs::read_dir(&self.root)?.collect::<std::io::Result<_>>()?;
         assert_eq!(
             entries.len(),
-            1,
-            "only the original install directory should remain"
+            2,
+            "the payload and reserved state directory should remain"
         );
-        assert_eq!(entries[0].path(), self.root.join("dir"));
+        let mut paths = entries
+            .iter()
+            .map(|entry| entry.file_name())
+            .collect::<Vec<_>>();
+        paths.sort();
+        assert_eq!(paths, ["dir", "var"]);
+        assert_eq!(
+            fs::read_dir(self.root.join("var/lib/atlas/tmp"))?.count(),
+            0
+        );
         Ok(())
     }
 
@@ -179,7 +188,7 @@ fn upgrade_keeps_the_install_location_and_preserves_incoming_dependencies() -> R
         1
     );
     let owned: String = conn.query_row(
-        "SELECT path FROM owned_files WHERE package_name = 'foo'",
+        "SELECT path FROM owned_files WHERE package_name = 'foo' AND path = 'dir/new.txt'",
         [],
         |row| row.get(0),
     )?;

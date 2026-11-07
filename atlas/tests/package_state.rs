@@ -408,3 +408,55 @@ fn installed_remove_propagates_errors_other_than_a_missing_directory() -> Result
     assert_eq!(fs::read(&fixture.install_dir)?, b"not a directory");
     Ok(())
 }
+
+#[test]
+fn removal_does_not_follow_replaced_parent_symlinks() -> Result<()> {
+    let fixture = StateFixture::new()?;
+    fixture.claim("foo", "x86_64", "nested/file")?;
+    let outside = fixture.tmp.path().join("outside");
+    fs::create_dir(&outside)?;
+    fs::write(outside.join("file"), b"keep")?;
+    fs::create_dir(&fixture.install_dir)?;
+    std::os::unix::fs::symlink(&outside, fixture.install_dir.join("nested"))?;
+    let identity = StateFixture::identity();
+    let mut ctx = RemoveContext {
+        package_id: &identity,
+        install_conn: &fixture.installed,
+        install_dir: fixture.install_dir.clone(),
+    };
+    assert!(PackageState::Installed.remove(&mut ctx).is_err());
+    assert_eq!(fs::read(outside.join("file"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn removal_is_scoped_to_the_package_architecture() -> Result<()> {
+    let fixture = StateFixture::new()?;
+    fixture.claim("foo", "x86_64", "native")?;
+    fixture.claim("foo", "arm", "foreign")?;
+    fs::create_dir(&fixture.install_dir)?;
+    fs::write(fixture.install_dir.join("native"), b"remove")?;
+    fs::write(fixture.install_dir.join("foreign"), b"keep")?;
+    let identity = StateFixture::identity();
+    let mut ctx = RemoveContext {
+        package_id: &identity,
+        install_conn: &fixture.installed,
+        install_dir: fixture.install_dir.clone(),
+    };
+    PackageState::Installed.remove(&mut ctx)?;
+    assert!(!fixture.install_dir.join("native").exists());
+    assert_eq!(fs::read(fixture.install_dir.join("foreign"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn commit_preflights_later_destination_conflicts() -> Result<()> {
+    let fixture = StateFixture::new()?;
+    let staging = fixture.staging()?;
+    let state = fixture.initial(&staging).verify()?.stage()?;
+    fs::create_dir_all(fixture.install_dir.join("dir/file.txt"))?;
+    assert!(state.commit().is_err());
+    assert!(fixture.install_dir.join("dir/file.txt").is_dir());
+    assert_eq!(fs::read(staging.path().join("dir/file.txt"))?, b"new\n");
+    Ok(())
+}

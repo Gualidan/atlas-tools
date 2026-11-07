@@ -23,7 +23,10 @@ use rustix::fs::{CWD, RenameFlags, renameat_with};
 use tempfile::TempDir;
 
 use crate::{
-    types::{contexts::RemoveContext, guards::GuardedEntry},
+    types::{
+        contexts::RemoveContext,
+        guards::{GuardedEntry, rollback_entries},
+    },
     verify::{
         parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
         validate_payload::validate_payload_paths,
@@ -127,10 +130,11 @@ pub(crate) fn ensure_no_symlink_components(
                 ));
             }
             Ok(metadata) if components.peek().is_some() && !metadata.is_dir() => {
-                return Err(anyhow!(
-                    "Parent of {} is not a directory",
-                    relative.display()
-                ));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotADirectory,
+                    format!("Parent of {} is not a directory", relative.display()),
+                )
+                .into());
             }
             Ok(_) => {}
             Err(error) if error.kind() == NotFound => {}
@@ -138,6 +142,21 @@ pub(crate) fn ensure_no_symlink_components(
         }
     }
 
+    Ok(())
+}
+
+fn create_owned_dirs(root: &Path, relative: &Path, entries: &mut Vec<GuardedEntry>) -> Result<()> {
+    let mut path = PathBuf::new();
+    for component in relative.components() {
+        path.push(component);
+        match fs::create_dir(root.join(&path)) {
+            Ok(()) => entries.push(GuardedEntry::CreatedDir(path.clone())),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::AlreadyExists
+                    && fs::symlink_metadata(root.join(&path))?.is_dir() => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
     Ok(())
 }
 
@@ -327,151 +346,185 @@ impl<'a> PackageState<'a> {
                     )?;
                 }
 
-                fs::create_dir_all(install_dir)
-                    .context("Failed to create the install directory")?;
-
-                for line in manifest_lines {
-                    let staged_path = tempdir.path().join(&line.path);
-
-                    let file_type = fs::symlink_metadata(&staged_path)
-                        .context("Failed to get file type")?
-                        .file_type();
-
-                    match () {
-                        () if file_type.is_dir() => {
-                            if has_parent_dir(&line.path) {
-                                return Err(anyhow!(
-                                    "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
-                                    staged_path.display()
-                                ));
-                            }
-
-                            let install_path = install_dir.join(&line.path);
-                            match fs::symlink_metadata(&install_path) {
-                                Ok(metadata) if metadata.is_dir() => {}
-                                Ok(_) => {
-                                    return Err(anyhow!(
-                                        "Destination {} exists but is not a directory",
-                                        install_path.display()
-                                    ));
-                                }
-                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                                    fs::create_dir_all(&install_path)
-                                        .context("Failed to create directory")?;
-                                    entries.push(GuardedEntry::CreatedDir(line.path));
-                                }
-                                Err(error) => {
-                                    return Err(error)
-                                        .context("Failed to inspect directory destination");
-                                }
-                            }
+                // Preflight the entire payload before the first destination mutation.
+                for line in &manifest_lines {
+                    let staged = fs::symlink_metadata(tempdir.path().join(&line.path))?;
+                    let destination = fs::symlink_metadata(install_dir.join(&line.path));
+                    match destination {
+                        Ok(ref dest) if dest.is_dir() != staged.is_dir() => {
+                            return Err(anyhow!(
+                                "Destination type conflicts at {}",
+                                line.path.display()
+                            ));
                         }
-                        () if file_type.is_file() => {
-                            if has_parent_dir(&line.path) {
-                                return Err(anyhow!(
-                                    "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
-                                    line.path.display()
-                                ));
-                            }
-
-                            let temp_path = tempdir.path().join(&line.path);
-                            let install_path = install_dir.join(&line.path);
-                            fs::create_dir_all(
-                                install_path
-                                    .parent()
-                                    .context("Failed to get parent directory")?,
-                            )
-                            .context("Failed to create directory")?;
-
-                            match fs::symlink_metadata(&install_path) {
-                                Ok(_) => {
-                                    renameat_with(
-                                        CWD,
-                                        temp_path,
-                                        CWD,
-                                        install_path,
-                                        RenameFlags::EXCHANGE,
-                                    )
-                                    .context("Failed to exchange files")?;
-
-                                    entries.push(GuardedEntry::SwappedFile(line.path));
-                                }
-                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                    renameat_with(
-                                        CWD,
-                                        temp_path,
-                                        CWD,
-                                        install_path,
-                                        RenameFlags::NOREPLACE,
-                                    )
-                                    .context("Failed to exchange files")?;
-
-                                    entries.push(GuardedEntry::CreatedFile(line.path));
-                                }
-                                Err(e) => {
-                                    return Err(e.into());
-                                }
-                            }
+                        Err(ref error) if error.kind() != NotFound => {
+                            return Err(anyhow!("{error}"));
                         }
+                        _ => {}
+                    }
+                    if staged.file_type().is_symlink() {
+                        let target = fs::read_link(tempdir.path().join(&line.path))?;
+                        if symlink_target_escapes_root(&line.path, &target) {
+                            return Err(anyhow!(
+                                "Unsafe symlink target at {}",
+                                line.path.display()
+                            ));
+                        }
+                    } else if !staged.is_dir() && !staged.is_file() {
+                        return Err(anyhow!("Unsupported payload type"));
+                    }
+                }
 
-                        () => {
-                            if file_type.is_symlink() {
-                                if has_parent_dir(&line.path)
-                                    || symlink_target_escapes_root(
-                                        &line.path,
-                                        Path::new(&line.target_or_hash),
-                                    )
-                                {
+                let mutation = (|| -> Result<()> {
+                    fs::create_dir_all(install_dir)
+                        .context("Failed to create the install directory")?;
+
+                    for line in manifest_lines {
+                        let staged_path = tempdir.path().join(&line.path);
+
+                        let file_type = fs::symlink_metadata(&staged_path)
+                            .context("Failed to get file type")?
+                            .file_type();
+
+                        match () {
+                            () if file_type.is_dir() => {
+                                if has_parent_dir(&line.path) {
                                     return Err(anyhow!(
-                                        "Symlink {} has target {} meaning it is potentially trying to escape the installation directory",
-                                        line.path.display(),
-                                        line.target_or_hash
+                                        "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
+                                        staged_path.display()
                                     ));
                                 }
 
                                 let install_path = install_dir.join(&line.path);
-                                fs::create_dir_all(
-                                    install_path
-                                        .parent()
-                                        .context("Failed to get parent directory")?,
-                                )
-                                .context("Failed to create directory")?;
+                                match fs::symlink_metadata(&install_path) {
+                                    Ok(metadata) if metadata.is_dir() => {}
+                                    Ok(_) => {
+                                        return Err(anyhow!(
+                                            "Destination {} exists but is not a directory",
+                                            install_path.display()
+                                        ));
+                                    }
+                                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                        create_owned_dirs(install_dir, &line.path, &mut entries)?;
+                                    }
+                                    Err(error) => {
+                                        return Err(error)
+                                            .context("Failed to inspect directory destination");
+                                    }
+                                }
+                            }
+                            () if file_type.is_file() => {
+                                if has_parent_dir(&line.path) {
+                                    return Err(anyhow!(
+                                        "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
+                                        line.path.display()
+                                    ));
+                                }
+
+                                let temp_path = tempdir.path().join(&line.path);
+                                let install_path = install_dir.join(&line.path);
+                                create_owned_dirs(
+                                    install_dir,
+                                    line.path.parent().context("Missing parent")?,
+                                    &mut entries,
+                                )?;
 
                                 match fs::symlink_metadata(&install_path) {
                                     Ok(_) => {
                                         renameat_with(
                                             CWD,
-                                            staged_path,
+                                            temp_path,
                                             CWD,
                                             install_path,
                                             RenameFlags::EXCHANGE,
                                         )
-                                        .context("Failed to exchange symlinks")?;
+                                        .context("Failed to exchange files")?;
 
                                         entries.push(GuardedEntry::SwappedFile(line.path));
                                     }
-                                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                                         renameat_with(
                                             CWD,
-                                            staged_path,
+                                            temp_path,
                                             CWD,
                                             install_path,
                                             RenameFlags::NOREPLACE,
                                         )
-                                        .context("Failed to install symlink")?;
+                                        .context("Failed to exchange files")?;
 
-                                        entries.push(GuardedEntry::CreatedSymlink(line.path));
+                                        entries.push(GuardedEntry::CreatedFile(line.path));
                                     }
-                                    Err(error) => {
-                                        return Err(error)
-                                            .context("Failed to inspect symlink destination");
+                                    Err(e) => {
+                                        return Err(e.into());
+                                    }
+                                }
+                            }
+
+                            () => {
+                                if file_type.is_symlink() {
+                                    if has_parent_dir(&line.path)
+                                        || symlink_target_escapes_root(
+                                            &line.path,
+                                            Path::new(&line.target_or_hash),
+                                        )
+                                    {
+                                        return Err(anyhow!(
+                                            "Symlink {} has target {} meaning it is potentially trying to escape the installation directory",
+                                            line.path.display(),
+                                            line.target_or_hash
+                                        ));
+                                    }
+
+                                    let install_path = install_dir.join(&line.path);
+                                    create_owned_dirs(
+                                        install_dir,
+                                        line.path.parent().context("Missing parent")?,
+                                        &mut entries,
+                                    )?;
+
+                                    match fs::symlink_metadata(&install_path) {
+                                        Ok(_) => {
+                                            renameat_with(
+                                                CWD,
+                                                staged_path,
+                                                CWD,
+                                                install_path,
+                                                RenameFlags::EXCHANGE,
+                                            )
+                                            .context("Failed to exchange symlinks")?;
+
+                                            entries.push(GuardedEntry::SwappedFile(line.path));
+                                        }
+                                        Err(error)
+                                            if error.kind() == std::io::ErrorKind::NotFound =>
+                                        {
+                                            renameat_with(
+                                                CWD,
+                                                staged_path,
+                                                CWD,
+                                                install_path,
+                                                RenameFlags::NOREPLACE,
+                                            )
+                                            .context("Failed to install symlink")?;
+
+                                            entries.push(GuardedEntry::CreatedSymlink(line.path));
+                                        }
+                                        Err(error) => {
+                                            return Err(error)
+                                                .context("Failed to inspect symlink destination");
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
+                    Ok(())
+                })();
+                if let Err(error) = mutation {
+                    rollback_entries(install_dir, tempdir, &entries);
+                    return Err(error);
+                }
                 Ok((PackageState::Installed, metadata, tempdir, entries))
             }
             _ => Err(anyhow!(
@@ -497,14 +550,18 @@ impl<'a> PackageState<'a> {
                 let mut owned_files_query = ctx
                     .install_conn
                     .prepare(
-                        "SELECT path FROM owned_files WHERE package_name = ? ORDER BY path DESC",
+                        "SELECT path FROM owned_files WHERE package_name = ? AND architecture = ? ORDER BY path DESC",
                     )
                     .context("Failed to prepare owned files query")?;
                 let owned_files: Vec<String> = owned_files_query
-                    .query_map([&ctx.package_id.name], |row| row.get(0))?
+                    .query_map(
+                        params![ctx.package_id.name, ctx.package_id.architecture.to_string()],
+                        |row| row.get(0),
+                    )?
                     .collect::<Result<Vec<_>, _>>()
                     .context("Failed to query owned files")?;
                 for file in owned_files {
+                    ensure_no_symlink_components(&ctx.install_dir, Path::new(&file), true)?;
                     let path = ctx.install_dir.join(&file);
                     match fs::symlink_metadata(&path) {
                         Ok(metadata) if metadata.is_dir() => {

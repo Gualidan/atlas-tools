@@ -125,11 +125,7 @@ impl BulkUpdate {
         let owned = stmt
             .query_map([name], |row| row.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        let expected_owned = if version == "1.0.0" {
-            vec![name.to_string(), file]
-        } else {
-            vec![file]
-        };
+        let expected_owned = vec![name.to_string(), file];
         assert_eq!(owned, expected_owned);
         Ok(())
     }
@@ -146,6 +142,13 @@ impl BulkUpdate {
                 .map(|name| self.tmp.path().join("root").join(name))
                 .collect()
         };
+        if self.tmp.path().join("root/var/lib/atlas/tmp").exists() {
+            expected.push(self.tmp.path().join("root/var"));
+            assert_eq!(
+                fs::read_dir(self.tmp.path().join("root/var/lib/atlas/tmp"))?.count(),
+                0
+            );
+        }
         actual.sort();
         expected.sort();
         assert_eq!(

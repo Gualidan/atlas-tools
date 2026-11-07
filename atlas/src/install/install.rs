@@ -125,23 +125,7 @@ pub fn install(
             architecture: package.architecture,
         };
 
-        let tempdir_location = if install_dir
-            .to_str()
-            .context("Failed to convert install dir to string")?
-            == "/"
-        {
-            install_dir
-        } else {
-            &install_dir
-                .parent()
-                .context("Failed to get install dir's parent")?
-                .to_path_buf()
-        };
-
-        let tempdir = Builder::new()
-            .prefix("sisyphus_install_tmp_dir_")
-            .tempdir_in(tempdir_location)
-            .context("Failed to create temporary directory")?;
+        let tempdir = staging_directory(install_dir)?;
 
         install_one(
             runtime_config,
@@ -201,6 +185,13 @@ pub fn install_one(
     let state = state.stage()?;
     let (_, metadata, _, entries) = state.commit()?;
 
+    let created_dirs = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            crate::types::guards::GuardedEntry::CreatedDir(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let mut guard = SwapBackGuard::new(install_dir, tempdir, entries);
 
     insert_installed_package(
@@ -210,8 +201,23 @@ pub fn install_one(
         install_dir.to_string_lossy().as_ref(),
         sky_path.to_str().unwrap(),
         install_reason,
+        &created_dirs,
     )?;
 
     guard.disarm();
     Ok(())
+}
+
+pub(crate) fn staging_directory(install_dir: &std::path::Path) -> Result<TempDir> {
+    let location = install_dir.join("var/lib/atlas/tmp");
+    crate::types::package_state::ensure_no_symlink_components(
+        install_dir,
+        std::path::Path::new("var/lib/atlas/tmp"),
+        false,
+    )?;
+    create_dir_all(&location).context("Failed to create staging directory")?;
+    Builder::new()
+        .prefix("sisyphus_install_tmp_dir_")
+        .tempdir_in(location)
+        .context("Failed to create temporary directory")
 }

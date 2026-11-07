@@ -69,47 +69,61 @@ impl Drop for SwapBackGuard<'_> {
             && let Some(entries) = &self.entries
             && let Some(staging_dir) = &self.staging_dir
         {
-            for entry in entries {
-                match entry {
-                    GuardedEntry::SwappedFile(path) => {
-                        let staged_path = staging_dir.path().join(path);
-                        let install_path = install_dir.join(path);
+            rollback_entries(install_dir, staging_dir, entries);
+        }
+    }
+}
 
-                        renameat_with(CWD, staged_path, CWD, install_path, RenameFlags::EXCHANGE)
-                            .expect("Failed to rename file");
-                    }
-                    GuardedEntry::OldFile(path) => {
-                        let staged_path = staging_dir.path().join(path);
-                        let install_path = install_dir.join(path);
+pub(crate) fn rollback_entries(
+    install_dir: &PathBuf,
+    staging_dir: &TempDir,
+    entries: &[GuardedEntry],
+) {
+    for entry in entries.iter().rev() {
+        match entry {
+            GuardedEntry::SwappedFile(path) => {
+                let staged_path = staging_dir.path().join(path);
+                let install_path = install_dir.join(path);
 
-                        let _ = renameat_with(
-                            CWD,
-                            staged_path,
-                            CWD,
-                            install_path,
-                            RenameFlags::NOREPLACE,
-                        );
-                    }
-                    GuardedEntry::CreatedFile(path) => {
-                        let install_path = install_dir.join(path);
+                renameat_with(CWD, staged_path, CWD, install_path, RenameFlags::EXCHANGE)
+                    .unwrap_or_else(|error| eprintln!("Failed to restore swapped file: {error}"));
+            }
+            GuardedEntry::OldFile(path) => {
+                let staged_path = staging_dir.path().join(path);
+                let install_path = install_dir.join(path);
 
-                        if install_path.exists() && !install_path.is_dir() {
-                            fs::remove_file(install_path).expect("Failed to remove file");
-                        }
+                let _ = renameat_with(CWD, staged_path, CWD, install_path, RenameFlags::NOREPLACE);
+            }
+            GuardedEntry::CreatedFile(path) => {
+                let install_path = install_dir.join(path);
+
+                if install_path.exists() && !install_path.is_dir() {
+                    if let Err(error) = fs::remove_file(install_path) {
+                        eprintln!("Failed to remove file: {error}");
                     }
-                    GuardedEntry::CreatedDir(path) => {
-                        let install_path = install_dir.join(path);
-                        if install_path.exists()
-                            && install_path.read_dir().unwrap().next().is_none()
+                }
+            }
+            GuardedEntry::CreatedDir(path) => {
+                let install_path = install_dir.join(path);
+                match fs::read_dir(&install_path) {
+                    Ok(mut contents) => {
+                        if contents.next().is_none()
+                            && let Err(error) = fs::remove_dir(&install_path)
                         {
-                            fs::remove_dir(install_path).expect("Failed to remove directory");
+                            eprintln!("Failed to remove directory: {error}");
                         }
                     }
-                    GuardedEntry::CreatedSymlink(path) => {
-                        let install_path = install_dir.join(path);
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => eprintln!("Failed to read directory: {error}"),
+                }
+            }
+            GuardedEntry::CreatedSymlink(path) => {
+                let install_path = install_dir.join(path);
 
-                        fs::remove_file(install_path).expect("Failed to remove symlink");
-                    }
+                if let Err(error) = fs::remove_file(install_path)
+                    && error.kind() != std::io::ErrorKind::NotFound
+                {
+                    eprintln!("Failed to remove symlink: {error}");
                 }
             }
         }
@@ -130,6 +144,25 @@ mod tests {
         fs::create_dir(&install_dir).expect("failed to create install dir");
 
         (parent, install_dir)
+    }
+
+    #[test]
+    fn rollback_removes_children_before_parents_and_continues_after_errors() {
+        let (_parent, install_dir) = setup();
+        fs::create_dir_all(install_dir.join("nested/child")).unwrap();
+        fs::write(install_dir.join("nested/child/file"), b"new").unwrap();
+        drop(SwapBackGuard::new(
+            &install_dir,
+            tempfile::tempdir().unwrap(),
+            vec![
+                GuardedEntry::CreatedDir("nested".into()),
+                GuardedEntry::CreatedDir("nested/child".into()),
+                GuardedEntry::CreatedFile("nested/child/file".into()),
+                GuardedEntry::CreatedSymlink("missing".into()),
+                GuardedEntry::SwappedFile("missing-swap".into()),
+            ],
+        ));
+        assert!(!install_dir.join("nested").exists());
     }
 
     #[test]

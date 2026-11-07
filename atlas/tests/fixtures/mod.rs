@@ -356,6 +356,13 @@ impl Workspace {
             .into_iter()
             .map(|name| self.root.join(name))
             .collect::<Vec<_>>();
+        if self.root.join("var/lib/atlas/tmp").exists() {
+            expected.push(self.root.join("var"));
+            assert_eq!(
+                fs::read_dir(self.root.join("var/lib/atlas/tmp"))?.count(),
+                0
+            );
+        }
         expected.sort();
         let mut actual = fs::read_dir(&self.root)?
             .map(|entry| entry.map(|entry| entry.path()))

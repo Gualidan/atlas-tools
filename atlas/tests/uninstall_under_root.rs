@@ -137,7 +137,7 @@ fn symlink_targets_are_safe() -> Result<()> {
         },
         PayloadEntry::Symlink {
             path: "usr/share/anotherapp".to_string(),
-            target: "usr/share/app".to_string(),
+            target: "app".to_string(),
         },
     ];
     let usr_share_app = root.join("usr/share/app");
@@ -145,8 +145,18 @@ fn symlink_targets_are_safe() -> Result<()> {
     File::create(&usr_share_app)?;
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &app_entries)?;
     workspace.install("app")?;
+    assert_eq!(
+        fs::canonicalize(root.join("usr/share/anotherapp"))?,
+        fs::canonicalize(&usr_share_app)?
+    );
     workspace.uninstall("app")?;
     assert!(usr_share_app.exists());
+    assert_eq!(
+        fs::symlink_metadata(root.join("usr/share/anotherapp"))
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::NotFound
+    );
 
     Ok(())
 }
