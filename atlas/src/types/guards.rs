@@ -1,7 +1,10 @@
 use std::{
     fs::{self},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
+
+use rustix::fs::{CWD, RenameFlags, renameat_with};
+use tempfile::TempDir;
 
 /// Undoes the state machine's commit-exchange when the `DatabaseRecord` step
 /// fails: an armed drop swaps the previous install's content back into
@@ -10,7 +13,19 @@ use std::{
 /// pre-install world, not what the directories look like at commit time.
 pub struct SwapBackGuard<'a> {
     install_dir: Option<&'a PathBuf>,
-    owned_files: Option<Vec<String>>,
+    staging_dir: Option<TempDir>,
+    entries: Option<Vec<GuardedEntry>>,
+}
+
+pub enum GuardedEntry {
+    // Files that were swapped out during the install.
+    SwappedFile(PathBuf),
+    // Files that were created during the install.
+    CreatedFile(PathBuf),
+    CreatedDir(PathBuf),
+    // Files that are no longer present in the package payload.
+    OldFile(PathBuf),
+    CreatedSymlink(PathBuf),
 }
 
 impl<'a> SwapBackGuard<'a> {
@@ -18,18 +33,30 @@ impl<'a> SwapBackGuard<'a> {
     /// must hold the previous destination contents; `install_dir_existed`
     /// describes the destination before the exchange.
     #[must_use]
-    pub fn new(install_dir: &'a PathBuf, owned_files: Vec<String>) -> Self {
+    pub fn new(install_dir: &'a PathBuf, staging_dir: TempDir, entries: Vec<GuardedEntry>) -> Self {
         SwapBackGuard {
             install_dir: Some(install_dir),
-            owned_files: Some(owned_files),
+            staging_dir: Some(staging_dir),
+            entries: Some(entries),
         }
     }
+    pub fn staging_dir_path(&self) -> Option<&std::path::Path> {
+        self.staging_dir.as_ref().map(TempDir::path)
+    }
+
+    pub fn record_old_file(&mut self, path: PathBuf) {
+        if let Some(entries) = &mut self.entries {
+            entries.push(GuardedEntry::OldFile(path));
+        }
+    }
+
     pub fn disarm(&mut self) {
         // Only called after the install is fully recorded; dropping a
         // disarmed guard must touch neither directory (the commit must
         // survive).
         self.install_dir.take();
-        self.owned_files.take();
+        self.entries.take();
+        self.staging_dir.take();
     }
 }
 
@@ -39,14 +66,50 @@ impl Drop for SwapBackGuard<'_> {
     /// are swallowed; disarmed guards leave both directories untouched.
     fn drop(&mut self) {
         if let Some(install_dir) = &self.install_dir
-            && let Some(owned_files) = &self.owned_files
+            && let Some(entries) = &self.entries
+            && let Some(staging_dir) = &self.staging_dir
         {
-            for file in owned_files {
-                let path = Path::new(install_dir).join(file);
-                if path.exists() && !path.is_dir() {
-                    fs::remove_file(&path).expect("Failed to remove file");
-                } else if path.is_dir() && path.read_dir().unwrap().next().is_none() {
-                    fs::remove_dir(&path).expect("Failed to remove directory");
+            for entry in entries {
+                match entry {
+                    GuardedEntry::SwappedFile(path) => {
+                        let staged_path = staging_dir.path().join(path);
+                        let install_path = install_dir.join(path);
+
+                        renameat_with(CWD, staged_path, CWD, install_path, RenameFlags::EXCHANGE)
+                            .expect("Failed to rename file");
+                    }
+                    GuardedEntry::OldFile(path) => {
+                        let staged_path = staging_dir.path().join(path);
+                        let install_path = install_dir.join(path);
+
+                        let _ = renameat_with(
+                            CWD,
+                            staged_path,
+                            CWD,
+                            install_path,
+                            RenameFlags::NOREPLACE,
+                        );
+                    }
+                    GuardedEntry::CreatedFile(path) => {
+                        let install_path = install_dir.join(path);
+
+                        if install_path.exists() && !install_path.is_dir() {
+                            fs::remove_file(install_path).expect("Failed to remove file");
+                        }
+                    }
+                    GuardedEntry::CreatedDir(path) => {
+                        let install_path = install_dir.join(path);
+                        if install_path.exists()
+                            && install_path.read_dir().unwrap().next().is_none()
+                        {
+                            fs::remove_dir(install_path).expect("Failed to remove directory");
+                        }
+                    }
+                    GuardedEntry::CreatedSymlink(path) => {
+                        let install_path = install_dir.join(path);
+
+                        fs::remove_file(install_path).expect("Failed to remove symlink");
+                    }
                 }
             }
         }
@@ -59,7 +122,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::SwapBackGuard;
+    use super::{GuardedEntry, SwapBackGuard};
 
     fn setup() -> (TempDir, PathBuf) {
         let parent = tempfile::tempdir().expect("failed to create parent temp dir");
@@ -83,7 +146,11 @@ mod tests {
         fs::write(&unowned_file, b"unowned").expect("failed to write unowned file");
         drop(SwapBackGuard::new(
             &install_dir,
-            vec!["owned-file".to_owned(), "owned-symlink".to_owned()],
+            tempfile::tempdir().expect("failed to create staging dir"),
+            vec![
+                GuardedEntry::CreatedFile(PathBuf::from("owned-file")),
+                GuardedEntry::CreatedSymlink(PathBuf::from("owned-symlink")),
+            ],
         ));
 
         assert!(!owned_file.exists(), "owned regular file should be removed");
@@ -100,7 +167,11 @@ mod tests {
         let (_parent, install_dir) = setup();
         let owned_file = install_dir.join("owned-file");
         fs::write(&owned_file, b"owned").expect("failed to write owned file");
-        let mut guard = SwapBackGuard::new(&install_dir, vec!["owned-file".to_owned()]);
+        let mut guard = SwapBackGuard::new(
+            &install_dir,
+            tempfile::tempdir().expect("failed to create staging dir"),
+            vec![GuardedEntry::CreatedFile(PathBuf::from("owned-file"))],
+        );
         guard.disarm();
         drop(guard);
 
@@ -116,7 +187,11 @@ mod tests {
         let file = install_dir.join("file");
         fs::write(&file, b"keep").expect("failed to write file");
 
-        drop(SwapBackGuard::new(&install_dir, Vec::new()));
+        drop(SwapBackGuard::new(
+            &install_dir,
+            tempfile::tempdir().expect("failed to create staging dir"),
+            Vec::new(),
+        ));
 
         assert!(
             file.exists(),

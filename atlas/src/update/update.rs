@@ -1,11 +1,15 @@
-use std::{env::consts::ARCH, path::PathBuf};
+use std::{collections::HashSet, env::consts::ARCH, fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use common::types::{
-    config::load_config,
-    package::{Architectures, PackageIdentity},
+use common::{
+    functions::sky_verify::read_sky,
+    types::{
+        config::load_config,
+        package::{Architectures, PackageIdentity},
+    },
 };
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
+use rustix::fs::{CWD, RenameFlags, renameat_with};
 
 use tempfile::{Builder, TempDir};
 
@@ -14,11 +18,16 @@ use crate::{
         cli::UpdateArgs,
         confirmation::{Action, confirmation_prompt},
     },
-    types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
+    types::{
+        guards::SwapBackGuard,
+        package_state::{PackageState, ensure_no_symlink_components},
+        runtime_config::RuntimeConfig,
+    },
     update::{
         db::{clear_update_log, update_installed_package},
         resolve::{Resolution, resolve_update_order},
     },
+    verify::parse_metadata_lines::parse_metadata_lines,
 };
 
 /// Upgrades `args.package` for the host architecture, or every installed package
@@ -131,11 +140,27 @@ pub fn update_one(
 ) -> Result<()> {
     let config = load_config().context("Failed to load configuration")?;
 
+    let (_, _, manifest, _) = read_sky(sky_path).context("Failed to read sky file")?;
+    let new_paths: HashSet<PathBuf> = parse_metadata_lines(&manifest)
+        .context("Failed to parse manifest lines")?
+        .into_iter()
+        .map(|line| line.path)
+        .collect();
+    let mut owned_stmt = install_conn
+        .prepare("SELECT path FROM owned_files WHERE package_name = ? AND architecture = ?")?;
+    let old_paths: Vec<String> = owned_stmt
+        .query_map(
+            params![package_id.name, package_id.architecture.to_string()],
+            |row| row.get(0),
+        )?
+        .collect::<rusqlite::Result<_>>()?;
+    drop(owned_stmt);
+
     let state = PackageState::NotInstalled {
         package_id: package_id.clone(),
         install_conn,
         sky_path,
-        tempdir,
+        tempdir: &tempdir,
         config: &config,
         repo_conn,
         install_dir,
@@ -143,18 +168,41 @@ pub fn update_one(
 
     let state = state.verify()?;
     let state = state.stage()?;
-    let (_, metadata, _) = state.commit()?;
+    let (_, metadata, _, entries) = state.commit()?;
 
-    let mut owned_files_query = install_conn
-        .prepare("SELECT path FROM owned_files WHERE package_name = ? ORDER BY path")
-        .context("Failed to prepare owned files query")?;
-    let owned_files: Vec<String> = owned_files_query
-        .query_map([&package_id.name], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Failed to query owned files")?;
+    let mut guard = SwapBackGuard::new(install_dir, tempdir, entries);
+    let staging_root = guard
+        .staging_dir_path()
+        .context("Rollback staging directory is unavailable")?
+        .to_path_buf();
+    for old_path in old_paths {
+        let relative = PathBuf::from(old_path);
+        if new_paths.contains(&relative) {
+            continue;
+        }
 
-    drop(owned_files_query);
-    let mut guard = SwapBackGuard::new(install_dir, owned_files);
+        ensure_no_symlink_components(install_dir, &relative, true)?;
+        let install_path = install_dir.join(&relative);
+        let metadata = match fs::symlink_metadata(&install_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error).context("Failed to inspect obsolete owned path"),
+        };
+        if !metadata.is_file() && !metadata.file_type().is_symlink() {
+            continue;
+        }
+
+        let staged_path = staging_root.join(&relative);
+        fs::create_dir_all(
+            staged_path
+                .parent()
+                .context("Failed to get obsolete path's staging parent")?,
+        )
+        .context("Failed to create obsolete path's staging parent")?;
+        guard.record_old_file(relative);
+        renameat_with(CWD, install_path, CWD, staged_path, RenameFlags::NOREPLACE)
+            .context("Failed to stage obsolete owned path")?;
+    }
 
     update_installed_package(
         install_conn,

@@ -1,5 +1,8 @@
 mod fixtures;
-use std::{fs::File, io::Write};
+use std::{
+    fs::{self, File, OpenOptions},
+    io::Write,
+};
 
 use anyhow::Result;
 use fixtures::*;
@@ -34,6 +37,7 @@ fn uninstall_only_removes_relevant_files() -> Result<()> {
         },
     ];
     let unrelated_file = root.join("usr/bin/unrelated");
+    fs::create_dir_all(unrelated_file.parent().unwrap())?;
     File::create(&unrelated_file)?;
 
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &app_entries)?;
@@ -137,8 +141,10 @@ fn symlink_targets_are_safe() -> Result<()> {
         },
     ];
     let usr_share_app = root.join("usr/share/app");
+    fs::create_dir_all(usr_share_app.parent().unwrap())?;
     File::create(&usr_share_app)?;
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &app_entries)?;
+    workspace.install("app")?;
     workspace.uninstall("app")?;
     assert!(usr_share_app.exists());
 
@@ -157,7 +163,10 @@ fn files_modified_after_installation_are_removed() -> Result<()> {
     workspace.publish_with_entries("app", "1.0.0", 1, &[], &app_entries)?;
     workspace.install("app")?;
 
-    File::open(root.join("usr/bin/app"))?.write_all("hello_world".as_bytes())?;
+    OpenOptions::new()
+        .write(true)
+        .open(root.join("usr/bin/app"))?
+        .write_all("hello_world".as_bytes())?;
 
     workspace.uninstall("app")?;
     assert!(!root.join("usr/bin/app").exists());

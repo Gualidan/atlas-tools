@@ -192,23 +192,16 @@ pub fn install_one(
         package_id: package_id.clone(),
         sky_path,
         install_dir,
-        tempdir,
+        tempdir: &tempdir,
         config,
         repo_conn: conn,
         install_conn,
     };
     let state = state.verify()?;
     let state = state.stage()?;
-    let (_, metadata, _) = state.commit()?;
-    let mut owned_files_query = install_conn
-        .prepare("SELECT path FROM owned_files WHERE package_name = ? ORDER BY path")
-        .context("Failed to prepare owned files query")?;
-    let owned_files: Vec<String> = owned_files_query
-        .query_map([&package_id.name], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Failed to query owned files")?;
+    let (_, metadata, _, entries) = state.commit()?;
 
-    let mut guard = SwapBackGuard::new(install_dir, owned_files);
+    let mut guard = SwapBackGuard::new(install_dir, tempdir, entries);
 
     insert_installed_package(
         runtime_config,

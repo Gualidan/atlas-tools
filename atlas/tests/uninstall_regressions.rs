@@ -28,9 +28,14 @@ impl Installation {
         Ok(Self { tmp, config, conn })
     }
 
+    fn root(&self) -> PathBuf {
+        self.tmp.path().join("root")
+    }
+
     fn seed(&self, name: &str, install_reason: InstallReason) -> Result<PathBuf> {
-        let dir = self.tmp.path().join(name);
-        fs::create_dir(&dir)?;
+        let root = self.root();
+        let dir = root.join(name);
+        fs::create_dir_all(&dir)?;
         fs::write(dir.join("sentinel"), name)?;
         self.conn.execute(
             "INSERT INTO installed_packages
@@ -39,9 +44,13 @@ impl Installation {
             params![
                 name,
                 ARCH.to_string(),
-                dir.to_str().unwrap(),
+                root.to_str().unwrap(),
                 install_reason.to_string()
             ],
+        )?;
+        self.conn.execute(
+            "INSERT INTO owned_files VALUES (?, ?, ?)",
+            params![name, name, ARCH.to_string()],
         )?;
         self.conn.execute(
             "INSERT INTO owned_files VALUES (?, ?, ?)",
@@ -52,7 +61,7 @@ impl Installation {
 
     fn assert_present(&self, name: &str) -> Result<()> {
         assert_eq!(
-            fs::read(self.tmp.path().join(name).join("sentinel"))?,
+            fs::read(self.root().join(name).join("sentinel"))?,
             name.as_bytes()
         );
         assert_eq!(
@@ -69,7 +78,7 @@ impl Installation {
                 "SELECT COUNT(*) FROM owned_files WHERE package_name = ?",
                 &[&name]
             ),
-            1
+            2
         );
         Ok(())
     }
@@ -125,7 +134,7 @@ fn uninstall_removes_the_complete_dependency_chain_and_its_ledger_entries() -> R
 
     for name in ["app", "middle", "leaf"] {
         assert!(
-            !fixture.tmp.path().join(name).exists(),
+            !fixture.root().join(name).exists(),
             "{name} must be removed"
         );
     }
@@ -139,7 +148,7 @@ fn uninstall_removes_the_complete_dependency_chain_and_its_ledger_entries() -> R
     );
     assert_eq!(
         count(&fixture.conn, "SELECT COUNT(*) FROM owned_files", &[]),
-        1
+        2
     );
     assert_eq!(
         count(

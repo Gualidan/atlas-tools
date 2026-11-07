@@ -50,7 +50,7 @@ impl Installation {
         );
         let root = tmp.path().join("root");
         install(&"foo".to_string(), &config, &root)?;
-        let dir = root.join("foo-1.0.0-1");
+        let dir = root.clone();
         Ok(Self {
             tmp,
             config,
@@ -101,7 +101,7 @@ impl Installation {
             1,
             "only the original install directory should remain"
         );
-        assert_eq!(entries[0].path(), self.dir);
+        assert_eq!(entries[0].path(), self.root.join("dir"));
         Ok(())
     }
 
@@ -122,12 +122,11 @@ impl Installation {
                 self.dir.to_str().unwrap().into()
             )
         );
-        let owned: String = conn.query_row(
-            "SELECT path FROM owned_files WHERE package_name = 'foo'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(owned, "dir/old.txt");
+        let owned: Vec<String> = conn
+            .prepare("SELECT path FROM owned_files WHERE package_name = 'foo' ORDER BY path")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        assert_eq!(owned, ["dir", "dir/old.txt"]);
         assert_eq!(
             count(
                 &conn,
@@ -340,7 +339,8 @@ fn conflicting_file_is_rejected_before_changing_the_installation() -> Result<()>
         .update()
         .expect_err("another package owns the new file");
     assert!(
-        format!("{err:#}").contains("Another package neighbor already owns this path dir/new.txt"),
+        format!("{err:#}")
+            .contains("conflicting file of package `neighbor` already exists at `dir/new.txt`"),
         "{err:#}"
     );
     assert_eq!(

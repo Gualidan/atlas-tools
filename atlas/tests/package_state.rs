@@ -13,6 +13,7 @@ use tempfile::{Builder, TempDir};
 
 struct StateFixture {
     tmp: TempDir,
+    state_tempdir: TempDir,
     sky: PathBuf,
     install_dir: PathBuf,
     repo: Connection,
@@ -23,6 +24,7 @@ struct StateFixture {
 impl StateFixture {
     fn new() -> Result<Self> {
         let tmp = tempdir();
+        let state_tempdir = Builder::new().tempdir_in(tmp.path())?;
         let (keypair, public_key) = generate_keypair()?;
         let sky = write_signed_sky(
             &tmp,
@@ -49,6 +51,7 @@ impl StateFixture {
         let install_dir = tmp.path().join("install");
         Ok(Self {
             tmp,
+            state_tempdir,
             sky,
             install_dir,
             repo,
@@ -70,7 +73,7 @@ impl StateFixture {
         Ok(Builder::new().tempdir_in(self.tmp.path())?)
     }
 
-    fn initial(&self, tempdir: TempDir) -> PackageState<'_> {
+    fn initial<'a>(&'a self, tempdir: &'a TempDir) -> PackageState<'a> {
         PackageState::NotInstalled {
             package_id: Self::identity(),
             install_conn: &self.installed,
@@ -84,12 +87,12 @@ impl StateFixture {
 
     fn states(&self) -> Result<Vec<(&str, PackageState<'_>)>> {
         Ok(vec![
-            ("not installed", self.initial(self.staging()?)),
-            ("verified", self.initial(self.staging()?).verify()?),
+            ("not installed", self.initial(&self.state_tempdir)),
+            ("verified", self.initial(&self.state_tempdir).verify()?),
             (
                 "staged",
                 PackageState::Staged {
-                    tempdir: self.staging()?,
+                    tempdir: &self.state_tempdir,
                     metadata: metadata_for("foo", "2.0.0", 3, vec![]),
                     install_dir: &self.install_dir,
                     sky_path: &self.sky,
@@ -110,21 +113,21 @@ impl StateFixture {
 }
 
 #[test]
-fn verify_stage_and_commit_transfer_metadata_and_keep_the_old_tree_alive() -> Result<()> {
+fn verify_stage_and_commit_transfer_metadata_without_replacing_unrelated_files() -> Result<()> {
     let fixture = StateFixture::new()?;
     fs::create_dir(&fixture.install_dir)?;
     fs::write(fixture.install_dir.join("old.txt"), b"old\n")?;
     let staging = fixture.staging()?;
     let staging_path = staging.path().to_path_buf();
 
-    let state = fixture.initial(staging).verify()?;
+    let state = fixture.initial(&staging).verify()?;
     assert!(!fixture.install_dir.join("dir/file.txt").exists());
     assert!(fs::read_dir(&staging_path)?.next().is_none());
     let state = state.stage()?;
     assert_eq!(fs::read(staging_path.join("dir/file.txt"))?, b"new\n");
     assert_eq!(fs::read(fixture.install_dir.join("old.txt"))?, b"old\n");
 
-    let (state, metadata, previous_install) = state.commit()?;
+    let (state, metadata, previous_install, _) = state.commit()?;
     assert!(matches!(state, PackageState::Installed));
     assert_eq!(
         (
@@ -135,13 +138,13 @@ fn verify_stage_and_commit_transfer_metadata_and_keep_the_old_tree_alive() -> Re
         ("foo", "2.0.0", 3)
     );
     assert_eq!(previous_install.path(), staging_path);
-    assert_eq!(fs::read(previous_install.path().join("old.txt"))?, b"old\n");
+
     assert_eq!(
         fs::read(fixture.install_dir.join("dir/file.txt"))?,
         b"new\n"
     );
-    assert!(!fixture.install_dir.join("old.txt").exists());
-    drop(previous_install);
+    assert_eq!(fs::read(fixture.install_dir.join("old.txt"))?, b"old\n");
+    drop(staging);
     assert!(!staging_path.exists());
     assert!(fixture.install_dir.join("dir/file.txt").exists());
     Ok(())
@@ -150,29 +153,31 @@ fn verify_stage_and_commit_transfer_metadata_and_keep_the_old_tree_alive() -> Re
 #[test]
 fn commit_creates_a_missing_install_directory() -> Result<()> {
     let fixture = StateFixture::new()?;
-    let (_, _, previous_install) = fixture
-        .initial(fixture.staging()?)
-        .verify()?
-        .stage()?
-        .commit()?;
+    let staging = fixture.staging()?;
+    let (_, _, previous_install, _) = fixture.initial(&staging).verify()?.stage()?.commit()?;
     assert_eq!(
         fs::read(fixture.install_dir.join("dir/file.txt"))?,
         b"new\n"
     );
-    assert!(fs::read_dir(previous_install.path())?.next().is_none());
+    assert!(
+        fs::read_dir(previous_install.path().join("dir"))?
+            .next()
+            .is_none()
+    );
     Ok(())
 }
 
 #[test]
-fn failed_verification_cleans_up_its_owned_staging_directory() -> Result<()> {
+fn failed_verification_leaves_its_borrowed_staging_directory_untouched() -> Result<()> {
     let fixture = StateFixture::new()?;
     fixture
         .repo
         .execute("UPDATE packages SET release = 4", [])?;
     let staging = fixture.staging()?;
     let path = staging.path().to_path_buf();
-    assert!(fixture.initial(staging).verify().is_err());
-    assert!(!path.exists());
+    assert!(fixture.initial(&staging).verify().is_err());
+    assert!(path.exists());
+    assert!(fs::read_dir(&path)?.next().is_none());
     assert!(!fixture.install_dir.exists());
     Ok(())
 }
@@ -181,8 +186,9 @@ fn failed_verification_cleans_up_its_owned_staging_directory() -> Result<()> {
 fn staging_allows_a_packages_own_file_during_an_upgrade() -> Result<()> {
     let fixture = StateFixture::new()?;
     fixture.claim("foo", "x86_64", "dir/file.txt")?;
+    let staging = fixture.staging()?;
     assert!(matches!(
-        fixture.initial(fixture.staging()?).verify()?.stage()?,
+        fixture.initial(&staging).verify()?.stage()?,
         PackageState::Staged { .. }
     ));
     assert!(
@@ -197,18 +203,13 @@ fn staging_ignores_other_architectures_and_shared_directories() -> Result<()> {
     let fixture = StateFixture::new()?;
     fixture.claim("neighbor", "arm", "dir/file.txt")?;
     fixture.claim("neighbor", "x86_64", "dir")?;
-    assert!(
-        fixture
-            .initial(fixture.staging()?)
-            .verify()?
-            .stage()
-            .is_ok()
-    );
+    let staging = fixture.staging()?;
+    assert!(fixture.initial(&staging).verify()?.stage().is_ok());
     Ok(())
 }
 
 #[test]
-fn staging_rejects_another_owner_and_cleans_up_without_touching_the_install() -> Result<()> {
+fn staging_rejects_another_owner_without_touching_install_or_staging() -> Result<()> {
     let fixture = StateFixture::new()?;
     fixture.claim("neighbor", "x86_64", "dir/file.txt")?;
     fs::create_dir(&fixture.install_dir)?;
@@ -216,16 +217,18 @@ fn staging_rejects_another_owner_and_cleans_up_without_touching_the_install() ->
     let staging = fixture.staging()?;
     let staging_path = staging.path().to_path_buf();
     let err = fixture
-        .initial(staging)
+        .initial(&staging)
         .verify()?
         .stage()
         .err()
         .expect("conflict must be rejected");
     assert!(
-        format!("{err:#}").contains("Another package neighbor already owns this path dir/file.txt"),
+        format!("{err:#}")
+            .contains("conflicting file of package `neighbor` already exists at `dir/file.txt`"),
         "{err:#}"
     );
-    assert!(!staging_path.exists());
+    assert!(staging_path.exists());
+    assert!(fs::read_dir(&staging_path)?.next().is_none());
     assert_eq!(fs::read(fixture.install_dir.join("old.txt"))?, b"old\n");
     assert!(!fixture.install_dir.join("dir").exists());
     Ok(())
@@ -234,17 +237,19 @@ fn staging_rejects_another_owner_and_cleans_up_without_touching_the_install() ->
 #[test]
 fn commit_failure_drops_staging_without_replacing_an_existing_file() -> Result<()> {
     let fixture = StateFixture::new()?;
-    fs::write(&fixture.install_dir, b"not a directory")?;
     let staging = fixture.staging()?;
     let path = staging.path().to_path_buf();
-    let state = fixture.initial(staging).verify()?.stage()?;
+    let state = fixture.initial(&staging).verify()?.stage()?;
+    fs::write(&fixture.install_dir, b"not a directory")?;
     let err = state
         .commit()
         .err()
         .expect("a regular file cannot be an install directory");
-    assert!(format!("{err:#}").contains("Failed to create the install directory"));
-    assert!(!path.exists());
+    assert!(format!("{err:#}").contains("Not a directory"));
+    assert!(path.exists());
     assert_eq!(fs::read(&fixture.install_dir)?, b"not a directory");
+    drop(staging);
+    assert!(!path.exists());
     Ok(())
 }
 
@@ -325,9 +330,9 @@ fn invalid_remove_transitions_leave_existing_files_alone() -> Result<()> {
 }
 
 #[test]
-fn installed_remove_deletes_the_tree_without_changing_dependency_records() -> Result<()> {
+fn installed_remove_deletes_owned_files_without_changing_dependency_records() -> Result<()> {
     let fixture = StateFixture::new()?;
-    fixture.claim("foo", "x86_64", "owned.txt")?;
+    fixture.claim("foo", "x86_64", "nested/file.txt")?;
     fixture.claim("dependent", "x86_64", "dependent.txt")?;
     fixture.installed.execute(
         "INSERT INTO package_dependencies VALUES ('dependent', 'x86_64', 'foo')",
@@ -347,7 +352,8 @@ fn installed_remove_deletes_the_tree_without_changing_dependency_records() -> Re
     // files only, leaving all ledger cleanup to its caller.
     PackageState::Installed.remove(&mut ctx)?;
 
-    assert!(!fixture.install_dir.exists());
+    assert!(!fixture.install_dir.join("nested/file.txt").exists());
+    assert!(fixture.install_dir.join("nested").is_dir());
     assert_eq!(fixture.installed.total_changes(), changes_before);
     assert_eq!(
         fixture
@@ -382,6 +388,7 @@ fn installed_remove_is_idempotent_when_the_directory_is_missing() -> Result<()> 
 #[test]
 fn installed_remove_propagates_errors_other_than_a_missing_directory() -> Result<()> {
     let fixture = StateFixture::new()?;
+    fixture.claim("foo", "x86_64", "owned.txt")?;
     fs::write(&fixture.install_dir, b"not a directory")?;
     let identity = StateFixture::identity();
     let mut ctx = RemoveContext {

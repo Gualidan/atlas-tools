@@ -526,7 +526,7 @@ fn reinstall_rollback_preserves_the_previous_version() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = ?1",
             &[&"foo"],
         ),
-        1,
+        2,
         "the failed reinstall must not have changed the owned files"
     );
 

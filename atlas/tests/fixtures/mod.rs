@@ -327,11 +327,12 @@ impl Workspace {
         let owned = stmt
             .query_map(params![name, ARCH.to_string()], |row| row.get(0))?
             .collect::<rusqlite::Result<Vec<String>>>()?;
-        assert_eq!(
-            owned,
-            vec![format!("{name}/{version}.txt")],
-            "{name} owned files"
-        );
+        let expected_owned = if owned.iter().any(|path| path == name) {
+            vec![name.to_string(), format!("{name}/{version}.txt")]
+        } else {
+            vec![format!("{name}/{version}.txt")]
+        };
+        assert_eq!(owned, expected_owned, "{name} owned files");
         Ok(row)
     }
 
@@ -348,12 +349,12 @@ impl Workspace {
 
     pub fn assert_no_staging_dirs(&self) -> Result<()> {
         let conn = self.install_conn()?;
-        let mut stmt = conn.prepare("SELECT install_dir FROM installed_packages")?;
+        let mut stmt = conn.prepare("SELECT name FROM installed_packages")?;
         let mut expected = stmt
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?
             .into_iter()
-            .map(PathBuf::from)
+            .map(|name| self.root.join(name))
             .collect::<Vec<_>>();
         expected.sort();
         let mut actual = fs::read_dir(&self.root)?

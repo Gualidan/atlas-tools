@@ -10,6 +10,7 @@ use fixtures::{
     write_signed_sky_in_dir,
 };
 use rusqlite::Connection;
+use std::fs;
 
 use crate::fixtures::seed_repo_db_with_deps;
 
@@ -127,9 +128,10 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
         1,
         "A should still be installed after failed uninstall"
     );
-    assert!(
-        root.join("A-1.0.0-1").exists(),
-        "A's install_dir should still exist on disk after failed uninstall"
+    assert_eq!(
+        fs::read(root.join("dir/file.txt"))?,
+        b"a\n",
+        "A's owned file should remain on disk after failed uninstall"
     );
 
     Ok(())
@@ -267,19 +269,13 @@ fn uninstall_keeps_explicitly_installed_dependencies() -> Result<()> {
         "baz should still be installed because it was explicitley installed by the user"
     );
 
-    // The universe of this test is exactly {A, B}, so the tables must be
-    // completely empty afterwards. Blanket checks catch partial removals
-    // that a targeted check would miss.
+    // The universe of this test is exactly {baz, bar}; only baz remains.
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM installed_packages", &[]),
         1,
         "installed_packages should contain baz"
     );
 
-    println!(
-        "{}",
-        count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[])
-    );
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM package_dependencies", &[]),
         0,
@@ -287,19 +283,23 @@ fn uninstall_keeps_explicitly_installed_dependencies() -> Result<()> {
     );
     assert_eq!(
         count(&conn, "SELECT COUNT(*) FROM owned_files", &[]),
-        1,
-        "owned_files should contain baz's files"
+        2,
+        "owned_files should contain baz's directory and file"
     );
 
     // Disk must match the database — this is the check for your PR #5 bug class
     // (right DB rows deleted, wrong/stale directories left behind).
     assert!(
-        root.join("baz-1.0.0-1").exists(),
-        "baz's install_dir should be kept"
+        root.join("dir/file.txt").exists(),
+        "baz's owned file should be kept"
     );
     assert!(
-        !root.join("bar-1.0.0-1").exists(),
-        "bar's install_dir should be removed from disk"
+        !root.join("bardir/file.txt").exists(),
+        "bar's owned file should be removed from disk"
+    );
+    assert!(
+        !root.join("bardir").exists(),
+        "bar's now-empty owned directory should be removed from disk"
     );
 
     Ok(())

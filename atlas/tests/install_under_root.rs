@@ -18,6 +18,7 @@ use ring::signature::Ed25519KeyPair;
 use rusqlite::Connection;
 use tar::EntryType;
 use tempfile::TempDir;
+use walkdir::WalkDir;
 
 #[derive(Debug, PartialEq, Eq)]
 enum TreeEntry {
@@ -131,9 +132,15 @@ fn multiple_packages_coexist() -> Result<()> {
     workspace.install("app")?;
     workspace.install("app2")?;
 
+    for entry in WalkDir::new(root) {
+        let entry = entry?;
+        println!("{}", entry.path().display());
+    }
+    println!("{}", root.join("usr/bin/symtool3").display());
+
     assert!(root.join("usr/bin/tool").exists());
     assert!(root.join("usr/bin/tool2").exists());
-    assert!(root.join("usr/bin/symtool3").exists());
+    assert!(fs::symlink_metadata(root.join("usr/bin/symtool3")).is_ok());
     assert!(!root.join("var/lib/atlas/local/app-1.0.0-1").exists());
     assert!(!root.join("var/lib/atlas/local/app2-1.0.0-1").exists());
 
@@ -433,7 +440,7 @@ fn system_install_records_are_shared_between_user_configs() -> Result<()> {
             "SELECT COUNT(*) FROM owned_files WHERE package_name = 'shared-app'",
             &[],
         ),
-        1
+        3
     );
     assert_eq!(
         fs::read(system_root.join("usr/bin/shared-tool"))?,

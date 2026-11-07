@@ -1,7 +1,6 @@
 use std::{
-    fs::{self, File},
-    io::{ErrorKind::NotFound, Read, Write},
-    os::unix,
+    fs::{self},
+    io::ErrorKind::NotFound,
     path::{Component, Path, PathBuf},
 };
 
@@ -20,10 +19,11 @@ use common::{
 };
 
 use rusqlite::{Connection, OptionalExtension, params};
+use rustix::fs::{CWD, RenameFlags, renameat_with};
 use tempfile::TempDir;
 
 use crate::{
-    types::contexts::RemoveContext,
+    types::{contexts::RemoveContext, guards::GuardedEntry},
     verify::{
         parse_metadata_lines::parse_metadata_lines, validate_archive::validate_archive_paths,
         validate_payload::validate_payload_paths,
@@ -34,7 +34,7 @@ pub enum PackageState<'a> {
     NotInstalled {
         package_id: PackageIdentity,
         install_conn: &'a Connection,
-        tempdir: TempDir,
+        tempdir: &'a TempDir,
         sky_path: &'a PathBuf,
         config: &'a SisyphusConfig,
         repo_conn: &'a Connection,
@@ -43,14 +43,14 @@ pub enum PackageState<'a> {
     Verified {
         metadata: Metadata,
         manifest_paths: Vec<ManifestLine>,
-        tempdir: TempDir,
+        tempdir: &'a TempDir,
         install_conn: &'a Connection,
         package_id: PackageIdentity,
         sky_path: &'a PathBuf,
         install_dir: &'a PathBuf,
     },
     Staged {
-        tempdir: TempDir,
+        tempdir: &'a TempDir,
         metadata: Metadata,
         install_dir: &'a PathBuf,
         sky_path: &'a PathBuf,
@@ -62,6 +62,30 @@ fn has_parent_dir(path: &Path) -> bool {
     path.components().any(|c| c == Component::ParentDir)
 }
 
+fn symlink_target_escapes_root(link_path: &Path, target: &Path) -> bool {
+    let mut resolved = PathBuf::new();
+
+    if let Some(parent) = link_path.parent() {
+        for component in parent.components() {
+            match component {
+                Component::Normal(name) => resolved.push(name),
+                _ => return true,
+            }
+        }
+    }
+
+    for component in target.components() {
+        match component {
+            Component::Normal(name) => resolved.push(name),
+            Component::ParentDir if !resolved.pop() => return true,
+            Component::RootDir | Component::Prefix(_) => return true,
+            Component::CurDir | Component::ParentDir => {}
+        }
+    }
+
+    false
+}
+
 fn touches_atlas_state(path: &Path, file_type: &FileType) -> bool {
     let atlas_state = Path::new("var/lib/atlas");
 
@@ -70,7 +94,11 @@ fn touches_atlas_state(path: &Path, file_type: &FileType) -> bool {
         || (file_type != &FileType::Dir && atlas_state.starts_with(path))
 }
 
-fn ensure_no_symlink_components(root: &Path, relative: &Path) -> Result<()> {
+pub(crate) fn ensure_no_symlink_components(
+    root: &Path,
+    relative: &Path,
+    allow_final_symlink: bool,
+) -> Result<()> {
     if relative.is_absolute() {
         return Err(anyhow!("Path {} is absolute", relative.display()));
     }
@@ -88,7 +116,10 @@ fn ensure_no_symlink_components(root: &Path, relative: &Path) -> Result<()> {
         current.push(name);
 
         match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
+            Ok(metadata)
+                if metadata.file_type().is_symlink()
+                    && (components.peek().is_some() || !allow_final_symlink) =>
+            {
                 return Err(anyhow!(
                     "Path {} traverses symlink {}",
                     relative.display(),
@@ -240,7 +271,7 @@ impl<'a> PackageState<'a> {
                     }
                 }
 
-                unpack_payload(sky_path, &tempdir)?;
+                unpack_payload(sky_path, tempdir)?;
 
                 Ok(PackageState::Staged {
                     tempdir,
@@ -267,7 +298,10 @@ impl<'a> PackageState<'a> {
     ///
     /// Returns an error if directory creation or exchange fails, or if the state
     /// is not `Staged`.
-    pub fn commit(self) -> Result<(PackageState<'a>, Metadata, TempDir)> {
+    #[allow(clippy::too_many_lines)]
+    pub fn commit(self) -> Result<(PackageState<'a>, Metadata, &'a TempDir, Vec<GuardedEntry>)> {
+        let mut entries: Vec<GuardedEntry> = Vec::new();
+
         match self {
             PackageState::Staged {
                 tempdir,
@@ -286,81 +320,159 @@ impl<'a> PackageState<'a> {
                             line.path.display()
                         ));
                     }
-                    ensure_no_symlink_components(install_dir, &line.path)?;
+                    ensure_no_symlink_components(
+                        install_dir,
+                        &line.path,
+                        line.file_type != FileType::Dir,
+                    )?;
                 }
 
                 fs::create_dir_all(install_dir)
                     .context("Failed to create the install directory")?;
 
-                for line in manifest_lines
-                    .iter()
-                    .filter(|l| l.file_type == FileType::Dir)
-                {
-                    if has_parent_dir(&line.path) {
-                        return Err(anyhow!(
-                            "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
-                            line.path.display()
-                        ));
-                    }
+                for line in manifest_lines {
+                    let staged_path = tempdir.path().join(&line.path);
 
-                    fs::create_dir_all(install_dir.join(&line.path))
-                        .context("Failed to create directory")?;
+                    let file_type = fs::symlink_metadata(&staged_path)
+                        .context("Failed to get file type")?
+                        .file_type();
+
+                    match () {
+                        () if file_type.is_dir() => {
+                            if has_parent_dir(&line.path) {
+                                return Err(anyhow!(
+                                    "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
+                                    staged_path.display()
+                                ));
+                            }
+
+                            let install_path = install_dir.join(&line.path);
+                            match fs::symlink_metadata(&install_path) {
+                                Ok(metadata) if metadata.is_dir() => {}
+                                Ok(_) => {
+                                    return Err(anyhow!(
+                                        "Destination {} exists but is not a directory",
+                                        install_path.display()
+                                    ));
+                                }
+                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                    fs::create_dir_all(&install_path)
+                                        .context("Failed to create directory")?;
+                                    entries.push(GuardedEntry::CreatedDir(line.path));
+                                }
+                                Err(error) => {
+                                    return Err(error)
+                                        .context("Failed to inspect directory destination");
+                                }
+                            }
+                        }
+                        () if file_type.is_file() => {
+                            if has_parent_dir(&line.path) {
+                                return Err(anyhow!(
+                                    "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
+                                    line.path.display()
+                                ));
+                            }
+
+                            let temp_path = tempdir.path().join(&line.path);
+                            let install_path = install_dir.join(&line.path);
+                            fs::create_dir_all(
+                                install_path
+                                    .parent()
+                                    .context("Failed to get parent directory")?,
+                            )
+                            .context("Failed to create directory")?;
+
+                            match fs::symlink_metadata(&install_path) {
+                                Ok(_) => {
+                                    renameat_with(
+                                        CWD,
+                                        temp_path,
+                                        CWD,
+                                        install_path,
+                                        RenameFlags::EXCHANGE,
+                                    )
+                                    .context("Failed to exchange files")?;
+
+                                    entries.push(GuardedEntry::SwappedFile(line.path));
+                                }
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                    renameat_with(
+                                        CWD,
+                                        temp_path,
+                                        CWD,
+                                        install_path,
+                                        RenameFlags::NOREPLACE,
+                                    )
+                                    .context("Failed to exchange files")?;
+
+                                    entries.push(GuardedEntry::CreatedFile(line.path));
+                                }
+                                Err(e) => {
+                                    return Err(e.into());
+                                }
+                            }
+                        }
+
+                        () => {
+                            if file_type.is_symlink() {
+                                if has_parent_dir(&line.path)
+                                    || symlink_target_escapes_root(
+                                        &line.path,
+                                        Path::new(&line.target_or_hash),
+                                    )
+                                {
+                                    return Err(anyhow!(
+                                        "Symlink {} has target {} meaning it is potentially trying to escape the installation directory",
+                                        line.path.display(),
+                                        line.target_or_hash
+                                    ));
+                                }
+
+                                let install_path = install_dir.join(&line.path);
+                                fs::create_dir_all(
+                                    install_path
+                                        .parent()
+                                        .context("Failed to get parent directory")?,
+                                )
+                                .context("Failed to create directory")?;
+
+                                match fs::symlink_metadata(&install_path) {
+                                    Ok(_) => {
+                                        renameat_with(
+                                            CWD,
+                                            staged_path,
+                                            CWD,
+                                            install_path,
+                                            RenameFlags::EXCHANGE,
+                                        )
+                                        .context("Failed to exchange symlinks")?;
+
+                                        entries.push(GuardedEntry::SwappedFile(line.path));
+                                    }
+                                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                        renameat_with(
+                                            CWD,
+                                            staged_path,
+                                            CWD,
+                                            install_path,
+                                            RenameFlags::NOREPLACE,
+                                        )
+                                        .context("Failed to install symlink")?;
+
+                                        entries.push(GuardedEntry::CreatedSymlink(line.path));
+                                    }
+                                    Err(error) => {
+                                        return Err(error)
+                                            .context("Failed to inspect symlink destination");
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                for line in manifest_lines
-                    .iter()
-                    .filter(|l| l.file_type == FileType::File)
-                {
-                    if has_parent_dir(&line.path) {
-                        return Err(anyhow!(
-                            "Path {} has a parent directory meaning it is potentially trying to escape the installation directory",
-                            line.path.display()
-                        ));
-                    }
-
-                    let temp_path = tempdir.path().join(&line.path);
-                    let install_path = install_dir.join(&line.path);
-                    fs::create_dir_all(
-                        install_path
-                            .parent()
-                            .context("Failed to get parent directory")?,
-                    )
-                    .context("Failed to create directory")?;
-                    let mut destination =
-                        File::create(&install_path).context("Failed to create file")?;
-
-                    let mut file_bytes: Vec<u8> = Vec::new();
-                    File::open(&temp_path)
-                        .context("Failed to open file")?
-                        .read_to_end(&mut file_bytes)
-                        .context("Failed to read file")?;
-
-                    destination
-                        .write_all(&file_bytes)
-                        .context("Failed to write file")?;
-                }
-
-                for line in manifest_lines
-                    .iter()
-                    .filter(|l| l.file_type == FileType::Symlink)
-                {
-                    if has_parent_dir(&line.path) || has_parent_dir(Path::new(&line.target_or_hash))
-                    {
-                        return Err(anyhow!(
-                            "Symlink {} has target {} meaning it is potentially trying to escape the installation directory",
-                            line.path.display(),
-                            line.target_or_hash
-                        ));
-                    }
-
-                    let install_target = install_dir.join(&line.target_or_hash);
-                    let install_path = install_dir.join(&line.path);
-
-                    unix::fs::symlink(install_target, install_path)
-                        .context("Failed to create symlink")?;
-                }
-
-                Ok((PackageState::Installed, metadata, tempdir))
+                Ok((PackageState::Installed, metadata, tempdir, entries))
             }
             _ => Err(anyhow!(
                 "Invalid transaction not allowed to commit from this state"
@@ -384,7 +496,9 @@ impl<'a> PackageState<'a> {
             PackageState::Installed => {
                 let mut owned_files_query = ctx
                     .install_conn
-                    .prepare("SELECT path FROM owned_files WHERE package_name = ? ORDER BY path")
+                    .prepare(
+                        "SELECT path FROM owned_files WHERE package_name = ? ORDER BY path DESC",
+                    )
                     .context("Failed to prepare owned files query")?;
                 let owned_files: Vec<String> = owned_files_query
                     .query_map([&ctx.package_id.name], |row| row.get(0))?
@@ -392,17 +506,30 @@ impl<'a> PackageState<'a> {
                     .context("Failed to query owned files")?;
                 for file in owned_files {
                     let path = ctx.install_dir.join(&file);
-                    if path.exists() && !path.is_dir() {
-                        fs::remove_file(&path)
-                            .context(format!("Failed to remove file at {}", path.display()))?;
-                    } else if path.is_dir()
-                        && fs::read_dir(&path)
-                            .context(format!("Failed to read directory at {}", path.display()))?
-                            .next()
-                            .is_none()
-                    {
-                        fs::remove_dir(&path)
-                            .context(format!("Failed to remove directory at {}", path.display()))?;
+                    match fs::symlink_metadata(&path) {
+                        Ok(metadata) if metadata.is_dir() => {
+                            let is_empty = fs::read_dir(&path)
+                                .context(format!("Failed to read directory at {}", path.display()))?
+                                .next()
+                                .transpose()
+                                .context(format!("Failed to read directory at {}", path.display()))?
+                                .is_none();
+                            if is_empty {
+                                fs::remove_dir(&path).context(format!(
+                                    "Failed to remove directory at {}",
+                                    path.display()
+                                ))?;
+                            }
+                        }
+                        Ok(_) => {
+                            fs::remove_file(&path)
+                                .context(format!("Failed to remove file at {}", path.display()))?;
+                        }
+                        Err(error) if error.kind() == NotFound => {}
+                        Err(error) => {
+                            return Err(error)
+                                .context(format!("Failed to inspect path at {}", path.display()));
+                        }
                     }
                 }
 

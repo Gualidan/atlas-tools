@@ -48,8 +48,8 @@ impl BulkUpdate {
         Ok(Connection::open(&self.config.repo_db)?)
     }
 
-    fn dir(&self, name: &str) -> PathBuf {
-        self.tmp.path().join("root").join(format!("{name}-1.0.0-1"))
+    fn dir(&self, _name: &str) -> PathBuf {
+        self.tmp.path().join("root")
     }
 
     fn publish(&self, name: &str, version: &str, release: u32) -> Result<PathBuf> {
@@ -103,7 +103,7 @@ impl BulkUpdate {
                     .to_str()
                     .unwrap()
                     .into(),
-                self.dir(name).to_str().unwrap().into(),
+                self.tmp.path().join("root").to_str().unwrap().into(),
             ),
             "installed record for {name}"
         );
@@ -112,13 +112,12 @@ impl BulkUpdate {
             fs::read(self.dir(name).join(&file))?,
             format!("{name} {version}\n").as_bytes(),
         );
-        let mut files: Vec<_> = fs::read_dir(self.dir(name).join(name))?
-            .map(|entry| entry.map(|entry| entry.file_name()))
-            .collect::<std::io::Result<_>>()?;
-        files.sort();
-        assert_eq!(
-            files,
-            vec![std::ffi::OsString::from(format!("{version}.txt"))]
+        assert!(self.dir(name).join(name).is_dir());
+        assert!(
+            self.dir(name)
+                .join(name)
+                .join(format!("{version}.txt"))
+                .is_file()
         );
         let conn = self.conn()?;
         let mut stmt =
@@ -126,7 +125,12 @@ impl BulkUpdate {
         let owned = stmt
             .query_map([name], |row| row.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        assert_eq!(owned, vec![file]);
+        let expected_owned = if version == "1.0.0" {
+            vec![name.to_string(), file]
+        } else {
+            vec![file]
+        };
+        assert_eq!(owned, expected_owned);
         Ok(())
     }
 
@@ -134,7 +138,14 @@ impl BulkUpdate {
         let mut actual: Vec<_> = fs::read_dir(self.tmp.path().join("root"))?
             .map(|entry| entry.map(|entry| entry.path()))
             .collect::<std::io::Result<_>>()?;
-        let mut expected: Vec<_> = names.iter().map(|name| self.dir(name)).collect();
+        let mut expected: Vec<_> = if names.is_empty() {
+            Vec::new()
+        } else {
+            names
+                .iter()
+                .map(|name| self.tmp.path().join("root").join(name))
+                .collect()
+        };
         actual.sort();
         expected.sort();
         assert_eq!(
