@@ -14,7 +14,10 @@ use fixtures::{
 };
 use ring::signature::Ed25519KeyPair;
 use rusqlite::{Connection, params};
-use std::{fs, path::PathBuf};
+use std::{
+    fs::{self, DirEntry},
+    path::PathBuf,
+};
 use tempfile::{Builder, TempDir};
 
 struct Installation {
@@ -101,10 +104,7 @@ impl Installation {
             2,
             "the payload and reserved state directory should remain"
         );
-        let mut paths = entries
-            .iter()
-            .map(|entry| entry.file_name())
-            .collect::<Vec<_>>();
+        let mut paths = entries.iter().map(DirEntry::file_name).collect::<Vec<_>>();
         paths.sort();
         assert_eq!(paths, ["dir", "var"]);
         assert_eq!(

@@ -1,6 +1,6 @@
 use std::{
     fs::{self},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use rustix::fs::{CWD, RenameFlags, renameat_with};
@@ -75,7 +75,7 @@ impl Drop for SwapBackGuard<'_> {
 }
 
 pub(crate) fn rollback_entries(
-    install_dir: &PathBuf,
+    install_dir: &Path,
     staging_dir: &TempDir,
     entries: &[GuardedEntry],
 ) {
@@ -97,10 +97,11 @@ pub(crate) fn rollback_entries(
             GuardedEntry::CreatedFile(path) => {
                 let install_path = install_dir.join(path);
 
-                if install_path.exists() && !install_path.is_dir() {
-                    if let Err(error) = fs::remove_file(install_path) {
-                        eprintln!("Failed to remove file: {error}");
-                    }
+                if install_path.exists()
+                    && !install_path.is_dir()
+                    && let Err(error) = fs::remove_file(install_path)
+                {
+                    eprintln!("Failed to remove file: {error}");
                 }
             }
             GuardedEntry::CreatedDir(path) => {
