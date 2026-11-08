@@ -69,6 +69,8 @@ the package.
 claim; reproducibility will be addressed separately by controlling build
 timestamps and environments.
 
+`groups` is intentionally not included in the metadata because atlas reads it from the database.
+
 ## Payload rules
 
 `payload.tar.zst` contains the complete staged `$pkgdir` tree. Its paths are

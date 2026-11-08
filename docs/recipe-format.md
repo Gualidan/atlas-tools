@@ -62,6 +62,7 @@ package: |
 | `source` | yes | object containing `url` and `sha256` | Sources fetched before the sandbox starts. |
 | `makedeps` | no | list of strings | Packages needed only to build or test this package. Defaults to `[]`. |
 | `deps` | no | list of strings | Runtime package dependencies embedded in the resulting `.sky` metadata. Defaults to `[]`. |
+| `groups` | no | list of strings | Groups this package belongs to. Defaults to `[]`. |
 | `prepare` | no | multiline string | Preparation script. Omitted means no preparation phase. |
 | `build` | no | multiline string | Compilation script. Omitted means no build phase. |
 | `check` | no | multiline string | Test script. Omitted means no test phase. |
