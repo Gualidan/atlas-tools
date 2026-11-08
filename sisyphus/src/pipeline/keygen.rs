@@ -21,7 +21,7 @@ pub fn run_keygen(path: &Option<PathBuf>) -> Result<()> {
     std::fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
     let config_file = config_dir.join("config.yaml");
 
-    if config_file.exists() && ASSUME_YES.load(std::sync::atomic::Ordering::Relaxed) {
+    if config_file.exists() && !ASSUME_YES.load(std::sync::atomic::Ordering::Relaxed) {
         let ans = Confirm::new(&format!(
             "A sisyphus configuration file already exists at {}. Overwrite it with a new one?",
             config_file.display()
