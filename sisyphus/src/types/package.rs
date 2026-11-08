@@ -35,6 +35,24 @@ fn has_only_unique_elements<T: Eq + std::hash::Hash>(vec: &[T]) -> bool {
     true
 }
 
+/// Package and group identifiers use the same v1 grammar:
+/// `[a-z0-9][a-z0-9+._-]*`.
+fn is_valid_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first_char) = chars.next() else {
+        return false;
+    };
+    (first_char.is_ascii_lowercase() || first_char.is_ascii_digit())
+        && chars.all(|c| {
+            c.is_ascii_lowercase()
+                || c.is_ascii_digit()
+                || c == '+'
+                || c == '.'
+                || c == '_'
+                || c == '-'
+        })
+}
+
 impl Package {
     /// Validates the package schema and required recipe fields.
     ///
@@ -47,22 +65,7 @@ impl Package {
             return Err(anyhow!("Only schema version 1 is supported"));
         }
 
-        let mut name_chars = self.name.chars();
-        let Some(first_char) = name_chars.next() else {
-            return Err(anyhow!(
-                "Name field is invalid refer to the package naming documentation"
-            ));
-        };
-        if (!first_char.is_ascii_lowercase() && !first_char.is_ascii_digit())
-            || !name_chars.all(|c| {
-                c.is_ascii_lowercase()
-                    || c.is_ascii_digit()
-                    || c == '+'
-                    || c == '.'
-                    || c == '_'
-                    || c == '-'
-            })
-        {
+        if !is_valid_name(&self.name) {
             return Err(anyhow!(
                 "Name field is invalid refer to the package naming documentation"
             ));
@@ -90,9 +93,16 @@ impl Package {
                 "Package is not allowed to list itself as a make dependency"
             ));
         }
-        // Catch duplicate group references
-        if self.groups.contains(&self.name) || !has_only_unique_elements(&self.groups) {
+        if self.groups.contains(&self.name) {
             return Err(anyhow!("Package is not allowed to list itself as a group"));
+        }
+        if !has_only_unique_elements(&self.groups) {
+            return Err(anyhow!("Group list must not contain duplicate entries"));
+        }
+        if let Some(group) = self.groups.iter().find(|group| !is_valid_name(group)) {
+            return Err(anyhow!(
+                "Group name `{group}` is invalid refer to the package naming documentation"
+            ));
         }
         if self.package.is_empty() {
             return Err(anyhow!("Package phase field is empty"));
