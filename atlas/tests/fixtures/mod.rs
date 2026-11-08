@@ -447,7 +447,7 @@ pub fn seed_repo_db_with_deps(path: &Path, packages: &[(&str, &str, u32, &str, &
         let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
 
         conn.execute(
-            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 *name,
                 *version,
@@ -458,6 +458,7 @@ pub fn seed_repo_db_with_deps(path: &Path, packages: &[(&str, &str, u32, &str, &
                 "2026-01-01T00:00:00Z",
                 "tester",
                 deps,
+                "[]",
                 "[]"
             ],
         )

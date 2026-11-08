@@ -32,8 +32,8 @@ impl Databases {
     fn publish(&self, name: &str, version: &str, architecture: &str) -> Result<()> {
         self.repo.execute(
             "INSERT INTO packages
-             (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps)
-             VALUES (?, ?, 7, ?, ?, 'hash', '2026-01-01', 'tester', '[]', '[]')",
+             (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups)
+             VALUES (?, ?, 7, ?, ?, 'hash', '2026-01-01', 'tester', '[]', '[]', '[]')",
             params![name, version, architecture, format!("/repo/{name}-{architecture}.sky")],
         )?;
         Ok(())

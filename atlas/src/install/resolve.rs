@@ -139,7 +139,7 @@ mod tests {
             let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
 
             conn.execute(
-                "INSERT INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     *name,
                     "1.0.0",
@@ -150,6 +150,7 @@ mod tests {
                     "2026-01-01T00:00:00Z",
                     "tester",
                     deps,
+                    "[]",
                     "[]"
                 ],
             )
