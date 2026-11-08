@@ -14,6 +14,7 @@ pub struct Package {
     pub makedeps: Vec<String>,
     #[serde(default)]
     pub deps: Vec<String>,
+    #[serde(default)]
     pub groups: Vec<String>,
     #[serde(default)]
     pub prepare: Option<String>,
