@@ -19,6 +19,7 @@ pub struct UpdateCandidate {
     pub release: u32,
     pub install_dir: String,
     pub sky_path: String,
+    pub groups: Vec<String>,
 }
 
 struct ResolvedPackage {
@@ -82,16 +83,17 @@ fn resolve_one(
         let parent = package.parent;
         let mut repo_stmt = repo_conn
                  .prepare(
-                            "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+                            "SELECT version, release, sky_path, groups FROM packages WHERE name = ? AND architecture = ?",
                         )
                         .context("Failed to prepare database statement")?;
 
-        let Some((repo_version, repo_release, sky_path)) = repo_stmt
+        let Some((repo_version, repo_release, sky_path, groups)) = repo_stmt
             .query_row(params![package.name, ARCH], |row| {
                 let version: String = row.get(0)?;
                 let release: u32 = row.get(1)?;
                 let sky_path: String = row.get(2)?;
-                Ok((version, release, sky_path))
+                let groups: String = row.get(3)?;
+                Ok((version, release, sky_path, groups))
             })
             .optional()?
         else {
@@ -137,6 +139,7 @@ fn resolve_one(
                 release: repo_release,
                 install_dir,
                 sky_path,
+                groups: serde_saphyr::from_str(&groups).context("Failed to parse groups")?,
             }),
             Equal => {}
             Greater => {
@@ -213,22 +216,34 @@ fn visit(
 fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Resolution> {
     let mut install_stmt = install_conn
         .prepare(
-            "SELECT name, version, install_dir, sky_path, release FROM installed_packages ORDER BY name",
+            "SELECT name, version, install_dir, sky_path, release, groups FROM installed_packages ORDER BY name",
         )
         .context("Failed to prepare database query")?;
 
     let installed_rows = install_stmt
         .query_map([], |row| {
-            Ok(UpdateCandidate {
-                name: row.get(0)?,
-                version: row.get(1)?,
-                install_dir: row.get(2)?,
-                sky_path: row.get(3)?,
-                release: row.get(4)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, u32>(4)?,
+                row.get::<_, String>(5)?,
+            ))
         })
         .context("Failed to list all installed packages")?
-        .collect::<Result<Vec<UpdateCandidate>, _>>()?;
+        .map(|row| {
+            let (name, version, install_dir, sky_path, release, groups_yaml) = row?;
+            Ok(UpdateCandidate {
+                name,
+                version,
+                install_dir,
+                sky_path,
+                release,
+                groups: serde_saphyr::from_str(&groups_yaml).context("Failed to parse groups")?,
+            })
+        })
+        .collect::<Result<Vec<UpdateCandidate>>>()?;
 
     let mut repo_stmt = repo_conn
         .prepare(
@@ -274,6 +289,7 @@ fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Reso
                 release: repo_release,
                 install_dir: package.install_dir,
                 sky_path,
+                groups: package.groups,
             }),
             Ok(Equal) => {}
             Ok(Greater) => {

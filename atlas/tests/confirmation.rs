@@ -77,8 +77,8 @@ fn seed_installed(config: &RuntimeConfig, name: &str, reason: &str) -> Result<()
     fs::write(dir.join("sentinel"), b"original")?;
     conn.execute(
         "INSERT INTO installed_packages
-         (name, version, release, architecture, sky_path, install_dir, install_reason)
-         VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?)",
+         (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+         VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?, '[]')",
         params![name, ARCH.to_string(), root.to_str().unwrap(), reason],
     )?;
     conn.execute(

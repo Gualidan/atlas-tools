@@ -22,8 +22,8 @@ impl Databases {
     fn install(&self, name: &str, version: &str, architecture: &str) -> Result<()> {
         self.installed.execute(
             "INSERT INTO installed_packages
-             (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, ?, 1, ?, 'old.sky', ?, 'explicit')",
+             (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+             VALUES (?, ?, 1, ?, 'old.sky', ?, 'explicit', '[]')",
             params![name, version, architecture, format!("/installed/{name}")],
         )?;
         Ok(())

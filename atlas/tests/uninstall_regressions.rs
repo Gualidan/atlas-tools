@@ -39,8 +39,8 @@ impl Installation {
         fs::write(dir.join("sentinel"), name)?;
         self.conn.execute(
             "INSERT INTO installed_packages
-             (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, ?)",
+             (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, ?, '[]')",
             params![
                 name,
                 ARCH.to_string(),

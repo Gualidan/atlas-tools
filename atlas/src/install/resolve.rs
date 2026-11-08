@@ -18,6 +18,7 @@ pub struct ResolvedPackage {
     pub release: u32,
     pub architecture: Architectures,
     pub sky_path: String,
+    pub groups: Vec<String>,
 }
 
 /// Resolves a package and its dependencies in dependency-first install order.
@@ -68,15 +69,22 @@ fn visit(
         return Err(anyhow!("dependency cycle: {}", cycle.join(" -> ")));
     }
 
-    let mut stmt  = repo_conn.prepare("SELECT version, release, sky_path, deps FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-    let Some((version, release, sky_path, deps)): Option<(String, u32, String, String)> = stmt
+    let mut stmt  = repo_conn.prepare("SELECT version, release, sky_path, deps, groups FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
+    let Some((version, release, sky_path, deps, groups)): Option<(
+        String,
+        u32,
+        String,
+        String,
+        String,
+    )> = stmt
         .query_row(params![name, arch.to_string()], |row| {
             let version: String = row.get(0)?;
             let release: u32 = row.get(1)?;
             let sky_path: String = row.get(2)?;
             let deps: String = row.get(3)?;
+            let groups: String = row.get(4)?;
 
-            Ok((version, release, sky_path, deps))
+            Ok((version, release, sky_path, deps, groups))
         })
         .optional()?
     else {
@@ -87,6 +95,8 @@ fn visit(
     };
 
     let deps: Vec<String> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
+    let groups: Vec<String> =
+        serde_saphyr::from_str(&groups).context("Failed to deserialize YAML")?;
 
     stack.push(name.clone());
     let mut stmt = install_conn
@@ -119,6 +129,7 @@ fn visit(
         release,
         architecture: arch,
         sky_path,
+        groups,
     });
 
     Ok(())

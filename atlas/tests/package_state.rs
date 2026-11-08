@@ -103,7 +103,7 @@ impl StateFixture {
     }
 
     fn claim(&self, package: &str, architecture: &str, path: &str) -> Result<()> {
-        self.installed.execute("INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason) VALUES (?, '1.0.0', 1, ?, 'old.sky', '/unused', 'explicit')", params![package, architecture])?;
+        self.installed.execute("INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason, groups) VALUES (?, '1.0.0', 1, ?, 'old.sky', '/unused', 'explicit', '[]')", params![package, architecture])?;
         self.installed.execute(
             "INSERT INTO owned_files VALUES (?, ?, ?)",
             params![path, package, architecture],

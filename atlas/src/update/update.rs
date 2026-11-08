@@ -100,6 +100,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: &UpdateArgs) -> Result<()> {
 
         update_one(
             &package_id,
+            &package.groups,
             &repo_db_conn,
             &mut install_db_conn,
             &PathBuf::from(package.sky_path),
@@ -125,6 +126,7 @@ pub fn update(runtime_config: &RuntimeConfig, args: &UpdateArgs) -> Result<()> {
 /// filesystem exchange, or database recording fails.
 pub fn update_one(
     package_id: &PackageIdentity,
+    updated_groups: &Vec<String>,
     repo_conn: &Connection,
     install_conn: &mut Connection,
     sky_path: &PathBuf,
@@ -209,6 +211,7 @@ pub fn update_one(
         repo_conn,
         &metadata,
         &package_id.clone(),
+        updated_groups,
         &sky_path.to_string_lossy(),
         &install_dir.to_string_lossy(),
         &created_dirs,
