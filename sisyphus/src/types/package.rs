@@ -25,6 +25,16 @@ pub struct Package {
     pub package: String,
 }
 
+fn has_only_unique_elements<T: Eq + std::hash::Hash>(vec: &[T]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    for item in vec {
+        if !seen.insert(item) {
+            return false;
+        }
+    }
+    true
+}
+
 impl Package {
     /// Validates the package schema and required recipe fields.
     ///
@@ -79,6 +89,10 @@ impl Package {
             return Err(anyhow!(
                 "Package is not allowed to list itself as a make dependency"
             ));
+        }
+        // Catch duplicate group references
+        if self.groups.contains(&self.name) || !has_only_unique_elements(&self.groups) {
+            return Err(anyhow!("Package is not allowed to list itself as a group"));
         }
         if self.package.is_empty() {
             return Err(anyhow!("Package phase field is empty"));
