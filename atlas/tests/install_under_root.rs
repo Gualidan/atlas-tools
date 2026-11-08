@@ -301,7 +301,7 @@ fn invalid_packages_do_not_modify_target_or_install_records() -> Result<()> {
         "unsafe-path",
         "invalid-payload",
     ] {
-        let _err = install(&package.to_string(), &config, &root)
+        let _err = install(Some(package), None, &config, &root)
             .expect_err("invalid package must be rejected");
         assert_eq!(
             snapshot_tree(&root)?,
@@ -350,8 +350,8 @@ fn installed_state_is_independent_between_target_roots() -> Result<()> {
         &[],
         &[PayloadEntry::file("usr/bin/tool", b"version one")],
     )?;
-    install(&"app".to_string(), &config_one, &root_one)?;
-    install(&"app".to_string(), &config_two, &root_two)?;
+    install(Some("app"), None, &config_one, &root_one)?;
+    install(Some("app"), None, &config_two, &root_two)?;
 
     workspace.publish_with_entries(
         "app",
@@ -425,8 +425,8 @@ fn system_install_records_are_shared_between_user_configs() -> Result<()> {
     )?;
     fs::copy(&workspace.config.repo_db, &user_two_repo)?;
 
-    install(&"shared-app".to_string(), &user_one_config, &system_root)?;
-    install(&"shared-app".to_string(), &user_two_config, &system_root)?;
+    install(Some("shared-app"), None, &user_one_config, &system_root)?;
+    install(Some("shared-app"), None, &user_two_config, &system_root)?;
 
     let conn = Connection::open(&shared_install_db)?;
     assert_eq!(
@@ -480,12 +480,8 @@ fn package_cannot_overwrite_atlas_state_under_target_root() -> Result<()> {
         )],
     )?;
 
-    let err = install(
-        &"state-overwriter".to_string(),
-        &config,
-        &root.to_path_buf(),
-    )
-    .expect_err("Atlas state paths must be reserved");
+    let err = install(Some("state-overwriter"), None, &config, &root.to_path_buf())
+        .expect_err("Atlas state paths must be reserved");
     assert!(
         format!("{err:#}").to_lowercase().contains("conflict")
             || format!("{err:#}").to_lowercase().contains("reserved"),
@@ -570,7 +566,7 @@ fn target_root_escape_attempts_leave_outside_paths_unchanged() -> Result<()> {
         target_before.insert(PathBuf::from(path), TreeEntry::Directory);
     }
     for package in ["traversal", "absolute", "symlink-parent"] {
-        let _err = install(&package.to_string(), &config, &root)
+        let _err = install(Some(package), None, &config, &root)
             .expect_err("target-root escapes must be rejected");
         assert_eq!(
             snapshot_tree(&root)?,

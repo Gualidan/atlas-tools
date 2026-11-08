@@ -41,7 +41,12 @@ enum Commands {
 #[derive(Args)]
 pub struct InstallArgs {
     /// The name package to install
-    pub package: String,
+    pub package: Option<String>,
+
+    #[arg(long = "group", short = 'g')]
+    /// A package group to install
+    pub group: Option<String>,
+
     /// Optionnaly the path to a directory to treat as root defaults to `/`
     #[arg(long = "root")]
     pub root: Option<PathBuf>,
@@ -93,7 +98,12 @@ pub fn run() -> Result<()> {
 
             let install_dir = args.root.unwrap_or(PathBuf::from("/"));
 
-            install(&args.package, &runtime_config, &install_dir)?;
+            install(
+                args.package.as_deref(),
+                args.group.as_deref(),
+                &runtime_config,
+                &install_dir,
+            )?;
         }
         Commands::Verify(args) => {
             let runtime_config =

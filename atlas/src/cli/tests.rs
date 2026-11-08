@@ -31,7 +31,7 @@ fn both_yes_flags_work_before_and_after_every_mutating_subcommand() {
                 let cli = Cli::try_parse_from(&args).unwrap();
                 assert!(cli.assume_yes, "{args:?}");
                 match cli.commands {
-                    Commands::Install(args) => assert_eq!(args.package, "foo"),
+                    Commands::Install(args) => assert_eq!(args.package.as_deref(), Some("foo")),
                     Commands::Uninstall(args) => assert_eq!(args.package, "foo"),
                     Commands::Update(args) => assert_eq!(args.package.as_deref(), Some("foo")),
                     Commands::Clean(_) => {}
@@ -90,7 +90,7 @@ fn yes_after_the_option_terminator_is_a_package_name() {
     let Commands::Install(args) = cli.commands else {
         panic!("expected install command");
     };
-    assert_eq!(args.package, "--yes");
+    assert_eq!(args.package.as_deref(), Some("--yes"));
 }
 
 #[test]

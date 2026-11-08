@@ -1,9 +1,9 @@
-use anyhow::{Context as AnyhowContext, Result, anyhow};
+use anyhow::{Context as AnyhowContext, Result, anyhow, bail};
 use common::types::{
     config::SisyphusConfig,
     package::{Architectures, PackageIdentity},
 };
-use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
+use std::{collections::HashSet, env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
@@ -14,7 +14,7 @@ use crate::{
     cli::confirmation::{Action, confirmation_prompt},
     install::{
         db::{InstallReason, ensure_install_schema, insert_installed_package},
-        resolve::resolve_install_order,
+        resolve::{ResolvedPackage, resolve_install_order},
     },
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
@@ -32,116 +32,128 @@ use crate::{
 /// filesystem operations, or database updates fail.
 #[allow(clippy::too_many_lines)]
 pub fn install(
-    package_name: &String,
+    package_name: Option<&str>,
+    group: Option<&str>,
     runtime_config: &RuntimeConfig,
     install_dir: &PathBuf,
 ) -> Result<()> {
-    let repo_conn = Connection::open(&runtime_config.repo_db)
-        .context("Failed to open connection to the repository database")?;
-    let mut stmt = repo_conn
-        .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
-        .context("Failed to prepare database query")?;
-    let Some(name): Option<String> = stmt
-        .query_row(params![package_name, ARCH], |row| row.get(0))
-        .optional()?
-    else {
-        return Err(anyhow!("Package {package_name} not found"));
-    };
-
-    let architecture = Architectures::try_from(ARCH.to_string())?;
-    let config = load_config().context("Failed to load settings")?;
-
-    let to_install = {
-        let install_conn = if runtime_config.install_db.exists() {
-            Connection::open_with_flags(
-                &runtime_config.install_db,
-                OpenFlags::SQLITE_OPEN_READ_ONLY,
-            )
-            .context("Failed to open connection to install database")?
-        } else {
-            let conn = Connection::open_in_memory()
-                .context("Failed to open temporary install database")?;
-            ensure_install_schema(&conn).context("Failed to create the install database schema")?;
-            conn
-        };
-        resolve_install_order(&repo_conn, &install_conn, name.clone(), architecture)?
-    };
-    let packages = to_install
-        .iter()
-        .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
-        .collect::<Vec<(&str, &str)>>();
-
-    let ans = confirmation_prompt(packages, 4, &Action::Install)?;
-
-    if !ans {
+    if let Some(group) = group {
+        install_group(group, runtime_config)?;
         return Ok(());
     }
 
-    create_dir_all(install_dir).context("Failed to create install_dir's parents")?;
+    if let Some(package_name) = package_name {
+        let repo_conn = Connection::open(&runtime_config.repo_db)
+            .context("Failed to open connection to the repository database")?;
+        let mut stmt = repo_conn
+            .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
+            .context("Failed to prepare database query")?;
+        let Some(name): Option<String> = stmt
+            .query_row(params![package_name, ARCH], |row| row.get(0))
+            .optional()?
+        else {
+            return Err(anyhow!("Package {package_name} not found"));
+        };
 
-    if let Some(parent) = runtime_config.install_db.parent() {
-        std::fs::create_dir_all(parent)
-            .context("Failed to create the install database directory")?;
-    }
+        let architecture = Architectures::try_from(ARCH.to_string())?;
+        let config = load_config().context("Failed to load settings")?;
 
-    let install_conn = Connection::open(&runtime_config.install_db)
-        .context("Failed to open connection to install database")?;
-    install_conn
-        .execute("PRAGMA foreign_keys = ON", [])
-        .context("Failed to enable foreign key enforcement")?;
-    ensure_install_schema(&install_conn).context("Failed to create the install database schema")?;
-
-    let mut stmt = install_conn
-        .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
-        .context("Failed to prepare database query")?;
-
-    for package in to_install {
-        let is_root = package.name == name;
-
-        if !is_root {
-            let installed = stmt
-                .query_row(
-                    params![package.name, package.architecture.to_string()],
-                    |row| row.get::<_, String>(0),
+        let to_install = {
+            let install_conn = if runtime_config.install_db.exists() {
+                Connection::open_with_flags(
+                    &runtime_config.install_db,
+                    OpenFlags::SQLITE_OPEN_READ_ONLY,
                 )
-                .optional()?
-                .is_some();
+                .context("Failed to open connection to install database")?
+            } else {
+                let conn = Connection::open_in_memory()
+                    .context("Failed to open temporary install database")?;
+                ensure_install_schema(&conn)
+                    .context("Failed to create the install database schema")?;
+                conn
+            };
+            resolve_install_order(&repo_conn, &install_conn, name.clone(), architecture)?
+        };
+        let packages = to_install
+            .iter()
+            .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
+            .collect::<Vec<(&str, &str)>>();
 
-            if installed {
-                continue;
-            }
+        let ans = confirmation_prompt(packages, 4, &Action::Install)?;
+
+        if !ans {
+            return Ok(());
         }
 
-        let install_reason = if is_root {
-            InstallReason::Explicit
-        } else {
-            InstallReason::Dependency
-        };
+        create_dir_all(install_dir).context("Failed to create install_dir's parents")?;
 
-        let package_id = PackageIdentity {
-            name: package.name,
-            version: package.version,
-            release: package.release,
-            architecture: package.architecture,
-        };
+        if let Some(parent) = runtime_config.install_db.parent() {
+            std::fs::create_dir_all(parent)
+                .context("Failed to create the install database directory")?;
+        }
 
-        let tempdir = staging_directory(install_dir)?;
+        let install_conn = Connection::open(&runtime_config.install_db)
+            .context("Failed to open connection to install database")?;
+        install_conn
+            .execute("PRAGMA foreign_keys = ON", [])
+            .context("Failed to enable foreign key enforcement")?;
+        ensure_install_schema(&install_conn)
+            .context("Failed to create the install database schema")?;
 
-        install_one(
-            runtime_config,
-            install_reason,
-            &package_id,
-            &package.groups,
-            &PathBuf::from(&package.sky_path),
-            install_dir,
-            tempdir,
-            &config,
-            &repo_conn,
-            &install_conn,
-        )?;
+        let mut stmt = install_conn
+            .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
+            .context("Failed to prepare database query")?;
+
+        for package in to_install {
+            let is_root = package.name == name;
+
+            if !is_root {
+                let installed = stmt
+                    .query_row(
+                        params![package.name, package.architecture.to_string()],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .is_some();
+
+                if installed {
+                    continue;
+                }
+            }
+
+            let install_reason = if is_root {
+                InstallReason::Explicit
+            } else {
+                InstallReason::Dependency
+            };
+
+            let package_id = PackageIdentity {
+                name: package.name,
+                version: package.version,
+                release: package.release,
+                architecture: package.architecture,
+            };
+
+            let tempdir = staging_directory(install_dir)?;
+
+            install_one(
+                runtime_config,
+                install_reason,
+                &package_id,
+                &package.groups,
+                &PathBuf::from(&package.sky_path),
+                install_dir,
+                tempdir,
+                &config,
+                &repo_conn,
+                &install_conn,
+            )?;
+        }
+
+        return Ok(());
     }
 
-    Ok(())
+    bail!("Provide either a package or a package group name to install")
 }
 
 /// Verifies and stages one package, exchanges it into `install_dir`, and records
@@ -208,6 +220,50 @@ pub fn install_one(
     )?;
 
     guard.disarm();
+    Ok(())
+}
+
+/// Queries the repository for packages in the given group and installs them.
+///
+/// # Errors
+///
+/// Returns an error if the group cannot be resolved or one of its packages
+/// cannot be installed.
+pub fn install_group(group: &str, config: &RuntimeConfig) -> Result<()> {
+    let repo_conn = Connection::open(&config.repo_db)?;
+    let install_conn = Connection::open(&config.install_db)?;
+    let mut stmt = repo_conn.prepare("SELECT name, groups FROM packages")?;
+    let rows = stmt.query_map(params![], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    let mut names = Vec::new();
+    for row in rows {
+        let (name, serialized_groups) = row?;
+        let groups: Vec<String> = serde_saphyr::from_str(&serialized_groups)
+            .context("Failed to deserialize package groups")?;
+
+        if groups.iter().any(|candidate| candidate == group) {
+            names.push(name);
+        }
+    }
+
+    names.sort();
+    let mut to_install: Vec<ResolvedPackage> = vec![];
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for name in names {
+        for package in resolve_install_order(
+            &repo_conn,
+            &install_conn,
+            name,
+            Architectures::try_from(ARCH.to_string())?,
+        )? {
+            if seen.insert(package.name.clone()) {
+                to_install.push(package);
+            }
+        }
+    }
     Ok(())
 }
 

@@ -245,7 +245,7 @@ fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
             seed_repo_db(&config.repo_db, &[("foo", "1.0.0", 1, "missing.sky")]);
             let root = tmp.path().join("root");
 
-            install(&"foo".into(), &config, &root)?;
+            install(Some("foo"), None, &config, &root)?;
 
             assert!(!root.exists());
             assert!(!config.install_db.exists());

@@ -196,7 +196,7 @@ fn install_prompt_error_lists_dependencies_and_leaves_no_installation() -> Resul
             );
             let root = tmp.path().join("root");
 
-            let err = install(&"foo".into(), &config, &root)
+            let err = install(Some("foo"), None, &config, &root)
                 .expect_err("terminal failure must stop the install before reading archives");
 
             assert_eq!(
@@ -235,7 +235,7 @@ fn install_prompt_error_preserves_existing_database_and_skips_installed_dependen
             let database_before = fs::read(&config.install_db)?;
             let root = tmp.path().join("root");
 
-            let err = install(&"foo".into(), &config, &root)
+            let err = install(Some("foo"), None, &config, &root)
                 .expect_err("installed dependencies must be resolved before confirmation");
 
             assert_eq!(

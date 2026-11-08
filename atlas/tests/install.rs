@@ -78,7 +78,7 @@ fn install_rejects_setuid_file() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let result = install(&"foo".to_string(), &config, &root);
+    let result = install(Some("foo"), None, &config, &root);
     assert_install_rejects(&config, &root, "foo", result, "setuid");
 
     Ok(())
@@ -109,7 +109,7 @@ fn install_rejects_setgid_file() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let result = install(&"foo".to_string(), &config, &root);
+    let result = install(Some("foo"), None, &config, &root);
     assert_install_rejects(&config, &root, "foo", result, "setgid");
 
     Ok(())
@@ -140,7 +140,7 @@ fn install_rejects_absolute_path() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let result = install(&"foo".to_string(), &config, &root);
+    let result = install(Some("foo"), None, &config, &root);
     assert_install_rejects(&config, &root, "foo", result, "absolute");
 
     Ok(())
@@ -171,7 +171,7 @@ fn install_rejects_parent_dir_path() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let result = install(&"foo".to_string(), &config, &root);
+    let result = install(Some("foo"), None, &config, &root);
 
     assert_install_rejects(&config, &root, "foo", result, "ParentDir");
 
@@ -203,7 +203,7 @@ fn install_rejects_fifo_entry() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let result = install(&"foo".to_string(), &config, &root);
+    let result = install(Some("foo"), None, &config, &root);
     assert_install_rejects(&config, &root, "foo", result, "Fifo");
 
     Ok(())
@@ -237,7 +237,7 @@ fn raw_fixture_with_clean_entry_installs() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"foo".to_string(), &config, &root)
+    install(Some("foo"), None, &config, &root)
         .expect("the clean raw fixture must install successfully");
 
     let conn = Connection::open(&config.install_db)?;
@@ -278,7 +278,7 @@ fn fresh_install_creates_database_parents_and_populates_owned_files() -> Result<
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    install(&"foo".to_string(), &config, &tmp.path().join("root"))
+    install(Some("foo"), None, &config, &tmp.path().join("root"))
         .expect("fresh install should succeed");
 
     let conn = Connection::open(&config.install_db)?;
@@ -322,9 +322,9 @@ fn install_with_file_conflict_fails() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
+    install(Some("A"), None, &config, &root).expect("installing A should succeed");
 
-    let result = install(&"B".to_string(), &config, &root);
+    let result = install(Some("B"), None, &config, &root);
     let err = result.expect_err("installing B should fail on the file conflict");
     let chain = format!("{err:#}");
     assert!(
@@ -360,8 +360,8 @@ fn idempotent_install_does_not_conflict_with_itself() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"foo".to_string(), &config, &root).expect("first install should succeed");
-    install(&"foo".to_string(), &config, &root).expect("second install should succeed");
+    install(Some("foo"), None, &config, &root).expect("first install should succeed");
+    install(Some("foo"), None, &config, &root).expect("second install should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -403,7 +403,7 @@ fn fresh_install_rolls_back_completely_when_the_database_insert_fails() -> Resul
     );
 
     let root = tmp.path().join("root");
-    let err = install(&"foo".to_string(), &config, &root)
+    let err = install(Some("foo"), None, &config, &root)
         .expect_err("install should fail because the dependency is missing");
     let chain = format!("{err:#}");
     assert!(
@@ -462,7 +462,7 @@ fn reinstall_rollback_preserves_the_previous_version() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"foo".to_string(), &config, &root).expect("first install should succeed");
+    install(Some("foo"), None, &config, &root).expect("first install should succeed");
 
     let install_dir = root.clone();
     let installed_file = install_dir.join("dir").join("file.txt");
@@ -494,7 +494,7 @@ fn reinstall_rollback_preserves_the_previous_version() -> Result<()> {
         &[("foo", "1.0.0", 1, bad_sky.to_str().unwrap())],
     );
 
-    let err = install(&"foo".to_string(), &config, &root)
+    let err = install(Some("foo"), None, &config, &root)
         .expect_err("the second install should fail because the dependency is missing");
     let chain = format!("{err:#}");
     assert!(
@@ -573,8 +573,8 @@ fn two_packages_can_share_a_directory() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
-    install(&"B".to_string(), &config, &root)
+    install(Some("A"), None, &config, &root).expect("installing A should succeed");
+    install(Some("B"), None, &config, &root)
         .expect("installing B should succeed even though it shares a directory with A");
 
     let conn = Connection::open(&config.install_db)?;
@@ -634,7 +634,7 @@ fn symlinks_are_recorded_as_owned_files() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"sym".to_string(), &config, &root).expect("install should succeed");
+    install(Some("sym"), None, &config, &root).expect("install should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -699,8 +699,8 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
-    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
+    install(Some("A"), None, &config, &root).expect("installing A should succeed");
+    install(Some("B"), None, &config, &root).expect("installing B should succeed");
 
     uninstall(&config, &"A".to_string(), false).expect("uninstalling A should succeed");
 
@@ -799,7 +799,7 @@ fn installing_a_package_installs_its_dependencies() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"foo".to_string(), &config, &root)?;
+    install(Some("foo"), None, &config, &root)?;
 
     let conn = Connection::open(&config.install_db)?;
     for (name, sky_path, dir) in [
@@ -883,7 +883,7 @@ fn install_works_on_a_fresh_install_root() -> Result<()> {
     let root = tmp.path().join("missing").join("root");
     assert!(!root.exists(), "the install root must not exist yet");
 
-    install(&"foo".to_string(), &config, &root).expect("installing into a fresh root must work");
+    install(Some("foo"), None, &config, &root).expect("installing into a fresh root must work");
 
     assert_eq!(
         std::fs::read_to_string(root.join("dir").join("file.txt"))?,
@@ -933,7 +933,7 @@ fn skipped_deps_stay_put_but_root_reinstalls() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    install(&"foo".to_string(), &config, &root)?;
+    install(Some("foo"), None, &config, &root)?;
 
     let bar_file = root.join("bardir").join("file.txt");
     let foo_file = root.join("foodir").join("file.txt");
@@ -977,7 +977,7 @@ fn skipped_deps_stay_put_but_root_reinstalls() -> Result<()> {
         ],
     );
 
-    install(&"foo".to_string(), &config, &root)?;
+    install(Some("foo"), None, &config, &root)?;
 
     assert_eq!(
         std::fs::read_to_string(&bar_file)?,
@@ -1051,7 +1051,7 @@ fn cycles_leave_nothing_behind() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let err = install(&"foo".to_string(), &config, &root)
+    let err = install(Some("foo"), None, &config, &root)
         .expect_err("a dependency cycle must abort the install");
     let chain = format!("{err:#}");
     assert!(
@@ -1097,7 +1097,7 @@ fn ghost_deps_fail_before_any_install() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let err = install(&"foo".to_string(), &config, &root)
+    let err = install(Some("foo"), None, &config, &root)
         .expect_err("a missing dependency must abort the install");
     let chain = format!("{err:#}");
     assert!(chain.contains("ghost"), "error chain was: {chain}");
@@ -1175,7 +1175,7 @@ fn mid_chain_failure_keeps_earlier_deps() -> Result<()> {
     );
 
     let root = tmp.path().join("root");
-    let err = install(&"foo".to_string(), &config, &root)
+    let err = install(Some("foo"), None, &config, &root)
         .expect_err("the setuid dependency must be rejected");
     let chain = format!("{err:#}");
     assert!(chain.contains("setuid"), "error chain was: {chain}");

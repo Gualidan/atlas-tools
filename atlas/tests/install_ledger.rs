@@ -59,7 +59,7 @@ fn installing_a_package_records_edges_backed_by_ledger_rows() -> Result<()> {
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
     let (foo_sky, _bar_sky) = seed_foo_depends_on_bar(&tmp, &config, &keypair)?;
 
-    install(&"foo".to_string(), &config, &tmp.path().join("root"))
+    install(Some("foo"), None, &config, &tmp.path().join("root"))
         .expect("installing foo should install bar first and then foo");
 
     let conn = Connection::open(&config.install_db)?;
@@ -210,7 +210,7 @@ fn install_fails_and_rolls_back_when_the_repo_lies_about_dependencies() -> Resul
     );
 
     let root = tmp.path().join("root");
-    install(&"foo".to_string(), &config, &root).expect_err(
+    install(Some("foo"), None, &config, &root).expect_err(
         "installing foo must fail: the foo -> bar edge cannot reference bar's ledger row",
     );
 
@@ -262,7 +262,7 @@ fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()
     );
 
     let root = tmp.path().join("root");
-    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
+    install(Some("A"), None, &config, &root).expect("installing A should succeed");
 
     let a_file = root.join("dir").join("file.txt");
     assert_eq!(
@@ -271,7 +271,7 @@ fn failed_fresh_install_preserves_the_existing_root_and_cleans_up() -> Result<()
         "A's file must be installed before the failing install"
     );
 
-    let err = install(&"B".to_string(), &config, &root)
+    let err = install(Some("B"), None, &config, &root)
         .expect_err("installing B must fail because its dependency is missing");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");

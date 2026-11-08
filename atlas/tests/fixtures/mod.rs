@@ -211,11 +211,11 @@ impl Workspace {
     }
 
     pub fn install(&self, name: &str) -> Result<()> {
-        install(&name.to_string(), &self.config, &self.root)
+        install(Some(name), None, &self.config, &self.root)
     }
 
     pub fn install_into(&self, name: &str, target_root: &Path) -> Result<()> {
-        install(&name.to_string(), &self.config, &target_root.to_path_buf())
+        install(Some(name), None, &self.config, &target_root.to_path_buf())
     }
 
     pub fn uninstall(&self, name: &str) -> Result<UninstallReport> {

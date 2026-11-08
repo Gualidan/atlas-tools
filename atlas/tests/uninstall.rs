@@ -36,7 +36,7 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    install(&"foo".to_string(), &config, &tmp.path().join("root")).expect("install should succeed");
+    install(Some("foo"), None, &config, &tmp.path().join("root")).expect("install should succeed");
 
     uninstall(&config, &"foo".to_string(), false).expect("uninstall should succeed");
 
@@ -105,8 +105,8 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
 
     let root = tmp.path().join("root");
 
-    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
-    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
+    install(Some("A"), None, &config, &root).expect("installing A should succeed");
+    install(Some("B"), None, &config, &root).expect("installing B should succeed");
 
     let report = uninstall(&config, &"A".to_string(), false)?;
 
@@ -166,7 +166,7 @@ fn uninstall_dependent_also_uninstalls_non_explicitly_installed_dependencies() -
 
     let root = tmp.path().join("root");
 
-    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
+    install(Some("B"), None, &config, &root).expect("installing B should succeed");
 
     uninstall(&config, &"B".to_string(), false).expect("uninstalling B should succeed");
 
@@ -252,8 +252,8 @@ fn uninstall_keeps_explicitly_installed_dependencies() -> Result<()> {
 
     let root = tmp.path().join("root");
 
-    install(&"baz".to_string(), &config, &root).expect("install should succeed");
-    install(&"bar".to_string(), &config, &root).expect("install should succeed");
+    install(Some("baz"), None, &config, &root).expect("install should succeed");
+    install(Some("bar"), None, &config, &root).expect("install should succeed");
 
     uninstall(&config, &"bar".to_string(), false).expect("uninstall should succeed");
 
