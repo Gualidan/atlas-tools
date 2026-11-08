@@ -1,5 +1,6 @@
 pub mod bubblewrap;
 pub mod fetcher;
+pub mod guard;
 pub mod package;
 pub mod recipe;
 pub mod runtime_config;

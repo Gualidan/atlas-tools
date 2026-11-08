@@ -6,7 +6,7 @@ use zstd::Encoder;
 
 use crate::{
     package::db::insert_package,
-    types::{package::Package, runtime_config::RuntimeConfig},
+    types::{guard::SkyGuard, package::Package, runtime_config::RuntimeConfig},
 };
 use common::types::metadata::Metadata;
 
@@ -83,6 +83,8 @@ pub fn sky_gen(
         .finish()
         .context("Failed to finish zstd stream")?;
 
+    let mut guard = SkyGuard::new(&output_path);
+
     insert_package(
         runtime_config,
         package,
@@ -91,6 +93,9 @@ pub fn sky_gen(
     )?;
 
     drop(archive);
+
+    guard.disarm();
+    drop(guard);
 
     Ok(output_path)
 }
