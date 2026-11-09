@@ -37,123 +37,128 @@ pub fn install(
     runtime_config: &RuntimeConfig,
     install_dir: &PathBuf,
 ) -> Result<()> {
-    if let Some(group) = group {
-        install_group(group, runtime_config)?;
-        return Ok(());
-    }
-
-    if let Some(package_name) = package_name {
-        let repo_conn = Connection::open(&runtime_config.repo_db)
-            .context("Failed to open connection to the repository database")?;
-        let mut stmt = repo_conn
-            .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
-            .context("Failed to prepare database query")?;
-        let Some(name): Option<String> = stmt
-            .query_row(params![package_name, ARCH], |row| row.get(0))
-            .optional()?
-        else {
-            return Err(anyhow!("Package {package_name} not found"));
-        };
-
-        let architecture = Architectures::try_from(ARCH.to_string())?;
-        let config = load_config().context("Failed to load settings")?;
-
-        let to_install = {
-            let install_conn = if runtime_config.install_db.exists() {
-                Connection::open_with_flags(
-                    &runtime_config.install_db,
-                    OpenFlags::SQLITE_OPEN_READ_ONLY,
-                )
-                .context("Failed to open connection to install database")?
-            } else {
-                let conn = Connection::open_in_memory()
-                    .context("Failed to open temporary install database")?;
-                ensure_install_schema(&conn)
-                    .context("Failed to create the install database schema")?;
-                conn
+    match (package_name, group) {
+        (Some(_), Some(_)) => {
+            bail!("Specify a package or group name to install, not both.")
+        }
+        (None, None) => {
+            bail!("Specify a package or group name to install.")
+        }
+        (None, Some(group)) => {
+            install_group(group, runtime_config)?;
+            Ok(())
+        }
+        (Some(package_name), None) => {
+            let repo_conn = Connection::open(&runtime_config.repo_db)
+                .context("Failed to open connection to the repository database")?;
+            let mut stmt = repo_conn
+                .prepare("SELECT name FROM packages WHERE name = ? AND architecture = ?")
+                .context("Failed to prepare database query")?;
+            let Some(name): Option<String> = stmt
+                .query_row(params![package_name, ARCH], |row| row.get(0))
+                .optional()?
+            else {
+                return Err(anyhow!("Package {package_name} not found"));
             };
-            resolve_install_order(&repo_conn, &install_conn, name.clone(), architecture)?
-        };
-        let packages = to_install
-            .iter()
-            .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
-            .collect::<Vec<(&str, &str)>>();
 
-        let ans = confirmation_prompt(packages, 4, &Action::Install)?;
+            let architecture = Architectures::try_from(ARCH.to_string())?;
+            let config = load_config().context("Failed to load settings")?;
 
-        if !ans {
-            return Ok(());
-        }
-
-        create_dir_all(install_dir).context("Failed to create install_dir's parents")?;
-
-        if let Some(parent) = runtime_config.install_db.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create the install database directory")?;
-        }
-
-        let install_conn = Connection::open(&runtime_config.install_db)
-            .context("Failed to open connection to install database")?;
-        install_conn
-            .execute("PRAGMA foreign_keys = ON", [])
-            .context("Failed to enable foreign key enforcement")?;
-        ensure_install_schema(&install_conn)
-            .context("Failed to create the install database schema")?;
-
-        let mut stmt = install_conn
-            .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
-            .context("Failed to prepare database query")?;
-
-        for package in to_install {
-            let is_root = package.name == name;
-
-            if !is_root {
-                let installed = stmt
-                    .query_row(
-                        params![package.name, package.architecture.to_string()],
-                        |row| row.get::<_, String>(0),
+            let to_install = {
+                let install_conn = if runtime_config.install_db.exists() {
+                    Connection::open_with_flags(
+                        &runtime_config.install_db,
+                        OpenFlags::SQLITE_OPEN_READ_ONLY,
                     )
-                    .optional()?
-                    .is_some();
+                    .context("Failed to open connection to install database")?
+                } else {
+                    let conn = Connection::open_in_memory()
+                        .context("Failed to open temporary install database")?;
+                    ensure_install_schema(&conn)
+                        .context("Failed to create the install database schema")?;
+                    conn
+                };
+                resolve_install_order(&repo_conn, &install_conn, name.clone(), architecture)?
+            };
+            let packages = to_install
+                .iter()
+                .map(|pkg| (pkg.name.as_str(), pkg.version.as_str()))
+                .collect::<Vec<(&str, &str)>>();
 
-                if installed {
-                    continue;
-                }
+            let ans = confirmation_prompt(packages, 4, &Action::Install)?;
+
+            if !ans {
+                return Ok(());
             }
 
-            let install_reason = if is_root {
-                InstallReason::Explicit
-            } else {
-                InstallReason::Dependency
-            };
+            create_dir_all(install_dir).context("Failed to create install_dir's parents")?;
 
-            let package_id = PackageIdentity {
-                name: package.name,
-                version: package.version,
-                release: package.release,
-                architecture: package.architecture,
-            };
+            if let Some(parent) = runtime_config.install_db.parent() {
+                std::fs::create_dir_all(parent)
+                    .context("Failed to create the install database directory")?;
+            }
 
-            let tempdir = staging_directory(install_dir)?;
+            let install_conn = Connection::open(&runtime_config.install_db)
+                .context("Failed to open connection to install database")?;
+            install_conn
+                .execute("PRAGMA foreign_keys = ON", [])
+                .context("Failed to enable foreign key enforcement")?;
+            ensure_install_schema(&install_conn)
+                .context("Failed to create the install database schema")?;
 
-            install_one(
-                runtime_config,
-                install_reason,
-                &package_id,
-                &package.groups,
-                &PathBuf::from(&package.sky_path),
-                install_dir,
-                tempdir,
-                &config,
-                &repo_conn,
-                &install_conn,
-            )?;
+            let mut stmt = install_conn
+                .prepare("SELECT name FROM installed_packages WHERE name = ? AND architecture = ?")
+                .context("Failed to prepare database query")?;
+
+            for package in to_install {
+                let is_root = package.name == name;
+
+                if !is_root {
+                    let installed = stmt
+                        .query_row(
+                            params![package.name, package.architecture.to_string()],
+                            |row| row.get::<_, String>(0),
+                        )
+                        .optional()?
+                        .is_some();
+
+                    if installed {
+                        continue;
+                    }
+                }
+
+                let install_reason = if is_root {
+                    InstallReason::Explicit
+                } else {
+                    InstallReason::Dependency
+                };
+
+                let package_id = PackageIdentity {
+                    name: package.name,
+                    version: package.version,
+                    release: package.release,
+                    architecture: package.architecture,
+                };
+
+                let tempdir = staging_directory(install_dir)?;
+
+                install_one(
+                    runtime_config,
+                    install_reason,
+                    &package_id,
+                    &package.groups,
+                    &PathBuf::from(&package.sky_path),
+                    install_dir,
+                    tempdir,
+                    &config,
+                    &repo_conn,
+                    &install_conn,
+                )?;
+            }
+
+            Ok(())
         }
-
-        return Ok(());
     }
-
-    bail!("Provide either a package or a package group name to install")
 }
 
 /// Verifies and stages one package, exchanges it into `install_dir`, and records
