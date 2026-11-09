@@ -1,10 +1,9 @@
 mod fixtures;
 
 use std::{
-    collections::BTreeMap,
     fs::{self, File},
     os::unix::fs::symlink,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use anyhow::{Context, Result};
@@ -19,34 +18,6 @@ use rusqlite::Connection;
 use tar::EntryType;
 use tempfile::TempDir;
 use walkdir::WalkDir;
-
-#[derive(Debug, PartialEq, Eq)]
-enum TreeEntry {
-    Directory,
-    File(Vec<u8>),
-    Symlink(PathBuf),
-    Other,
-}
-
-fn snapshot_tree(root: &Path) -> Result<BTreeMap<PathBuf, TreeEntry>> {
-    let mut snapshot = BTreeMap::new();
-    for entry in walkdir::WalkDir::new(root).min_depth(1) {
-        let entry = entry?;
-        let relative_path = entry.path().strip_prefix(root)?.to_path_buf();
-        let entry_type = entry.file_type();
-        let snapshot_entry = if entry_type.is_dir() {
-            TreeEntry::Directory
-        } else if entry_type.is_symlink() {
-            TreeEntry::Symlink(fs::read_link(entry.path())?)
-        } else if entry_type.is_file() {
-            TreeEntry::File(fs::read(entry.path())?)
-        } else {
-            TreeEntry::Other
-        };
-        snapshot.insert(relative_path, snapshot_entry);
-    }
-    Ok(snapshot)
-}
 
 fn config_with_install_db(workspace: &Workspace, install_db: PathBuf) -> RuntimeConfig {
     RuntimeConfig {

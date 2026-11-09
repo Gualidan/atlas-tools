@@ -71,12 +71,6 @@ fn a_global_yes_flag_is_also_accepted_by_verify() {
 
 #[test]
 fn yes_does_not_relax_required_arguments_or_accept_a_boolean_value() {
-    for command in ["install", "uninstall"] {
-        let err = Cli::try_parse_from(["atlas", command, "--yes"])
-            .err()
-            .expect("a package is still required");
-        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
-    }
     let err = Cli::try_parse_from(["atlas", "--yes=false", "clean"])
         .err()
         .expect("--yes is a switch, not a boolean-valued option");
@@ -110,6 +104,25 @@ fn install_root_defaults_to_slash_and_accepts_an_explicit_root() {
         panic!("expected install command");
     };
     assert_eq!(args.root, Some(PathBuf::from("/tmp/atlas-test-root")));
+}
+
+#[test]
+fn install_parses_a_package_positional_or_a_group_flag() {
+    let cli = Cli::try_parse_from(["atlas", "install", "foo"]).unwrap();
+    let Commands::Install(args) = cli.commands else {
+        panic!("expected install command");
+    };
+    assert_eq!(args.package.as_deref(), Some("foo"));
+    assert!(args.group.is_none());
+
+    for flag in ["--group", "-g"] {
+        let cli = Cli::try_parse_from(["atlas", "install", flag, "tools"]).unwrap();
+        let Commands::Install(args) = cli.commands else {
+            panic!("expected install command");
+        };
+        assert!(args.package.is_none());
+        assert_eq!(args.group.as_deref(), Some("tools"));
+    }
 }
 
 #[test]

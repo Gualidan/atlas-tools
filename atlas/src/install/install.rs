@@ -3,7 +3,7 @@ use common::types::{
     config::SisyphusConfig,
     package::{Architectures, PackageIdentity},
 };
-use std::{collections::HashSet, env::consts::ARCH, fs::create_dir_all, path::PathBuf};
+use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
@@ -14,7 +14,7 @@ use crate::{
     cli::confirmation::{Action, confirmation_prompt},
     install::{
         db::{InstallReason, ensure_install_schema, insert_installed_package},
-        resolve::{ResolvedPackage, resolve_install_order},
+        resolve::resolve_install_order,
     },
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
@@ -234,42 +234,8 @@ pub fn install_one(
 ///
 /// Returns an error if the group cannot be resolved or one of its packages
 /// cannot be installed.
-pub fn install_group(group: &str, config: &RuntimeConfig) -> Result<()> {
-    let repo_conn = Connection::open(&config.repo_db)?;
-    let install_conn = Connection::open(&config.install_db)?;
-    let mut stmt = repo_conn.prepare("SELECT name, groups FROM packages")?;
-    let rows = stmt.query_map(params![], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-
-    let mut names = Vec::new();
-    for row in rows {
-        let (name, serialized_groups) = row?;
-        let groups: Vec<String> = serde_saphyr::from_str(&serialized_groups)
-            .context("Failed to deserialize package groups")?;
-
-        if groups.iter().any(|candidate| candidate == group) {
-            names.push(name);
-        }
-    }
-
-    names.sort();
-    let mut to_install: Vec<ResolvedPackage> = vec![];
-    let mut seen: HashSet<String> = HashSet::new();
-
-    for name in names {
-        for package in resolve_install_order(
-            &repo_conn,
-            &install_conn,
-            name,
-            Architectures::try_from(ARCH.to_string())?,
-        )? {
-            if seen.insert(package.name.clone()) {
-                to_install.push(package);
-            }
-        }
-    }
-    Ok(())
+pub fn install_group(_group: &str, _config: &RuntimeConfig) -> Result<()> {
+    todo!("Implement this and `resolve_group`");
 }
 
 pub(crate) fn staging_directory(install_dir: &std::path::Path) -> Result<TempDir> {

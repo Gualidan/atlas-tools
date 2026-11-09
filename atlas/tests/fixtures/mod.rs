@@ -31,6 +31,7 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 use rusqlite::{Connection, params};
 use tar::{Builder, EntryType, Header};
 use tempfile::{Builder as TempBuilder, TempDir};
+use walkdir::WalkDir;
 use zstd::Encoder;
 
 pub const ARCH: Architectures = Architectures::X86_64;
@@ -117,6 +118,88 @@ pub struct UpdateLogRow {
     pub release: u32,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum TreeEntry {
+    Directory,
+    File(Vec<u8>),
+    Symlink(PathBuf),
+    Other,
+}
+
+/// Captures the install database bytes and the full target-root tree.
+///
+/// Used by "the operation must leave everything unchanged" tests, where
+/// comparing one hand-picked file is not enough.
+#[derive(Debug, PartialEq, Eq)]
+pub struct InstallStateSnapshot {
+    pub database: Option<Vec<u8>>,
+    pub root: BTreeMap<PathBuf, TreeEntry>,
+}
+
+pub fn snapshot_tree(root: &Path) -> Result<BTreeMap<PathBuf, TreeEntry>> {
+    let mut snapshot = BTreeMap::new();
+    if !root.exists() {
+        return Ok(snapshot);
+    }
+
+    for entry in WalkDir::new(root).min_depth(1) {
+        let entry = entry?;
+        let relative_path = entry.path().strip_prefix(root)?.to_path_buf();
+        let entry_type = entry.file_type();
+        let snapshot_entry = if entry_type.is_dir() {
+            TreeEntry::Directory
+        } else if entry_type.is_symlink() {
+            TreeEntry::Symlink(fs::read_link(entry.path())?)
+        } else if entry_type.is_file() {
+            TreeEntry::File(fs::read(entry.path())?)
+        } else {
+            TreeEntry::Other
+        };
+        snapshot.insert(relative_path, snapshot_entry);
+    }
+    Ok(snapshot)
+}
+
+/// Captures install state for a root that may not exist yet.
+pub fn install_state_snapshot(
+    config: &RuntimeConfig,
+    target_root: &Path,
+) -> Result<InstallStateSnapshot> {
+    let database = if config.install_db.exists() {
+        Some(fs::read(&config.install_db)?)
+    } else {
+        None
+    };
+
+    Ok(InstallStateSnapshot {
+        database,
+        root: snapshot_tree(target_root)?,
+    })
+}
+
+/// Asserts that a rejected command created neither an install database nor any
+/// target-root content, including staging directories.
+pub fn assert_install_state_absent(config: &RuntimeConfig, target_root: &Path) {
+    assert!(
+        !config.install_db.exists(),
+        "install database must not be created by a rejected command"
+    );
+
+    let empty = match fs::read_dir(target_root) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => panic!(
+            "failed to inspect target root {}: {error}",
+            target_root.display()
+        ),
+    };
+    assert!(
+        empty,
+        "target root {} must stay empty; staging directories are forbidden",
+        target_root.display()
+    );
+}
+
 #[allow(dead_code)]
 pub struct Workspace {
     tmp: TempDir,
@@ -196,6 +279,66 @@ impl Workspace {
         Ok(sky)
     }
 
+    /// Like [`Self::publish_with_entries`], but the repository row also belongs
+    /// to `groups`. Use this for a group member whose payload must fail
+    /// verification or commit after earlier members were installed.
+    pub fn publish_with_entries_in_groups(
+        &self,
+        name: &str,
+        version: &str,
+        release: u32,
+        deps: &[&str],
+        entries: &[PayloadEntry],
+        groups: &[&str],
+    ) -> Result<PathBuf> {
+        let sky = write_signed_sky_with_entries(
+            &self.tmp,
+            &self.keypair,
+            &format!("{name}-{version}-{release}.sky"),
+            name,
+            version,
+            release,
+            deps.iter().map(ToString::to_string).collect(),
+            entries,
+        )?;
+        seed_repo_db_with_deps_and_groups(
+            &self.config.repo_db,
+            &[(name, version, release, sky.to_str().unwrap(), deps, groups)],
+        );
+        Ok(sky)
+    }
+
+    /// Publishes a package whose repository row belongs to `groups`.
+    ///
+    /// Group membership lives in the repository row, not in the `.sky`
+    /// metadata, so the payload is the ordinary one-file fixture package.
+    pub fn publish_in_groups(
+        &self,
+        name: &str,
+        version: &str,
+        release: u32,
+        deps: &[&str],
+        groups: &[&str],
+    ) -> Result<PathBuf> {
+        let sky = write_signed_sky_with_file(
+            &self.tmp,
+            &self.keypair,
+            &format!("{name}-{version}-{release}.sky"),
+            name,
+            version,
+            release,
+            format!("{name} {version}\\n").as_bytes(),
+            deps.iter().map(ToString::to_string).collect(),
+            name,
+            &format!("{version}.txt"),
+        )?;
+        seed_repo_db_with_deps_and_groups(
+            &self.config.repo_db,
+            &[(name, version, release, sky.to_str().unwrap(), deps, groups)],
+        );
+        Ok(sky)
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -216,6 +359,14 @@ impl Workspace {
 
     pub fn install_into(&self, name: &str, target_root: &Path) -> Result<()> {
         install(Some(name), None, &self.config, &target_root.to_path_buf())
+    }
+
+    pub fn install_group(&self, group: &str) -> Result<()> {
+        install(None, Some(group), &self.config, &self.root)
+    }
+
+    pub fn install_group_into(&self, group: &str, target_root: &Path) -> Result<()> {
+        install(None, Some(group), &self.config, &target_root.to_path_buf())
     }
 
     pub fn uninstall(&self, name: &str) -> Result<UninstallReport> {
@@ -298,6 +449,19 @@ impl Workspace {
             .collect::<rusqlite::Result<Vec<String>>>()?)
     }
 
+    /// Returns packages in the order their install rows were recorded.
+    ///
+    /// `installed_packages` is a rowid table, so `rowid` preserves commit
+    /// order. Group installs must record dependencies before the members that
+    /// need them.
+    pub fn install_order(&self) -> Result<Vec<String>> {
+        let conn = self.install_conn()?;
+        let mut stmt = conn.prepare("SELECT name FROM installed_packages ORDER BY rowid")?;
+        Ok(stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?)
+    }
+
     pub fn assert_installed(&self, name: &str, version: &str, release: u32) -> Result<Installed> {
         let row = self.row(name)?;
         assert_eq!(row.version, version, "{name} version");
@@ -375,6 +539,50 @@ impl Workspace {
         Ok(())
     }
 
+    /// Asserts the command under test left no install state and an empty root.
+    pub fn assert_install_state_absent(&self) {
+        assert_install_state_absent(&self.config, &self.root);
+    }
+
+    /// Asserts the command under test left no install state at `target_root`.
+    pub fn assert_install_state_absent_at(&self, target_root: &Path) {
+        assert_install_state_absent(&self.config, target_root);
+    }
+
+    pub fn install_state_snapshot(&self) -> Result<InstallStateSnapshot> {
+        install_state_snapshot(&self.config, &self.root)
+    }
+
+    /// Asserts every recorded dependency edge still points at an installed
+    /// package. Partial group installs must not leave orphaned edges behind.
+    pub fn assert_no_dangling_dependencies(&self) -> Result<()> {
+        let conn = self.install_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT d.package_name, d.dependency_name, d.architecture
+             FROM package_dependencies d
+             LEFT JOIN installed_packages p
+               ON p.name = d.dependency_name AND p.architecture = d.architecture
+             WHERE p.name IS NULL
+             ORDER BY d.package_name, d.dependency_name",
+        )?;
+        let dangling = stmt
+            .query_map([], |row| {
+                Ok(format!(
+                    "{} -> {} ({})",
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        assert!(
+            dangling.is_empty(),
+            "dangling dependency edges: {dangling:?}"
+        );
+        Ok(())
+    }
+
     pub fn get_update_log(&self) -> Result<Vec<UpdateLogRow>> {
         let conn = self.install_conn()?;
         let mut stmt = conn.prepare(
@@ -426,44 +634,138 @@ pub fn read_target_file(root: &Path, relative_path: impl AsRef<Path>) -> Result<
     Ok(fs::read(root.join(relative_path))?)
 }
 
-pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
-    let packages_without_deps: Vec<(&str, &str, u32, &str, &[&str])> = packages
-        .iter()
-        .map(|(name, version, release, sky_path)| (*name, *version, *release, *sky_path, &[][..]))
-        .collect();
+/// One repository row for seeding. `deps` and `groups` are serialized exactly
+/// the way Sisyphus publishes them.
+pub struct RepoRow<'a> {
+    pub name: &'a str,
+    pub version: &'a str,
+    pub release: u32,
+    pub architecture: Architectures,
+    pub sky_path: &'a str,
+    pub deps: &'a [&'a str],
+    pub groups: &'a [&'a str],
+}
 
-    seed_repo_db_with_deps(path, &packages_without_deps);
+pub fn seed_repo_db_rows(path: &Path, packages: &[RepoRow<'_>]) {
+    let mut conn = Connection::open(path).unwrap();
+    create_packages_table(&mut conn).unwrap();
+
+    for package in packages {
+        let deps = serialize_saphyr_list(package.deps);
+        let groups = serialize_saphyr_list(package.groups);
+        let architecture = package.architecture.to_string();
+
+        conn.execute(
+            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![
+                package.name,
+                package.version,
+                package.release,
+                architecture,
+                package.sky_path,
+                "deadbeef",
+                "2026-01-01T00:00:00Z",
+                "tester",
+                &deps,
+                "[]",
+                &groups
+            ],
+        )
+        .unwrap();
+
+        // Read back the arrange so a wrong column order or architecture cannot
+        // turn a group test into a vacuous assertion about an empty plan.
+        let (stored_deps, stored_groups): (String, String) = conn
+            .query_row(
+                "SELECT deps, groups FROM packages WHERE name = ? AND architecture = ?",
+                params![package.name, architecture],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(stored_deps, deps, "{} repository deps", package.name);
+        assert_eq!(stored_groups, groups, "{} repository groups", package.name);
+    }
+}
+
+fn serialize_saphyr_list(values: &[&str]) -> String {
+    let values = values.iter().map(ToString::to_string).collect::<Vec<_>>();
+    serde_saphyr::to_string(&values).expect("failed to serialize test list to YAML")
+}
+
+pub fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
+    let rows = packages
+        .iter()
+        .map(|&(name, version, release, sky_path)| RepoRow {
+            name,
+            version,
+            release,
+            architecture: ARCH,
+            sky_path,
+            deps: &[],
+            groups: &[],
+        })
+        .collect::<Vec<_>>();
+
+    seed_repo_db_rows(path, &rows);
 }
 
 /// Seeds the repository database with runtime dependency lists exactly the way
 /// Sisyphus publishes them: the `deps` column is serialized with
 /// `serde_saphyr`, never hand-written YAML.
 pub fn seed_repo_db_with_deps(path: &Path, packages: &[(&str, &str, u32, &str, &[&str])]) {
-    let mut conn = Connection::open(path).unwrap();
-    create_packages_table(&mut conn).unwrap();
+    let rows = packages
+        .iter()
+        .map(|&(name, version, release, sky_path, deps)| RepoRow {
+            name,
+            version,
+            release,
+            architecture: ARCH,
+            sky_path,
+            deps,
+            groups: &[],
+        })
+        .collect::<Vec<_>>();
 
-    for (name, version, release, sky_path, deps) in packages {
-        let deps: Vec<String> = deps.iter().map(ToString::to_string).collect();
-        let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
+    seed_repo_db_rows(path, &rows);
+}
 
-        conn.execute(
-            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                *name,
-                *version,
-                *release,
-                ARCH.to_string(),
-                *sky_path,
-                "deadbeef",
-                "2026-01-01T00:00:00Z",
-                "tester",
+/// Tuple shape for grouped repository fixtures:
+/// `(name, version, release, sky_path, deps, groups)`.
+pub type GroupedRepoPackage<'a> = (&'a str, &'a str, u32, &'a str, &'a [&'a str], &'a [&'a str]);
+
+/// Seeds host-architecture packages with explicit group membership.
+///
+/// Tuple shape: `(name, version, release, sky_path, deps, groups)`.
+pub fn seed_repo_db_with_deps_and_groups(path: &Path, packages: &[GroupedRepoPackage<'_>]) {
+    seed_repo_db_with_deps_and_groups_for_arch(path, ARCH, packages);
+}
+
+/// Seeds repository rows for an arbitrary architecture.
+///
+/// Group selection must use the requested architecture, so tests need rows for
+/// a different architecture without a host-installable `.sky`. Keep `sky_path`
+/// unique: it is the repository table's primary key.
+pub fn seed_repo_db_with_deps_and_groups_for_arch(
+    path: &Path,
+    architecture: Architectures,
+    packages: &[GroupedRepoPackage<'_>],
+) {
+    let rows = packages
+        .iter()
+        .map(
+            |&(name, version, release, sky_path, deps, groups)| RepoRow {
+                name,
+                version,
+                release,
+                architecture,
+                sky_path,
                 deps,
-                "[]",
-                "[]"
-            ],
+                groups,
+            },
         )
-        .unwrap();
-    }
+        .collect::<Vec<_>>();
+
+    seed_repo_db_rows(path, &rows);
 }
 
 pub fn raw_header(name: &str, mode: u32, size: u64) -> Header {
