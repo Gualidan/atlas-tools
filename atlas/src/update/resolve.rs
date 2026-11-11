@@ -334,6 +334,26 @@ pub fn resolve_group(
         }
     }
 
+    let mut install_stmt = install_conn
+        .prepare("SELECT name, groups FROM installed_packages WHERE architecture = ?")?;
+    let installed_rows = install_stmt.query_map(params![ARCH], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in installed_rows {
+        let (name, groups) = row?;
+        let groups: Vec<String> =
+            serde_saphyr::from_str(&groups).context("Failed to deserialize installed groups")?;
+        if groups
+            .iter()
+            .any(|installed_group| installed_group == group)
+        {
+            package_names_to_resolve.push(name);
+        }
+    }
+
+    package_names_to_resolve.sort();
+    package_names_to_resolve.dedup();
+
     if package_names_to_resolve.is_empty() {
         bail!("Unknown package group `{group}`");
     }
