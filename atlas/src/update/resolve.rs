@@ -379,8 +379,9 @@ pub fn resolve_group(
                 ));
             }
             return Err(anyhow!(
-                "Package `{}` not found in repository",
-                package.name
+                "Package `{}` from group `{}` not found in repository",
+                package.name,
+                group
             ));
         };
 
@@ -394,8 +395,9 @@ pub fn resolve_group(
         else {
             let Some(parent) = parent else {
                 return Err(anyhow!(
-                    "Package `{}` not found in installed packages",
-                    package.name
+                    "Package `{}` from group `{}` is not installed",
+                    package.name,
+                    group
                 ));
             };
             return Err(anyhow!(
