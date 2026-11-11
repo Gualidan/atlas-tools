@@ -11,8 +11,8 @@ use tempfile::TempDir;
 /// `install_dir`. `SwapBackGuard::new` captures the world *before* the
 /// exchange runs, so both paths and `install_dir_existed` describe the
 /// pre-install world, not what the directories look like at commit time.
-pub struct SwapBackGuard<'a> {
-    install_dir: Option<&'a PathBuf>,
+pub struct SwapBackGuard<'a, P: AsRef<Path>> {
+    install_dir: Option<&'a P>,
     staging_dir: Option<TempDir>,
     entries: Option<Vec<GuardedEntry>>,
 }
@@ -28,12 +28,12 @@ pub enum GuardedEntry {
     CreatedSymlink(PathBuf),
 }
 
-impl<'a> SwapBackGuard<'a> {
+impl<'a, P: AsRef<Path>> SwapBackGuard<'a, P> {
     /// Arms rollback for directories that have been exchanged. `staging_dir`
     /// must hold the previous destination contents; `install_dir_existed`
     /// describes the destination before the exchange.
     #[must_use]
-    pub fn new(install_dir: &'a PathBuf, staging_dir: TempDir, entries: Vec<GuardedEntry>) -> Self {
+    pub fn new(install_dir: &'a P, staging_dir: TempDir, entries: Vec<GuardedEntry>) -> Self {
         SwapBackGuard {
             install_dir: Some(install_dir),
             staging_dir: Some(staging_dir),
@@ -60,7 +60,7 @@ impl<'a> SwapBackGuard<'a> {
     }
 }
 
-impl Drop for SwapBackGuard<'_> {
+impl<P: AsRef<Path>> Drop for SwapBackGuard<'_, P> {
     /// Attempts to exchange the directories back while armed, then removes the
     /// destination if it did not exist before installation. Rollback failures
     /// are swallowed; disarmed guards leave both directories untouched.
@@ -69,7 +69,7 @@ impl Drop for SwapBackGuard<'_> {
             && let Some(entries) = &self.entries
             && let Some(staging_dir) = &self.staging_dir
         {
-            rollback_entries(install_dir, staging_dir, entries);
+            rollback_entries(install_dir.as_ref(), staging_dir, entries);
         }
     }
 }

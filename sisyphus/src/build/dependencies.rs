@@ -228,7 +228,7 @@ impl<'a> Resolver<'a> {
             architecture: package.architecture,
         };
         if let Some(path) = rows {
-            let metadata = sky_verify(&PathBuf::from(&path), &package_id, settings)
+            let metadata = sky_verify(PathBuf::from(&path), &package_id, settings)
                 .context("Failed to verify reusable artifact")?;
             return Ok(Some(ReusableArtifact {
                 name: metadata.name,

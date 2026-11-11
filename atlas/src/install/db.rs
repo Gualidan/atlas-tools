@@ -14,7 +14,7 @@ use crate::{
     types::runtime_config::RuntimeConfig, verify::parse_metadata_lines::parse_metadata_lines,
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum InstallReason {
     Dependency,
     Explicit,

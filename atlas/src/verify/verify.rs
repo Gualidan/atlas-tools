@@ -137,7 +137,7 @@ pub fn verify(
 
     validate_payload_paths(&sky_path).context("Failed to validate payload paths")?;
 
-    unpack_payload(&PathBuf::from(&sky_path), &destination).context("Failed to unpack payload")?;
+    unpack_payload(PathBuf::from(&sky_path), &destination).context("Failed to unpack payload")?;
     let root = destination.path();
 
     let mut payload_paths: HashSet<PathBuf> = HashSet::new();

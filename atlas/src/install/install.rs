@@ -3,7 +3,11 @@ use common::types::{
     config::SisyphusConfig,
     package::{Architectures, PackageIdentity},
 };
-use std::{env::consts::ARCH, fs::create_dir_all, path::PathBuf};
+use std::{
+    env::consts::ARCH,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
 
 use common::types::config::load_config;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
@@ -14,7 +18,7 @@ use crate::{
     cli::confirmation::{Action, confirmation_prompt},
     install::{
         db::{InstallReason, ensure_install_schema, insert_installed_package},
-        resolve::resolve_install_order,
+        resolve::{ResolvedPackage, resolve_group, resolve_install_order},
     },
     types::{guards::SwapBackGuard, package_state::PackageState, runtime_config::RuntimeConfig},
 };
@@ -45,7 +49,7 @@ pub fn install(
             bail!("Specify a package or group name to install.")
         }
         (None, Some(group)) => {
-            install_group(group, runtime_config)?;
+            install_group(group, runtime_config, install_dir)?;
             Ok(())
         }
         (Some(package_name), None) => {
@@ -133,12 +137,7 @@ pub fn install(
                     InstallReason::Dependency
                 };
 
-                let package_id = PackageIdentity {
-                    name: package.name,
-                    version: package.version,
-                    release: package.release,
-                    architecture: package.architecture,
-                };
+                let package_id = construct_package_id(&package);
 
                 let tempdir = staging_directory(install_dir)?;
 
@@ -179,13 +178,13 @@ pub fn install(
 ///
 /// Panics if `sky_path` is not valid UTF-8 when recording the installation.
 #[allow(clippy::too_many_arguments)]
-pub fn install_one(
+pub fn install_one<P: AsRef<Path>>(
     runtime_config: &RuntimeConfig,
     install_reason: InstallReason,
     package_id: &PackageIdentity,
     groups: &Vec<String>,
-    sky_path: &PathBuf,
-    install_dir: &PathBuf,
+    sky_path: &Path,
+    install_dir: P,
     tempdir: TempDir,
     config: &SisyphusConfig,
     conn: &Connection,
@@ -194,7 +193,7 @@ pub fn install_one(
     let state = PackageState::NotInstalled {
         package_id: package_id.clone(),
         sky_path,
-        install_dir,
+        install_dir: install_dir.as_ref(),
         tempdir: &tempdir,
         config,
         repo_conn: conn,
@@ -211,14 +210,14 @@ pub fn install_one(
             _ => None,
         })
         .collect::<Vec<_>>();
-    let mut guard = SwapBackGuard::new(install_dir, tempdir, entries);
+    let mut guard = SwapBackGuard::new(&install_dir, tempdir, entries);
 
     insert_installed_package(
         runtime_config,
         &metadata,
         package_id,
         groups,
-        install_dir.to_string_lossy().as_ref(),
+        install_dir.as_ref().to_str().unwrap(),
         sky_path.to_str().unwrap(),
         install_reason,
         &created_dirs,
@@ -234,8 +233,54 @@ pub fn install_one(
 ///
 /// Returns an error if the group cannot be resolved or one of its packages
 /// cannot be installed.
-pub fn install_group(_group: &str, _config: &RuntimeConfig) -> Result<()> {
-    todo!("Implement this and `resolve_group`");
+///
+/// # Panics
+///
+/// Panics if the install reason cannot be determined.
+pub fn install_group(group: &str, config: &RuntimeConfig, install_dir: &Path) -> Result<()> {
+    let repo_conn =
+        Connection::open(&config.repo_db).context("Failed to open repository database")?;
+    let install_conn = if config.install_db.exists() {
+        Connection::open_with_flags(&config.install_db, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .context("Failed to open install database")?
+    } else {
+        let conn =
+            Connection::open_in_memory().context("Failed to open temporary install database")?;
+        ensure_install_schema(&conn).context("Failed to create the install database schema")?;
+        conn
+    };
+    let to_install =
+        resolve_group(group, &repo_conn, &install_conn).context("Failed to resolve group")?;
+    let packages = to_install
+        .iter()
+        .map(|package| (package.name.as_str(), package.version.as_str()))
+        .collect::<Vec<_>>();
+    if !confirmation_prompt(packages, 4, &Action::Install)? {
+        return Ok(());
+    }
+
+    for package in to_install {
+        let package_id = construct_package_id(&package);
+        let sky_path = PathBuf::from(&package.sky_path);
+        let sisyphus_config = load_config().context("Failed to load config")?;
+        let tempdir = staging_directory(install_dir)?;
+
+        install_one(
+            config,
+            // Should be safe to unwrap, as the install reason is always determined by the resolver when
+            // resolving a package from a group
+            package.install_reason.unwrap(),
+            &package_id,
+            &package.groups,
+            &sky_path,
+            install_dir,
+            tempdir,
+            &sisyphus_config,
+            &repo_conn,
+            &install_conn,
+        )?;
+    }
+    Ok(())
 }
 
 pub(crate) fn staging_directory(install_dir: &std::path::Path) -> Result<TempDir> {
@@ -250,4 +295,13 @@ pub(crate) fn staging_directory(install_dir: &std::path::Path) -> Result<TempDir
         .prefix("sisyphus_install_tmp_dir_")
         .tempdir_in(location)
         .context("Failed to create temporary directory")
+}
+
+fn construct_package_id(package: &ResolvedPackage) -> PackageIdentity {
+    PackageIdentity {
+        name: package.name.clone(),
+        version: package.version.clone(),
+        release: package.release,
+        architecture: package.architecture,
+    }
 }
