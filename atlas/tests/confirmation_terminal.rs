@@ -337,6 +337,7 @@ fn declining_single_update_preserves_files_and_install_records() -> Result<()> {
                 &config,
                 &UpdateArgs {
                     package: Some("foo".into()),
+                    group: None,
                 },
             )?;
 
@@ -364,7 +365,13 @@ fn declining_bulk_update_preserves_every_candidate() -> Result<()> {
                 ],
             );
 
-            update(&config, &UpdateArgs { package: None })?;
+            update(
+                &config,
+                &UpdateArgs {
+                    package: None,
+                    group: None,
+                },
+            )?;
 
             assert_unchanged(&config, &["alpha", "zeta"])
         },

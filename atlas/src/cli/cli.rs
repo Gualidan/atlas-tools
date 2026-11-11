@@ -71,6 +71,9 @@ pub struct UninstallArgs {
 pub struct UpdateArgs {
     /// A package to update
     pub package: Option<String>,
+
+    /// A group to update
+    pub group: Option<String>,
 }
 
 #[derive(Args)]

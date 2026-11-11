@@ -1,6 +1,6 @@
 use std::{collections::HashSet, env::consts::ARCH, fs, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use common::{
     functions::sky_verify::read_sky,
     types::{
@@ -25,7 +25,7 @@ use crate::{
     },
     update::{
         db::{clear_update_log, update_installed_package},
-        resolve::{Resolution, resolve_update_order},
+        resolve::{Resolution, resolve_all, resolve_group, resolve_one},
     },
     verify::parse_metadata_lines::parse_metadata_lines,
 };
@@ -51,65 +51,167 @@ use crate::{
 ///
 /// Returns an error if update resolution, configuration, confirmation, archive
 /// verification, filesystem operations, or database updates fail.
-pub fn update(runtime_config: &RuntimeConfig, args: &UpdateArgs) -> Result<()> {
-    let mut install_db_conn = Connection::open(&runtime_config.install_db)
-        .context("Failed to connect to install database")?;
+#[allow(clippy::too_many_lines)]
+pub fn update(config: &RuntimeConfig, args: &UpdateArgs) -> Result<()> {
+    match (args.package.as_deref(), args.group.as_deref()) {
+        (Some(package), None) => {
+            let mut install_db_conn = Connection::open(&config.install_db)
+                .context("Failed to connect to install database")?;
 
-    let repo_db_conn = Connection::open(&runtime_config.repo_db)
-        .context("Failed to open connection to repository database")?;
+            let repo_db_conn = Connection::open(&config.repo_db)
+                .context("Failed to open connection to repository database")?;
 
-    clear_update_log(&mut install_db_conn).context("Failed to clear update log")?;
+            clear_update_log(&mut install_db_conn).context("Failed to clear update log")?;
 
-    let Resolution {
-        candidates: to_update,
-        error: deferred_error,
-    } = resolve_update_order(&install_db_conn, &repo_db_conn, args.package.as_deref())?;
+            let to_update = resolve_one(&install_db_conn, &repo_db_conn, package)?;
 
-    if let Some(error) = deferred_error {
-        return Err(error);
-    }
+            if to_update.is_empty() {
+                println!("Package `{package}` is already up to date");
+                return Ok(());
+            }
 
-    if to_update.is_empty() {
-        match args.package.as_deref() {
-            Some(package) => println!("Package {package} is already up to date"),
-            None => println!("All packages are up to date"),
+            let packages = to_update
+                .iter()
+                .map(|row| (row.name.as_str(), row.version.as_str()))
+                .collect::<Vec<(&str, &str)>>();
+
+            if !confirmation_prompt(packages, 4, &Action::Update)? {
+                return Ok(());
+            }
+
+            for package in to_update {
+                let package_id = PackageIdentity {
+                    name: package.name,
+                    version: package.version,
+                    release: package.release,
+                    architecture: Architectures::try_from(ARCH.to_string())?,
+                };
+
+                let install_dir = PathBuf::from(package.install_dir);
+
+                let tempdir = crate::install::install::staging_directory(&install_dir)?;
+
+                update_one(
+                    &package_id,
+                    &package.groups,
+                    &repo_db_conn,
+                    &mut install_db_conn,
+                    &PathBuf::from(package.sky_path),
+                    tempdir,
+                    &install_dir,
+                )?;
+            }
+
+            Ok(())
         }
-        return Ok(());
+
+        (None, None) => {
+            let mut install_conn =
+                Connection::open(&config.install_db).context("Failed to open install database")?;
+            let repo_conn =
+                Connection::open(&config.repo_db).context("Failed to open repo database")?;
+
+            let Resolution {
+                candidates: to_update,
+                error: deferred_error,
+            } = resolve_all(&install_conn, &repo_conn)?;
+
+            if let Some(error) = deferred_error {
+                return Err(error);
+            }
+
+            if to_update.is_empty() {
+                println!("All packages are up to date");
+                return Ok(());
+            }
+
+            let packages = to_update
+                .iter()
+                .map(|row| (row.name.as_str(), row.version.as_str()))
+                .collect::<Vec<(&str, &str)>>();
+
+            if !confirmation_prompt(packages, 4, &Action::Update)? {
+                return Ok(());
+            }
+
+            for package in to_update {
+                let package_id = PackageIdentity {
+                    name: package.name,
+                    version: package.version,
+                    release: package.release,
+                    architecture: Architectures::try_from(ARCH.to_string())?,
+                };
+
+                let install_dir = PathBuf::from(package.install_dir);
+
+                let tempdir = crate::install::install::staging_directory(&install_dir)?;
+
+                update_one(
+                    &package_id,
+                    &package.groups,
+                    &repo_conn,
+                    &mut install_conn,
+                    &PathBuf::from(package.sky_path),
+                    tempdir,
+                    &install_dir,
+                )?;
+            }
+
+            Ok(())
+        }
+        (Some(_), Some(_)) => {
+            bail!("Specify either a package or group to update, not both");
+        }
+        (None, Some(group)) => {
+            let repo_conn =
+                Connection::open(&config.repo_db).context("Failed to open repository database")?;
+            let mut install_conn =
+                Connection::open(&config.install_db).context("Failed to open install database")?;
+            clear_update_log(&mut install_conn).context("Failed to clear update log")?;
+            let Resolution {
+                candidates: to_update,
+                error: deferred_error,
+            } = resolve_group(&repo_conn, &install_conn, group)
+                .context("Failed to resolve group")?;
+
+            if let Some(error) = deferred_error {
+                return Err(error);
+            }
+
+            let packages = to_update
+                .iter()
+                .map(|package| (package.name.as_str(), package.version.as_str()))
+                .collect::<Vec<_>>();
+            if !confirmation_prompt(packages, 4, &Action::Update)? {
+                return Ok(());
+            }
+
+            for package in to_update {
+                let package_id = PackageIdentity {
+                    name: package.name,
+                    version: package.version,
+                    release: package.release,
+                    architecture: Architectures::try_from(ARCH.to_string())?,
+                };
+
+                let install_dir = PathBuf::from(package.install_dir);
+
+                let tempdir = crate::install::install::staging_directory(&install_dir)?;
+
+                update_one(
+                    &package_id,
+                    &package.groups,
+                    &repo_conn,
+                    &mut install_conn,
+                    &PathBuf::from(package.sky_path),
+                    tempdir,
+                    &install_dir,
+                )?;
+            }
+
+            Ok(())
+        }
     }
-
-    let packages = to_update
-        .iter()
-        .map(|row| (row.name.as_str(), row.version.as_str()))
-        .collect::<Vec<(&str, &str)>>();
-
-    if !confirmation_prompt(packages, 4, &Action::Update)? {
-        return Ok(());
-    }
-
-    for package in to_update {
-        let package_id = PackageIdentity {
-            name: package.name,
-            version: package.version,
-            release: package.release,
-            architecture: Architectures::try_from(ARCH.to_string())?,
-        };
-
-        let install_dir = PathBuf::from(package.install_dir);
-
-        let tempdir = crate::install::install::staging_directory(&install_dir)?;
-
-        update_one(
-            &package_id,
-            &package.groups,
-            &repo_db_conn,
-            &mut install_db_conn,
-            &PathBuf::from(package.sky_path),
-            tempdir,
-            &install_dir,
-        )?;
-    }
-
-    Ok(())
 }
 
 /// Verifies and stages the supplied package, exchanges it into `install_dir`,

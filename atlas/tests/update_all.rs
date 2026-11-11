@@ -83,7 +83,13 @@ impl BulkUpdate {
     }
 
     fn update_all(&self) -> Result<()> {
-        update(&self.config, &UpdateArgs { package: None })
+        update(
+            &self.config,
+            &UpdateArgs {
+                package: None,
+                group: None,
+            },
+        )
     }
 
     fn assert_installed(&self, name: &str, version: &str, release: u32) -> Result<()> {

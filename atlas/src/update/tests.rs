@@ -40,7 +40,13 @@ impl Databases {
     }
 
     fn resolve(&self, name: Option<&str>) -> Result<Resolution> {
-        resolve_update_order(&self.installed, &self.repo, name)
+        match name {
+            Some(name) => Ok(Resolution {
+                candidates: resolve_one(&self.installed, &self.repo, name)?,
+                error: None,
+            }),
+            None => resolve_all(&self.installed, &self.repo),
+        }
     }
 }
 

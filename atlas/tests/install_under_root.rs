@@ -335,6 +335,7 @@ fn installed_state_is_independent_between_target_roots() -> Result<()> {
         &config_one,
         &UpdateArgs {
             package: Some("app".into()),
+            group: None,
         },
     )?;
 

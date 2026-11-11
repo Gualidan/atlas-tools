@@ -443,15 +443,22 @@ fn current_single_and_bulk_updates_skip_confirmation() -> Result<()> {
                 &config,
                 &UpdateArgs {
                     package: Some("foo".into()),
+                    group: None,
                 },
             )?;
-            update(&config, &UpdateArgs { package: None })?;
+            update(
+                &config,
+                &UpdateArgs {
+                    package: None,
+                    group: None,
+                },
+            )?;
 
             assert_installed_unchanged(&config, "foo")
         },
         |stdout| {
             assert!(
-                stdout.contains("Package foo is already up to date"),
+                stdout.contains("Package `foo` is already up to date"),
                 "{stdout}"
             );
             assert!(stdout.contains("All packages are up to date"), "{stdout}");
@@ -482,8 +489,14 @@ fn update_prompt_error_lists_only_upgrades_and_leaves_files_untouched() -> Resul
                 .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
 
             for package in [Some("foo".into()), None] {
-                let err = update(&config, &UpdateArgs { package })
-                    .expect_err("terminal failure must stop updates before staging");
+                let err = update(
+                    &config,
+                    &UpdateArgs {
+                        package,
+                        group: None,
+                    },
+                )
+                .expect_err("terminal failure must stop updates before staging");
                 assert_eq!(
                     err.to_string(),
                     "Command is running outside of a TTY try passing --yes"
@@ -552,8 +565,14 @@ fn bulk_resolution_errors_abort_before_confirmation_or_any_update() -> Result<()
                         .map(|entry| entry.map(|entry| entry.file_name()))
                         .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
 
-                    let err = update(&config, &UpdateArgs { package: None })
-                        .expect_err("a resolution error must abort the whole plan");
+                    let err = update(
+                        &config,
+                        &UpdateArgs {
+                            package: None,
+                            group: None,
+                        },
+                    )
+                    .expect_err("a resolution error must abort the whole plan");
 
                     assert!(
                         format!("{err:#}").contains(expected),

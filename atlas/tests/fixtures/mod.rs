@@ -378,6 +378,17 @@ impl Workspace {
             &self.config,
             &UpdateArgs {
                 package: Some(name.into()),
+                group: None,
+            },
+        )
+    }
+
+    pub fn update_groups(&self, group: &str) -> Result<()> {
+        update(
+            &self.config,
+            &UpdateArgs {
+                package: None,
+                group: Some(group.into()),
             },
         )
     }
