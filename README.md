@@ -319,16 +319,16 @@ Contributions are welcome:
 1. Fork the repository.
 2. Create a feature branch.
 3. Add or update tests for your change. I recommend using the
-   `atlas-tools-test-design` skill; install it with:
+   `tdd-test-writer` skill; install it with:
 
-   ```bash
-   npx skills add https://github.com/Gualidan/skills --skill atlas-tools-test-design
+   ```sh
+   npx skills add https://github.com/Gualidan/skills --skill tdd-test-writer
    ```
 Use it to describe the change you want to make it'll generate a test design and instruction for you for further info on how to use it check out the Github repository [here](https://github.com/Gualidan/skills).
 
 4. Keep commits atomic and use Conventional Commit messages. I recommend the `atomic-commits` skill; install it with:
 
-   ```bash
+   ```sh
    npx skills add https://github.com/nullswan/atomic-commits --skill atomic-commits
    ```
 >[!WARNING]
