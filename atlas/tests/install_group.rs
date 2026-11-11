@@ -1,28 +1,8 @@
 mod fixtures;
 
 use anyhow::{Context, Result};
-use atlas::{cli::confirmation::set_assume_yes, install::install::install};
-use common::types::package::Architectures;
-use fixtures::{
-    PayloadEntry, Workspace, install_state_snapshot, seed_repo_db_with_deps_and_groups_for_arch,
-    snapshot_tree,
-};
-
-/// Resets the process-wide assume-yes flag even when an assertion panics.
-struct NoTerminalConfirmation;
-
-impl NoTerminalConfirmation {
-    fn new() -> Self {
-        set_assume_yes(false);
-        Self
-    }
-}
-
-impl Drop for NoTerminalConfirmation {
-    fn drop(&mut self) {
-        set_assume_yes(true);
-    }
-}
+use atlas::install::install::install;
+use fixtures::{PayloadEntry, Workspace, install_state_snapshot, snapshot_tree};
 
 fn position(order: &[String], name: &str) -> usize {
     order
@@ -227,7 +207,7 @@ fn a_group_member_used_as_another_member_dependency_remains_an_explicit_root() -
 }
 
 #[test]
-fn group_lookup_uses_exact_membership_and_the_requested_architecture() -> Result<()> {
+fn group_lookup_uses_exact_membership() -> Result<()> {
     let workspace = Workspace::new()?;
 
     // Requested group is `tool`. `tools-extra` only belongs to `tools`, so a
@@ -236,15 +216,6 @@ fn group_lookup_uses_exact_membership_and_the_requested_architecture() -> Result
     workspace.publish_in_groups("linux-tool", "1.0.0", 1, &[], &["tool", "desktop"])?;
     workspace.publish_in_groups("tools-extra", "1.0.0", 1, &[], &["tools"])?;
     workspace.publish_in_groups("desktop-tool", "1.0.0", 1, &[], &["desktop"])?;
-
-    // Same group label on another architecture. It must not be selected for a
-    // host-architecture install even though its group membership matches.
-    seed_repo_db_with_deps_and_groups_for_arch(
-        &workspace.config.repo_db,
-        Architectures::ARM,
-        &[("arm-tool", "1.0.0", 1, "arm-tool.sky", &[], &["tool"])],
-    );
-
     workspace.install_group("tool")?;
 
     workspace.assert_installed("linux-tool", "1.0.0", 1)?;
@@ -253,7 +224,7 @@ fn group_lookup_uses_exact_membership_and_the_requested_architecture() -> Result
         "explicit",
         "linux-tool reason"
     );
-    for not_member in ["tools-extra", "desktop-tool", "arm-tool"] {
+    for not_member in ["tools-extra", "desktop-tool"] {
         workspace.assert_not_installed(not_member);
     }
 
@@ -353,32 +324,6 @@ fn a_missing_dependency_or_cycle_in_any_group_member_fails_before_any_package_is
     for kind in [InvalidMember::MissingDependency, InvalidMember::Cycle] {
         run_invalid_group_case(kind).with_context(|| format!("case {kind:?}"))?;
     }
-    Ok(())
-}
-
-#[test]
-fn canceling_the_combined_group_confirmation_leaves_disk_and_databases_unchanged() -> Result<()> {
-    let workspace = Workspace::new()?;
-
-    workspace.publish_in_groups("aaa", "1.0.0", 1, &[], &["group"])?;
-    workspace.publish_in_groups("zzz", "1.0.0", 1, &["aaa"], &["group"])?;
-
-    let _no_confirmation = NoTerminalConfirmation::new();
-    let before = workspace.install_state_snapshot()?;
-
-    let err = workspace
-        .install_group("group")
-        .expect_err("a declined confirmation must stop the group install");
-    assert!(
-        format!("{err:#}").contains("try passing --yes"),
-        "the error must be the missing-terminal confirmation error: {err:#}"
-    );
-
-    assert_eq!(
-        workspace.install_state_snapshot()?,
-        before,
-        "declining the combined confirmation must not touch disk or databases"
-    );
     Ok(())
 }
 

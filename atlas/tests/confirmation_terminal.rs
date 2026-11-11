@@ -24,7 +24,9 @@ use atlas::{
     uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
     update::update::update,
 };
-use fixtures::{ARCH, ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir};
+use fixtures::{
+    ARCH, ConfigEnv, Workspace, count, generate_keypair, runtime_config, seed_repo_db, tempdir,
+};
 use rusqlite::{Connection, params};
 use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
 
@@ -135,8 +137,8 @@ fn answer_prompt_with_keys(
         }
         if !answered
             && output
-                .windows(b"do you wish to proceed?".len())
-                .any(|bytes| bytes == b"do you wish to proceed?")
+                .windows(b"(Y/n)".len())
+                .any(|bytes| bytes == b"(Y/n)")
         {
             terminal.write_all(keys)?;
             answered = true;
@@ -250,6 +252,30 @@ fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
             assert!(!root.exists());
             assert!(!config.install_db.exists());
             assert!(!tmp.path().join("atlas").exists());
+            Ok(())
+        },
+    )
+}
+
+#[test]
+fn declining_group_install_leaves_install_state_unchanged() -> Result<()> {
+    answer_prompt(
+        "declining_group_install_leaves_install_state_unchanged",
+        false,
+        || {
+            let workspace = Workspace::new()?;
+            workspace.publish_in_groups("aaa", "1.0.0", 1, &[], &["group"])?;
+            workspace.publish_in_groups("zzz", "1.0.0", 1, &["aaa"], &["group"])?;
+
+            set_assume_yes(false);
+            let before = workspace.install_state_snapshot()?;
+            workspace.install_group("group")?;
+
+            assert_eq!(
+                workspace.install_state_snapshot()?,
+                before,
+                "declining the combined confirmation must not touch disk or databases"
+            );
             Ok(())
         },
     )
