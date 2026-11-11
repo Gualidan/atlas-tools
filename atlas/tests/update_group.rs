@@ -134,3 +134,33 @@ fn a_group_member_missing_from_the_install_database_rejects_the_plan() -> Result
 
     Ok(())
 }
+
+#[test]
+fn a_group_member_that_would_be_downgraded_rejects_the_whole_plan() -> Result<()> {
+    let ws = Workspace::new()?;
+
+    ws.publish_in_groups("foo", "2.0.0", 2, &[], &["default"])?;
+    ws.publish_in_groups("bar", "1.0.0", 1, &[], &["default"])?;
+
+    ws.install_group("default")?;
+
+    ws.assert_installed("foo", "2.0.0", 2)?;
+    ws.assert_installed("bar", "1.0.0", 1)?;
+
+    ws.assert_no_dangling_dependencies()?;
+    ws.assert_no_staging_dirs()?;
+
+    ws.publish_in_groups("foo", "1.0.0", 1, &[], &["default"])?;
+    ws.publish_in_groups("bar", "2.0.0", 2, &[], &["default"])?;
+
+    let err = ws
+        .update_groups("default")
+        .expect_err("a group member that would be downgraded must reject the plan");
+
+    let chain = format!("{err:#}");
+    assert!(
+        chain.contains("Not allowed to downgrade foo: installed version is 2.0.0 while the repository's is 1.0.0"),
+        "unexpected error: {chain}"
+    );
+    Ok(())
+}
