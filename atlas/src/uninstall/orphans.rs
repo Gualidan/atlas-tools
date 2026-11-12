@@ -41,7 +41,7 @@ pub fn uninstall_orphans(runtime_config: &RuntimeConfig) -> Result<()> {
 
     for orphan in orphans {
         println!("Uninstalling {}", orphan.name);
-        uninstall(runtime_config, &orphan.name, false)?;
+        uninstall(runtime_config, Some(&orphan.name), None, false)?;
     }
 
     Ok(())

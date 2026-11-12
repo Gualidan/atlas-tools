@@ -52,7 +52,7 @@ impl Installation {
             &[("foo", "1.0.0", 1, sky.to_str().unwrap())],
         );
         let root = tmp.path().join("root");
-        install(&"foo".to_string(), &config, &root)?;
+        install(Some("foo"), None, &config, &root)?;
         let dir = root.clone();
         Ok(Self {
             tmp,
@@ -89,6 +89,7 @@ impl Installation {
             &self.config,
             &UpdateArgs {
                 package: Some("foo".into()),
+                group: None,
             },
         )
     }
@@ -153,8 +154,8 @@ fn upgrade_keeps_the_install_location_and_preserves_incoming_dependencies() -> R
     let fixture = Installation::new()?;
     let conn = fixture.conn()?;
     conn.execute_batch(
-        "INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason)
-         VALUES ('consumer', '1.0.0', 1, 'x86_64', 'consumer.sky', '/unused', 'explicit');
+        "INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+         VALUES ('consumer', '1.0.0', 1, 'x86_64', 'consumer.sky', '/unused', 'explicit', '[]');
          INSERT INTO package_dependencies VALUES ('consumer', 'x86_64', 'foo');
          UPDATE installed_packages SET installed_at = '2000-01-01', install_reason = 'dependency' WHERE name = 'foo';",
     )?;
@@ -212,6 +213,7 @@ fn update_one_commits_using_its_supplied_connections_and_staging_directory() -> 
             release: 7,
             architecture: ARCH,
         },
+        &vec![],
         &repo,
         &mut conn,
         &sky,
@@ -340,8 +342,8 @@ fn conflicting_file_is_rejected_before_changing_the_installation() -> Result<()>
     fixture.publish("2.0.0", &[])?;
     let conn = fixture.conn()?;
     conn.execute_batch(
-        "INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason)
-         VALUES ('neighbor', '1.0.0', 1, 'x86_64', 'neighbor.sky', '/unused', 'explicit');
+        "INSERT INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+         VALUES ('neighbor', '1.0.0', 1, 'x86_64', 'neighbor.sky', '/unused', 'explicit', '[]');
          INSERT INTO owned_files VALUES ('dir/new.txt', 'neighbor', 'x86_64');",
     )?;
     let err = fixture
@@ -436,6 +438,7 @@ fn updating_a_package_that_is_not_installed_reports_not_found() -> Result<()> {
         &fixture.config,
         &UpdateArgs {
             package: Some("unknown".into()),
+            group: None,
         },
     )
     .expect_err("unknown package must be rejected");

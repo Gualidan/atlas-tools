@@ -39,8 +39,8 @@ impl Installation {
         fs::write(dir.join("sentinel"), name)?;
         self.conn.execute(
             "INSERT INTO installed_packages
-             (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, ?)",
+             (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+             VALUES (?, '1.0.0', 1, ?, 'unused.sky', ?, ?, '[]')",
             params![
                 name,
                 ARCH.to_string(),
@@ -91,7 +91,7 @@ fn a_missing_install_directory_still_removes_the_ledger_and_preserves_neighbors(
     fixture.seed("neighbor", InstallReason::Explicit)?;
     fs::remove_dir_all(&app_dir)?;
 
-    uninstall(&fixture.config, &"app".into(), false)?;
+    uninstall(&fixture.config, Some("app"), None, false)?;
 
     assert!(!app_dir.exists());
     assert_eq!(
@@ -130,7 +130,7 @@ fn uninstall_removes_the_complete_dependency_chain_and_its_ledger_entries() -> R
         )?;
     }
 
-    uninstall(&fixture.config, &"app".into(), false)?;
+    uninstall(&fixture.config, Some("app"), None, false)?;
 
     for name in ["app", "middle", "leaf"] {
         assert!(
@@ -169,7 +169,7 @@ fn a_filesystem_error_preserves_the_install_record_and_ownership() -> Result<()>
     fs::write(&dir, b"not a directory")?;
     let before = fs::read(&fixture.config.install_db)?;
 
-    let err = uninstall(&fixture.config, &"app".into(), false)
+    let err = uninstall(&fixture.config, Some("app"), None, false)
         .expect_err("a regular file cannot be removed as a directory");
 
     let cause = err
@@ -187,7 +187,7 @@ fn an_absent_package_is_reported_by_name_without_changing_other_packages() -> Re
     fixture.seed("neighbor", InstallReason::Explicit)?;
     let before = fs::read(&fixture.config.install_db)?;
 
-    let err = uninstall(&fixture.config, &"missing".into(), false)
+    let err = uninstall(&fixture.config, Some("missing"), None, false)
         .expect_err("an absent package must be reported");
 
     assert_eq!(err.to_string(), "Package `missing` not found");

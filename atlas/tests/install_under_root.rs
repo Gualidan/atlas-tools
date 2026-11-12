@@ -1,10 +1,9 @@
 mod fixtures;
 
 use std::{
-    collections::BTreeMap,
     fs::{self, File},
     os::unix::fs::symlink,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use anyhow::{Context, Result};
@@ -19,34 +18,6 @@ use rusqlite::Connection;
 use tar::EntryType;
 use tempfile::TempDir;
 use walkdir::WalkDir;
-
-#[derive(Debug, PartialEq, Eq)]
-enum TreeEntry {
-    Directory,
-    File(Vec<u8>),
-    Symlink(PathBuf),
-    Other,
-}
-
-fn snapshot_tree(root: &Path) -> Result<BTreeMap<PathBuf, TreeEntry>> {
-    let mut snapshot = BTreeMap::new();
-    for entry in walkdir::WalkDir::new(root).min_depth(1) {
-        let entry = entry?;
-        let relative_path = entry.path().strip_prefix(root)?.to_path_buf();
-        let entry_type = entry.file_type();
-        let snapshot_entry = if entry_type.is_dir() {
-            TreeEntry::Directory
-        } else if entry_type.is_symlink() {
-            TreeEntry::Symlink(fs::read_link(entry.path())?)
-        } else if entry_type.is_file() {
-            TreeEntry::File(fs::read(entry.path())?)
-        } else {
-            TreeEntry::Other
-        };
-        snapshot.insert(relative_path, snapshot_entry);
-    }
-    Ok(snapshot)
-}
 
 fn config_with_install_db(workspace: &Workspace, install_db: PathBuf) -> RuntimeConfig {
     RuntimeConfig {
@@ -301,7 +272,7 @@ fn invalid_packages_do_not_modify_target_or_install_records() -> Result<()> {
         "unsafe-path",
         "invalid-payload",
     ] {
-        let _err = install(&package.to_string(), &config, &root)
+        let _err = install(Some(package), None, &config, &root)
             .expect_err("invalid package must be rejected");
         assert_eq!(
             snapshot_tree(&root)?,
@@ -350,8 +321,8 @@ fn installed_state_is_independent_between_target_roots() -> Result<()> {
         &[],
         &[PayloadEntry::file("usr/bin/tool", b"version one")],
     )?;
-    install(&"app".to_string(), &config_one, &root_one)?;
-    install(&"app".to_string(), &config_two, &root_two)?;
+    install(Some("app"), None, &config_one, &root_one)?;
+    install(Some("app"), None, &config_two, &root_two)?;
 
     workspace.publish_with_entries(
         "app",
@@ -364,6 +335,7 @@ fn installed_state_is_independent_between_target_roots() -> Result<()> {
         &config_one,
         &UpdateArgs {
             package: Some("app".into()),
+            group: None,
         },
     )?;
 
@@ -386,7 +358,7 @@ fn installed_state_is_independent_between_target_roots() -> Result<()> {
         "1.0.0"
     );
 
-    uninstall(&config_one, &"app".to_string(), false)?;
+    uninstall(&config_one, Some("app"), None, false)?;
     assert!(!root_one.join("usr/bin/tool").exists());
     assert_eq!(fs::read(root_two.join("usr/bin/tool"))?, b"version one");
     assert_eq!(
@@ -425,8 +397,8 @@ fn system_install_records_are_shared_between_user_configs() -> Result<()> {
     )?;
     fs::copy(&workspace.config.repo_db, &user_two_repo)?;
 
-    install(&"shared-app".to_string(), &user_one_config, &system_root)?;
-    install(&"shared-app".to_string(), &user_two_config, &system_root)?;
+    install(Some("shared-app"), None, &user_one_config, &system_root)?;
+    install(Some("shared-app"), None, &user_two_config, &system_root)?;
 
     let conn = Connection::open(&shared_install_db)?;
     assert_eq!(
@@ -480,12 +452,8 @@ fn package_cannot_overwrite_atlas_state_under_target_root() -> Result<()> {
         )],
     )?;
 
-    let err = install(
-        &"state-overwriter".to_string(),
-        &config,
-        &root.to_path_buf(),
-    )
-    .expect_err("Atlas state paths must be reserved");
+    let err = install(Some("state-overwriter"), None, &config, &root.to_path_buf())
+        .expect_err("Atlas state paths must be reserved");
     assert!(
         format!("{err:#}").to_lowercase().contains("conflict")
             || format!("{err:#}").to_lowercase().contains("reserved"),
@@ -570,7 +538,7 @@ fn target_root_escape_attempts_leave_outside_paths_unchanged() -> Result<()> {
         target_before.insert(PathBuf::from(path), TreeEntry::Directory);
     }
     for package in ["traversal", "absolute", "symlink-parent"] {
-        let _err = install(&package.to_string(), &config, &root)
+        let _err = install(Some(package), None, &config, &root)
             .expect_err("target-root escapes must be rejected");
         assert_eq!(
             snapshot_tree(&root)?,

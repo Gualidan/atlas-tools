@@ -36,9 +36,9 @@ fn uninstall_package_with_no_dependents_succeeds() -> Result<()> {
         &[("foo", "1.0.0", 1, sky_path.to_str().unwrap())],
     );
 
-    install(&"foo".to_string(), &config, &tmp.path().join("root")).expect("install should succeed");
+    install(Some("foo"), None, &config, &tmp.path().join("root")).expect("install should succeed");
 
-    uninstall(&config, &"foo".to_string(), false).expect("uninstall should succeed");
+    uninstall(&config, Some("foo"), None, false).expect("uninstall should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -105,10 +105,10 @@ fn uninstall_package_with_dependent_fails() -> Result<()> {
 
     let root = tmp.path().join("root");
 
-    install(&"A".to_string(), &config, &root).expect("installing A should succeed");
-    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
+    install(Some("A"), None, &config, &root).expect("installing A should succeed");
+    install(Some("B"), None, &config, &root).expect("installing B should succeed");
 
-    let report = uninstall(&config, &"A".to_string(), false)?;
+    let report = uninstall(&config, Some("A"), None, false)?;
 
     assert_eq!(
         report.skipped,
@@ -166,9 +166,9 @@ fn uninstall_dependent_also_uninstalls_non_explicitly_installed_dependencies() -
 
     let root = tmp.path().join("root");
 
-    install(&"B".to_string(), &config, &root).expect("installing B should succeed");
+    install(Some("B"), None, &config, &root).expect("installing B should succeed");
 
-    uninstall(&config, &"B".to_string(), false).expect("uninstalling B should succeed");
+    uninstall(&config, Some("B"), None, false).expect("uninstalling B should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(
@@ -205,7 +205,7 @@ fn uninstall_non_installed_package_fails() -> Result<()> {
     let (_keypair, pub_key) = generate_keypair()?;
     let _env = ConfigEnv::new(&tmp, &pub_key)?;
 
-    let result = uninstall(&config, &"ghost".to_string(), false);
+    let result = uninstall(&config, Some("ghost"), None, false);
     let err = result.expect_err("uninstalling a non-installed package should fail");
     let chain = format!("{err:#}");
     assert!(chain.contains("not found"), "error chain was: {chain}");
@@ -252,10 +252,10 @@ fn uninstall_keeps_explicitly_installed_dependencies() -> Result<()> {
 
     let root = tmp.path().join("root");
 
-    install(&"baz".to_string(), &config, &root).expect("install should succeed");
-    install(&"bar".to_string(), &config, &root).expect("install should succeed");
+    install(Some("baz"), None, &config, &root).expect("install should succeed");
+    install(Some("bar"), None, &config, &root).expect("install should succeed");
 
-    uninstall(&config, &"bar".to_string(), false).expect("uninstall should succeed");
+    uninstall(&config, Some("bar"), None, false).expect("uninstall should succeed");
 
     let conn = Connection::open(&config.install_db)?;
 

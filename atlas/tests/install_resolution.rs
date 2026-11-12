@@ -22,8 +22,8 @@ impl Databases {
         for (name, deps) in packages {
             repo.execute(
                 "INSERT INTO packages
-                 (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps)
-                 VALUES (?, '2.0.0', 7, ?, ?, 'hash', '2026-01-01', 'tester', ?, '[]')",
+                 (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups)
+                 VALUES (?, '2.0.0', 7, ?, ?, 'hash', '2026-01-01', 'tester', ?, '[]', '[]')",
                 params![
                     name,
                     ARCH.to_string(),
@@ -38,8 +38,8 @@ impl Databases {
     fn install(&self, name: &str, version: &str, reason: &str) -> Result<()> {
         self.installed.execute(
             "INSERT INTO installed_packages
-             (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, ?, 1, ?, 'old.sky', ?, ?)",
+             (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+             VALUES (?, ?, 1, ?, 'old.sky', ?, ?, '[]')",
             params![
                 name,
                 version,

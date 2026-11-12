@@ -1,7 +1,7 @@
 use std::{
     fs::{self, File},
     io::{BufReader, Cursor, Read},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::{Context, Ok, Result, anyhow};
@@ -176,8 +176,8 @@ pub fn data_to_sign(
 ///
 /// Returns an error if archive reading, signature verification, or package
 /// metadata validation fails.
-pub fn sky_verify(
-    file_name: &PathBuf,
+pub fn sky_verify<P: AsRef<Path>>(
+    file_name: P,
     package: &PackageIdentity,
     settings: &SisyphusConfig,
 ) -> Result<Metadata> {

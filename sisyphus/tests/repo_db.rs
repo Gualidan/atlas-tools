@@ -1,54 +1,11 @@
+mod fixtures;
+
 use anyhow::Result;
-use common::types::{
-    metadata::{Build, Metadata},
-    package::{Architectures, Source},
-};
+use common::types::package::Architectures;
+use fixtures::{metadata, package};
 use rusqlite::{Connection, params};
-use sisyphus::{
-    package::db::insert_package,
-    types::{package::Package, runtime_config::RuntimeConfig},
-};
+use sisyphus::{package::db::insert_package, types::runtime_config::RuntimeConfig};
 use tempfile::tempdir;
-
-fn package(name: &str, version: &str, architecture: Architectures) -> Package {
-    Package {
-        schema: 1,
-        name: name.to_string(),
-        version: version.to_string(),
-        release: 1,
-        architecture,
-        source: Source {
-            url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: "unused".to_string(),
-        },
-        makedeps: vec![],
-        deps: vec![],
-        prepare: None,
-        build: None,
-        check: None,
-        package: "true".to_string(),
-    }
-}
-
-fn metadata() -> Metadata {
-    Metadata {
-        format: 1,
-        name: "unused".to_string(),
-        version: "0.0.0".to_string(),
-        release: 1,
-        architecture: Architectures::X86_64,
-        deps: vec![],
-        source: Source {
-            url: "https://example.invalid/src.tar.gz".to_string(),
-            sha256: "unused".to_string(),
-        },
-        build: Build {
-            recipe_sha256: "deadbeef".to_string(),
-            built_at: "2026-01-01T00:00:00Z".to_string(),
-            builder: "tester".to_string(),
-        },
-    }
-}
 
 fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
     conn.query_row(sql, params, |row| row.get(0)).unwrap()
@@ -58,8 +15,8 @@ fn count(conn: &Connection, sql: &str, params: &[&dyn rusqlite::ToSql]) -> i64 {
 fn republishing_replaces_the_previous_row() -> Result<()> {
     let tmp = tempdir()?;
     let config = RuntimeConfig::build_at(tmp.path())?;
-    let foo_1_9 = package("foo", "1.9.0", Architectures::X86_64);
-    let foo_1_10 = package("foo", "1.10.0", Architectures::X86_64);
+    let foo_1_9 = package("foo", "1.9.0", Architectures::X86_64, vec![]);
+    let foo_1_10 = package("foo", "1.10.0", Architectures::X86_64, vec![]);
     let a_sky = tmp.path().join("a.sky");
     let b_sky = tmp.path().join("b.sky");
 
@@ -92,8 +49,8 @@ fn republishing_replaces_the_previous_row() -> Result<()> {
 fn publishing_the_same_name_for_two_architectures_keeps_both_rows() -> Result<()> {
     let tmp = tempdir()?;
     let config = RuntimeConfig::build_at(tmp.path())?;
-    let foo_x86 = package("foo", "1.0.0", Architectures::X86_64);
-    let foo_arm = package("foo", "1.0.0", Architectures::ARM);
+    let foo_x86 = package("foo", "1.0.0", Architectures::X86_64, vec![]);
+    let foo_arm = package("foo", "1.0.0", Architectures::ARM, vec![]);
     let x86_sky = tmp.path().join("x86.sky");
     let arm_sky = tmp.path().join("arm.sky");
 

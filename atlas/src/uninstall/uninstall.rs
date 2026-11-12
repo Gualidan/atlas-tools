@@ -1,12 +1,13 @@
 use std::{env::consts::ARCH, fs::File, path::PathBuf};
 
-use anyhow::{Context as AnyhowContext, Result, anyhow};
+use anyhow::{Context as AnyhowContext, Result, anyhow, bail};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     cli::confirmation::{Action, confirmation_prompt},
     install::db::ensure_install_schema,
     types::{contexts::RemoveContext, package_state::PackageState, runtime_config::RuntimeConfig},
+    uninstall::resolve::resolve_group,
     uninstall::{
         db::remove_uninstalled_package,
         resolve::{UninstallReport, packages_to_uninstall},
@@ -31,62 +32,122 @@ use crate::{
 /// confirmation, database updates, or filesystem removal fails.
 pub fn uninstall(
     runtime_config: &RuntimeConfig,
-    name: &String,
+    package: Option<&str>,
+    group: Option<&str>,
     prompt: bool,
 ) -> Result<UninstallReport> {
-    let mut install_conn = if runtime_config.install_db.exists() {
-        Connection::open(&runtime_config.install_db)
-            .context("Failed to open connection to install database, perhaps it is missing?")?
-    } else {
-        File::create_new(&runtime_config.install_db)?;
-        let conn = Connection::open(&runtime_config.install_db)
-            .context("Failed to open connection to install database, perhaps it is missing?")?;
-        ensure_install_schema(&conn)?;
+    match (package, group) {
+        (None, None) => bail!("You should specify a package or group to uninstall"),
+        (Some(name), None) => {
+            let mut install_conn = if runtime_config.install_db.exists() {
+                Connection::open(&runtime_config.install_db).context(
+                    "Failed to open connection to install database, perhaps it is missing?",
+                )?
+            } else {
+                File::create_new(&runtime_config.install_db)?;
+                let conn = Connection::open(&runtime_config.install_db).context(
+                    "Failed to open connection to install database, perhaps it is missing?",
+                )?;
+                ensure_install_schema(&conn)?;
 
-        conn
-    };
+                conn
+            };
 
-    let mut stmt = install_conn
-        .prepare("SELECT name FROM installed_packages WHERE name = ?")
-        .context("Failed to prepare database query")?;
-    let Some(name): Option<String> = stmt.query_row(params![name], |row| row.get(0)).optional()?
-    else {
-        return Err(anyhow!("Package `{name}` not found"));
-    };
+            let mut stmt = install_conn
+                .prepare("SELECT name FROM installed_packages WHERE name = ?")
+                .context("Failed to prepare database query")?;
+            let Some(name): Option<String> =
+                stmt.query_row(params![name], |row| row.get(0)).optional()?
+            else {
+                return Err(anyhow!("Package `{name}` not found"));
+            };
 
-    drop(stmt);
+            drop(stmt);
 
-    let (to_uninstall, report) = packages_to_uninstall(&install_conn, name.clone())?;
-    let packages = to_uninstall
-        .iter()
-        .map(|(pkg, _)| (pkg.name.as_str(), pkg.version.as_str()))
-        .collect::<Vec<(&str, &str)>>();
+            let (to_uninstall, report) = packages_to_uninstall(&install_conn, name.clone())?;
+            let packages = to_uninstall
+                .iter()
+                .map(|(pkg, _)| (pkg.name.as_str(), pkg.version.as_str()))
+                .collect::<Vec<(&str, &str)>>();
 
-    if !report.skipped.is_empty() {
-        println!("Skipped packages:");
-        for skipped in &report.skipped {
-            println!("  - {} (required by {})", skipped.name, skipped.required_by);
+            if !report.skipped.is_empty() {
+                println!("Skipped packages:");
+                for skipped in &report.skipped {
+                    println!("  - {} (required by {})", skipped.name, skipped.required_by);
+                }
+            }
+
+            if prompt && !confirmation_prompt(packages, 4, &Action::Uninstall)? {
+                return Ok(report);
+            }
+
+            for (package, install_dir) in to_uninstall {
+                let state = PackageState::Installed;
+                let ctx = &mut RemoveContext {
+                    package_id: &package,
+                    install_conn: &install_conn,
+                    install_dir: PathBuf::from(install_dir),
+                };
+
+                state.remove(ctx)?;
+
+                remove_uninstalled_package(&mut install_conn, &package)?;
+            }
+
+            Ok(report)
+        }
+        (Some(_), Some(_)) => {
+            bail!("You should specify either a package or group to uninstall, not both")
+        }
+        (None, Some(group)) => {
+            let mut install_conn = if runtime_config.install_db.exists() {
+                Connection::open(&runtime_config.install_db).context(
+                    "Failed to open connection to install database, perhaps it is missing?",
+                )?
+            } else {
+                File::create_new(&runtime_config.install_db)?;
+                let conn = Connection::open(&runtime_config.install_db).context(
+                    "Failed to open connection to install database, perhaps it is missing?",
+                )?;
+                ensure_install_schema(&conn)?;
+
+                conn
+            };
+
+            let (to_uninstall, report) = resolve_group(&install_conn, group)?;
+
+            let packages = to_uninstall
+                .iter()
+                .map(|(pkg, _)| (pkg.name.as_str(), pkg.version.as_str()))
+                .collect::<Vec<(&str, &str)>>();
+
+            if !report.skipped.is_empty() {
+                println!("Skipped packages:");
+                for skipped in &report.skipped {
+                    println!("  - {} (required by {})", skipped.name, skipped.required_by);
+                }
+            }
+
+            if prompt && !confirmation_prompt(packages, 4, &Action::Uninstall)? {
+                return Ok(report);
+            }
+
+            for (package, install_dir) in to_uninstall {
+                let state = PackageState::Installed;
+                let ctx = &mut RemoveContext {
+                    package_id: &package,
+                    install_conn: &install_conn,
+                    install_dir: PathBuf::from(install_dir),
+                };
+
+                state.remove(ctx)?;
+
+                remove_uninstalled_package(&mut install_conn, &package)?;
+            }
+
+            Ok(report)
         }
     }
-
-    if prompt && !confirmation_prompt(packages, 4, &Action::Uninstall)? {
-        return Ok(report);
-    }
-
-    for (package, install_dir) in to_uninstall {
-        let state = PackageState::Installed;
-        let ctx = &mut RemoveContext {
-            package_id: &package,
-            install_conn: &install_conn,
-            install_dir: PathBuf::from(install_dir),
-        };
-
-        state.remove(ctx)?;
-
-        remove_uninstalled_package(&mut install_conn, &package)?;
-    }
-
-    Ok(report)
 }
 
 /// Looks up an installed package's directory, version, and release for the host architecture.
@@ -115,3 +176,7 @@ pub fn look_up_installed_package(
 
     Ok((install_dir, version, release))
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

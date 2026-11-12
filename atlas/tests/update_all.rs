@@ -75,14 +75,21 @@ impl BulkUpdate {
     fn install(&self, name: &str) -> Result<()> {
         self.publish(name, "1.0.0", 1)?;
         install(
-            &name.to_string(),
+            Some(name),
+            None,
             &self.config,
             &self.tmp.path().join("root"),
         )
     }
 
     fn update_all(&self) -> Result<()> {
-        update(&self.config, &UpdateArgs { package: None })
+        update(
+            &self.config,
+            &UpdateArgs {
+                package: None,
+                group: None,
+            },
+        )
     }
 
     fn assert_installed(&self, name: &str, version: &str, release: u32) -> Result<()> {

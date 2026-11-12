@@ -19,11 +19,13 @@ use crate::install::db::{ensure_install_schema, write_owned_files};
 ///
 /// Returns an error if the database transaction, archive manifest, or repository
 /// dependency validation fails.
+#[allow(clippy::too_many_arguments)]
 pub fn update_installed_package(
     conn: &mut Connection,
     repo_conn: &Connection,
     metadata: &Metadata,
     package_id: &PackageIdentity,
+    updated_groups: &Vec<String>,
     sky_path: &str,
     install_dir: &str,
     created_dirs: &[std::path::PathBuf],
@@ -47,13 +49,14 @@ pub fn update_installed_package(
     transaction
         .execute(
             "UPDATE installed_packages
-    SET version = ?, release = ?, sky_path = ?, install_dir = ?
+    SET version = ?, release = ?, sky_path = ?, install_dir = ?, groups = ?
     WHERE name = ? AND architecture = ?",
             params![
                 package_id.version,
                 package_id.release,
                 sky_path,
                 install_dir,
+                serde_saphyr::to_string(&updated_groups).context("Failed to serialize groups")?,
                 package_id.name,
                 package_id.architecture.to_string()
             ],

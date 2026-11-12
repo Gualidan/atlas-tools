@@ -14,7 +14,7 @@ use crate::{
     types::runtime_config::RuntimeConfig, verify::parse_metadata_lines::parse_metadata_lines,
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum InstallReason {
     Dependency,
     Explicit,
@@ -50,6 +50,7 @@ pub fn ensure_install_schema(conn: &Connection) -> Result<()> {
         release INTEGER NOT NULL,
         architecture TEXT NOT NULL,
         sky_path TEXT NOT NULL,
+        groups TEXT NOT NULL,
         install_dir TEXT NOT NULL,
         installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         install_reason TEXT NOT NULL,
@@ -142,6 +143,7 @@ pub fn insert_installed_package(
     runtime_config: &RuntimeConfig,
     metadata: &Metadata,
     package: &PackageIdentity,
+    groups: &Vec<String>,
     install_dir: &str,
     sky_path: &str,
     install_reason: InstallReason,
@@ -177,7 +179,7 @@ pub fn insert_installed_package(
 
     ensure_install_schema(&transaction)?;
 
-    transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, install_dir, install_reason) VALUES (?, ?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, install_dir, install_reason.to_string()]).context("Failed to insert root package into install database")?;
+    transaction.execute("INSERT OR REPLACE INTO installed_packages (name, version, release, architecture, sky_path, groups, install_dir, install_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", params![&package.name, &package.version, package.release, package.architecture.to_string(), sky_path, serde_saphyr::to_string(&groups).context("Failed to serialize groups")?, install_dir, install_reason.to_string()]).context("Failed to insert root package into install database")?;
 
     write_owned_files(&transaction, sky_path, package, created_dirs)?;
 

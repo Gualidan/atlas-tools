@@ -31,8 +31,8 @@ fn both_yes_flags_work_before_and_after_every_mutating_subcommand() {
                 let cli = Cli::try_parse_from(&args).unwrap();
                 assert!(cli.assume_yes, "{args:?}");
                 match cli.commands {
-                    Commands::Install(args) => assert_eq!(args.package, "foo"),
-                    Commands::Uninstall(args) => assert_eq!(args.package, "foo"),
+                    Commands::Install(args) => assert_eq!(args.package.as_deref(), Some("foo")),
+                    Commands::Uninstall(args) => assert_eq!(args.package.as_deref(), Some("foo")),
                     Commands::Update(args) => assert_eq!(args.package.as_deref(), Some("foo")),
                     Commands::Clean(_) => {}
                     Commands::Verify(_) => panic!("unexpected verify command: {args:?}"),
@@ -71,12 +71,6 @@ fn a_global_yes_flag_is_also_accepted_by_verify() {
 
 #[test]
 fn yes_does_not_relax_required_arguments_or_accept_a_boolean_value() {
-    for command in ["install", "uninstall"] {
-        let err = Cli::try_parse_from(["atlas", command, "--yes"])
-            .err()
-            .expect("a package is still required");
-        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
-    }
     let err = Cli::try_parse_from(["atlas", "--yes=false", "clean"])
         .err()
         .expect("--yes is a switch, not a boolean-valued option");
@@ -90,7 +84,7 @@ fn yes_after_the_option_terminator_is_a_package_name() {
     let Commands::Install(args) = cli.commands else {
         panic!("expected install command");
     };
-    assert_eq!(args.package, "--yes");
+    assert_eq!(args.package.as_deref(), Some("--yes"));
 }
 
 #[test]
@@ -110,6 +104,38 @@ fn install_root_defaults_to_slash_and_accepts_an_explicit_root() {
         panic!("expected install command");
     };
     assert_eq!(args.root, Some(PathBuf::from("/tmp/atlas-test-root")));
+}
+
+#[test]
+fn install_parses_a_package_positional_or_a_group_flag() {
+    let cli = Cli::try_parse_from(["atlas", "install", "foo"]).unwrap();
+    let Commands::Install(args) = cli.commands else {
+        panic!("expected install command");
+    };
+    assert_eq!(args.package.as_deref(), Some("foo"));
+    assert!(args.group.is_none());
+
+    for flag in ["--group", "-g"] {
+        let cli = Cli::try_parse_from(["atlas", "install", flag, "tools"]).unwrap();
+        let Commands::Install(args) = cli.commands else {
+            panic!("expected install command");
+        };
+        assert!(args.package.is_none());
+        assert_eq!(args.group.as_deref(), Some("tools"));
+    }
+}
+
+// Approved case 1: uninstall accepts -g/--group without a package positional.
+#[test]
+fn uninstall_parses_a_group_flag_without_a_package_positional() {
+    for flag in ["--group", "-g"] {
+        let cli = Cli::try_parse_from(["atlas", "uninstall", flag, "tools"]).unwrap();
+        let Commands::Uninstall(args) = cli.commands else {
+            panic!("expected uninstall command");
+        };
+        assert!(args.package.is_none());
+        assert_eq!(args.group.as_deref(), Some("tools"));
+    }
 }
 
 #[test]

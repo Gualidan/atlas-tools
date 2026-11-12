@@ -22,8 +22,8 @@ impl Databases {
     fn install(&self, name: &str, version: &str, architecture: &str) -> Result<()> {
         self.installed.execute(
             "INSERT INTO installed_packages
-             (name, version, release, architecture, sky_path, install_dir, install_reason)
-             VALUES (?, ?, 1, ?, 'old.sky', ?, 'explicit')",
+             (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+             VALUES (?, ?, 1, ?, 'old.sky', ?, 'explicit', '[]')",
             params![name, version, architecture, format!("/installed/{name}")],
         )?;
         Ok(())
@@ -32,15 +32,21 @@ impl Databases {
     fn publish(&self, name: &str, version: &str, architecture: &str) -> Result<()> {
         self.repo.execute(
             "INSERT INTO packages
-             (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps)
-             VALUES (?, ?, 7, ?, ?, 'hash', '2026-01-01', 'tester', '[]', '[]')",
+             (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups)
+             VALUES (?, ?, 7, ?, ?, 'hash', '2026-01-01', 'tester', '[]', '[]', '[]')",
             params![name, version, architecture, format!("/repo/{name}-{architecture}.sky")],
         )?;
         Ok(())
     }
 
     fn resolve(&self, name: Option<&str>) -> Result<Resolution> {
-        resolve_update_order(&self.installed, &self.repo, name)
+        match name {
+            Some(name) => Ok(Resolution {
+                candidates: resolve_one(&self.installed, &self.repo, name)?,
+                error: None,
+            }),
+            None => resolve_all(&self.installed, &self.repo),
+        }
     }
 }
 

@@ -5,11 +5,13 @@
 //! resolver that trusted the skys would silently defuse those tests by
 //! treating such packages as dependency-free.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, env::consts::ARCH};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use common::types::package::Architectures;
 use rusqlite::{Connection, OptionalExtension, params};
+
+use crate::install::db::InstallReason;
 
 #[derive(Debug)]
 pub struct ResolvedPackage {
@@ -18,6 +20,8 @@ pub struct ResolvedPackage {
     pub release: u32,
     pub architecture: Architectures,
     pub sky_path: String,
+    pub groups: Vec<String>,
+    pub install_reason: Option<InstallReason>,
 }
 
 /// Resolves a package and its dependencies in dependency-first install order.
@@ -43,12 +47,14 @@ pub fn resolve_install_order(
         &mut stack,
         &mut resolved,
         &mut resolved_packages,
+        None,
         arch,
     )?;
 
     Ok(resolved_packages)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn visit(
     repo_conn: &Connection,
     install_conn: &Connection,
@@ -56,9 +62,19 @@ fn visit(
     stack: &mut Vec<String>,
     resolved: &mut HashSet<String>,
     resolved_packages: &mut Vec<ResolvedPackage>,
+    root: Option<bool>,
     arch: Architectures,
 ) -> Result<()> {
     if resolved.contains(&name) {
+        if root == Some(true)
+            && let Some(package) = resolved_packages
+                .iter_mut()
+                .find(|package| package.name == name)
+        {
+            {
+                package.install_reason = Some(InstallReason::Explicit);
+            }
+        }
         return Ok(());
     }
     if stack.contains(&name) {
@@ -68,15 +84,22 @@ fn visit(
         return Err(anyhow!("dependency cycle: {}", cycle.join(" -> ")));
     }
 
-    let mut stmt  = repo_conn.prepare("SELECT version, release, sky_path, deps FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
-    let Some((version, release, sky_path, deps)): Option<(String, u32, String, String)> = stmt
+    let mut stmt  = repo_conn.prepare("SELECT version, release, sky_path, deps, groups FROM packages WHERE name = ? AND architecture = ?").context("Failed to prepare database query")?;
+    let Some((version, release, sky_path, deps, groups)): Option<(
+        String,
+        u32,
+        String,
+        String,
+        String,
+    )> = stmt
         .query_row(params![name, arch.to_string()], |row| {
             let version: String = row.get(0)?;
             let release: u32 = row.get(1)?;
             let sky_path: String = row.get(2)?;
             let deps: String = row.get(3)?;
+            let groups: String = row.get(4)?;
 
-            Ok((version, release, sky_path, deps))
+            Ok((version, release, sky_path, deps, groups))
         })
         .optional()?
     else {
@@ -87,6 +110,8 @@ fn visit(
     };
 
     let deps: Vec<String> = serde_saphyr::from_str(&deps).context("Failed to deserialize YAML")?;
+    let groups: Vec<String> =
+        serde_saphyr::from_str(&groups).context("Failed to deserialize YAML")?;
 
     stack.push(name.clone());
     let mut stmt = install_conn
@@ -107,21 +132,79 @@ fn visit(
             stack,
             resolved,
             resolved_packages,
+            Some(false),
             arch,
         )?;
     }
 
     stack.pop();
     resolved.insert(name.clone());
+    let install_reason = match root {
+        Some(true) => Some(InstallReason::Explicit),
+        Some(false) => Some(InstallReason::Dependency),
+        None => None,
+    };
     resolved_packages.push(ResolvedPackage {
         name,
         version,
         release,
         architecture: arch,
         sky_path,
+        groups,
+        install_reason,
     });
 
     Ok(())
+}
+
+/// Resolves a group of packages by name and returns a list of [`ResolvedPackage`]s.
+///
+/// # Errors
+///
+/// Returns an error if the group could not be resolved.
+pub fn resolve_group(
+    group: &str,
+    repo_conn: &Connection,
+    install_conn: &Connection,
+) -> Result<Vec<ResolvedPackage>> {
+    let mut resolved_packages: Vec<ResolvedPackage> = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
+    let mut resolved: HashSet<String> = HashSet::new();
+    let mut package_names_to_resolve: Vec<String> = Vec::new();
+
+    let mut stmt = repo_conn.prepare("SELECT name, groups FROM packages")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    for row in rows {
+        let (name, groups) = row?;
+        let groups: Vec<String> =
+            serde_saphyr::from_str(&groups).context("Failed to deserialize groups")?;
+
+        if groups.iter().any(|g| g == group) {
+            package_names_to_resolve.push(name);
+        }
+    }
+
+    if package_names_to_resolve.is_empty() {
+        bail!("Unknow package group `{group}`")
+    }
+
+    for name in package_names_to_resolve {
+        visit(
+            repo_conn,
+            install_conn,
+            name,
+            &mut stack,
+            &mut resolved,
+            &mut resolved_packages,
+            Some(true),
+            Architectures::try_from(ARCH.to_string())?,
+        )?;
+    }
+
+    Ok(resolved_packages)
 }
 
 #[cfg(test)]
@@ -132,14 +215,27 @@ mod tests {
     const ARCH: Architectures = Architectures::X86_64;
 
     fn seed(conn: &mut Connection, packages: &[(&str, &[&str])]) {
+        seed_with_groups(
+            conn,
+            &packages
+                .iter()
+                .map(|(name, deps)| (*name, *deps, &[][..]))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    fn seed_with_groups(conn: &mut Connection, packages: &[(&str, &[&str], &[&str])]) {
         create_packages_table(conn).unwrap();
 
-        for (name, deps) in packages {
+        for (name, deps, groups) in packages {
             let deps: Vec<String> = deps.iter().map(ToString::to_string).collect();
             let deps = serde_saphyr::to_string(&deps).expect("failed to serialize deps to YAML");
+            let groups: Vec<String> = groups.iter().map(ToString::to_string).collect();
+            let groups =
+                serde_saphyr::to_string(&groups).expect("failed to serialize groups to YAML");
 
             conn.execute(
-                "INSERT INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     *name,
                     "1.0.0",
@@ -150,7 +246,8 @@ mod tests {
                     "2026-01-01T00:00:00Z",
                     "tester",
                     deps,
-                    "[]"
+                    "[]",
+                    groups
                 ],
             )
             .unwrap();
@@ -208,6 +305,34 @@ mod tests {
             1,
             "a shared dependency must be resolved exactly once"
         );
+    }
+
+    #[test]
+    fn group_member_first_seen_as_dependency_is_marked_explicit() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        seed_with_groups(
+            &mut conn,
+            &[
+                ("root", &["member"], &["tools"]),
+                ("member", &[], &["tools"]),
+            ],
+        );
+        let install_conn = install_conn();
+
+        let packages = resolve_group("tools", &conn, &install_conn).unwrap();
+
+        assert_eq!(
+            packages
+                .iter()
+                .map(|package| package.name.as_str())
+                .collect::<Vec<_>>(),
+            ["member", "root"]
+        );
+        let member = packages
+            .iter()
+            .find(|package| package.name == "member")
+            .unwrap();
+        assert_eq!(member.install_reason, Some(InstallReason::Explicit));
     }
 
     #[test]

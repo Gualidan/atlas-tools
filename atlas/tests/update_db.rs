@@ -49,14 +49,14 @@ impl Database {
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
              INSERT INTO installed_packages
-                (name, version, release, architecture, sky_path, install_dir, installed_at, install_reason)
+                (name, version, release, architecture, sky_path, groups, install_dir, installed_at, install_reason)
              VALUES
-                ('foo', '1.0.0', 1, 'x86_64', 'old.sky', '/local/foo', '2000-01-01', 'dependency'),
-                ('old-dep', '1.0.0', 1, 'x86_64', 'dep.sky', '/local/old-dep', '2000-01-01', 'dependency'),
-                ('new-dep', '1.0.0', 1, 'x86_64', 'dep.sky', '/local/new-dep', '2000-01-01', 'dependency'),
-                ('consumer', '1.0.0', 1, 'x86_64', 'consumer.sky', '/local/consumer', '2000-01-01', 'explicit'),
-                ('foo', '1.0.0', 1, 'arm', 'arm.sky', '/arm/foo', '2000-01-01', 'explicit'),
-                ('old-dep', '1.0.0', 1, 'arm', 'arm-dep.sky', '/arm/old-dep', '2000-01-01', 'dependency');
+                ('foo', '1.0.0', 1, 'x86_64', 'old.sky', '[]', '/local/foo', '2000-01-01', 'dependency'),
+                ('old-dep', '1.0.0', 1, 'x86_64', 'dep.sky', '[]', '/local/old-dep', '2000-01-01', 'dependency'),
+                ('new-dep', '1.0.0', 1, 'x86_64', 'dep.sky', '[]', '/local/new-dep', '2000-01-01', 'dependency'),
+                ('consumer', '1.0.0', 1, 'x86_64', 'consumer.sky', '[]', '/local/consumer', '2000-01-01', 'explicit'),
+                ('foo', '1.0.0', 1, 'arm', 'arm.sky', '[]', '/arm/foo', '2000-01-01', 'explicit'),
+                ('old-dep', '1.0.0', 1, 'arm', 'arm-dep.sky', '[]', '/arm/old-dep', '2000-01-01', 'dependency');
              INSERT INTO owned_files (path, package_name, architecture) VALUES
                 ('old/file.txt', 'foo', 'x86_64'),
                 ('old/file.txt', 'foo', 'arm'),
@@ -106,6 +106,7 @@ impl Database {
                 release: 7,
                 architecture: ARCH,
             },
+            &vec![],
             self.sky.to_str().unwrap(),
             "/local/foo",
             &[],

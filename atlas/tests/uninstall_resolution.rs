@@ -22,8 +22,8 @@ impl Database {
         for (name, _deps) in packages {
             conn.execute(
                 "INSERT INTO installed_packages
-                 (name, version, release, architecture, sky_path, install_dir, install_reason)
-                 VALUES (?, '2.1.0-rc.1', 7, 'x86_64', 'unused.sky', ?, 'dependency')",
+                 (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+                 VALUES (?, '2.1.0-rc.1', 7, 'x86_64', 'unused.sky', ?, 'dependency', '[]')",
                 params![name, format!("/installed/{name}")],
             )?;
         }
@@ -114,8 +114,8 @@ fn resolver_accepts_the_production_install_schema() -> Result<()> {
     ensure_install_schema(&conn)?;
     conn.execute(
         "INSERT INTO installed_packages
-         (name, version, release, architecture, sky_path, install_dir, install_reason)
-         VALUES ('app', '1.0.0', 1, 'x86_64', 'app.sky', '/installed/app', 'explicit')",
+         (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+         VALUES ('app', '1.0.0', 1, 'x86_64', 'app.sky', '/installed/app', 'explicit', '[]')",
         [],
     )?;
 

@@ -24,15 +24,6 @@ fn supplying_a_package_preserves_its_name() {
 }
 
 #[test]
-fn multiple_package_arguments_are_rejected() {
-    let err = command()
-        .try_get_matches_from(["update", "foo", "bar"])
-        .expect_err("update accepts at most one package");
-
-    assert_eq!(err.kind(), ErrorKind::UnknownArgument);
-}
-
-#[test]
 fn unknown_options_are_not_treated_as_a_request_to_update_everything() {
     let err = command()
         .try_get_matches_from(["update", "--unknown"])

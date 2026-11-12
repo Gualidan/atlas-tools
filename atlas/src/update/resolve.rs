@@ -4,7 +4,7 @@ use std::{
     env::consts::ARCH,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use rusqlite::{Connection, OptionalExtension, params};
 use semver::Version;
 
@@ -19,6 +19,7 @@ pub struct UpdateCandidate {
     pub release: u32,
     pub install_dir: String,
     pub sky_path: String,
+    pub groups: Vec<String>,
 }
 
 struct ResolvedPackage {
@@ -26,35 +27,16 @@ struct ResolvedPackage {
     parent: Option<String>,
 }
 
-/// Resolves the packages that have a newer repository version. With `name`, only
-/// that installed package is considered; without it, every installed package is
-/// visited in name order. Bulk resolution returns the first per-package failure
-/// in `Resolution.error` alongside earlier candidates. Single-package failures
-/// and bulk query setup or installed-row errors propagate directly. No updates
-/// are applied here.
-///
-/// # Errors
-/// This function might error because of a failure during resolution
-pub fn resolve_update_order(
-    install_conn: &Connection,
-    repo_conn: &Connection,
-    name: Option<&str>,
-) -> Result<Resolution> {
-    match name {
-        Some(name) => Ok(Resolution {
-            candidates: resolve_one(install_conn, repo_conn, name)?,
-            error: None,
-        }),
-        None => resolve_all(install_conn, repo_conn),
-    }
-}
-
 /// Resolves a single installed package and repository entry for the host
 /// architecture, retaining its recorded install directory. Returns one candidate
 /// for a newer semantic version, or none for an equal version regardless of release.
 /// Entries missing from either database, downgrades, version parsing, and database
 /// errors propagate.
-fn resolve_one(
+///
+/// # Errors
+///
+/// Returns an error if the package cannot be resolved.
+pub fn resolve_one(
     install_conn: &Connection,
     repo_conn: &Connection,
     name: &str,
@@ -82,16 +64,17 @@ fn resolve_one(
         let parent = package.parent;
         let mut repo_stmt = repo_conn
                  .prepare(
-                            "SELECT version, release, sky_path FROM packages WHERE name = ? AND architecture = ?",
+                            "SELECT version, release, sky_path, groups FROM packages WHERE name = ? AND architecture = ?",
                         )
                         .context("Failed to prepare database statement")?;
 
-        let Some((repo_version, repo_release, sky_path)) = repo_stmt
+        let Some((repo_version, repo_release, sky_path, groups)) = repo_stmt
             .query_row(params![package.name, ARCH], |row| {
                 let version: String = row.get(0)?;
                 let release: u32 = row.get(1)?;
                 let sky_path: String = row.get(2)?;
-                Ok((version, release, sky_path))
+                let groups: String = row.get(3)?;
+                Ok((version, release, sky_path, groups))
             })
             .optional()?
         else {
@@ -137,6 +120,7 @@ fn resolve_one(
                 release: repo_release,
                 install_dir,
                 sky_path,
+                groups: serde_saphyr::from_str(&groups).context("Failed to parse groups")?,
             }),
             Equal => {}
             Greater => {
@@ -210,25 +194,41 @@ fn visit(
 /// Query setup and installed-row errors propagate directly. The first missing
 /// repository entry, repository-row error, invalid version, or downgrade ends
 /// resolution and is returned in `Resolution.error` with earlier candidates.
-fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Resolution> {
+///
+/// # Errors
+///
+/// Returns an error if the packages cannot be resolved.
+pub fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Resolution> {
     let mut install_stmt = install_conn
         .prepare(
-            "SELECT name, version, install_dir, sky_path, release FROM installed_packages ORDER BY name",
+            "SELECT name, version, install_dir, sky_path, release, groups FROM installed_packages ORDER BY name",
         )
         .context("Failed to prepare database query")?;
 
     let installed_rows = install_stmt
         .query_map([], |row| {
-            Ok(UpdateCandidate {
-                name: row.get(0)?,
-                version: row.get(1)?,
-                install_dir: row.get(2)?,
-                sky_path: row.get(3)?,
-                release: row.get(4)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, u32>(4)?,
+                row.get::<_, String>(5)?,
+            ))
         })
         .context("Failed to list all installed packages")?
-        .collect::<Result<Vec<UpdateCandidate>, _>>()?;
+        .map(|row| {
+            let (name, version, install_dir, sky_path, release, groups_yaml) = row?;
+            Ok(UpdateCandidate {
+                name,
+                version,
+                install_dir,
+                sky_path,
+                release,
+                groups: serde_saphyr::from_str(&groups_yaml).context("Failed to parse groups")?,
+            })
+        })
+        .collect::<Result<Vec<UpdateCandidate>>>()?;
 
     let mut repo_stmt = repo_conn
         .prepare(
@@ -274,6 +274,7 @@ fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Reso
                 release: repo_release,
                 install_dir: package.install_dir,
                 sky_path,
+                groups: package.groups,
             }),
             Ok(Equal) => {}
             Ok(Greater) => {
@@ -297,6 +298,162 @@ fn resolve_all(install_conn: &Connection, repo_conn: &Connection) -> Result<Reso
 
     Ok(Resolution {
         candidates: to_update,
+        error: None,
+    })
+}
+
+#[allow(clippy::too_many_lines)]
+/// Resolves a group of packages from the repository and install database.
+///
+/// # Errors
+///
+/// Returns an error if the group could not be resolved.
+pub fn resolve_group(
+    repo_conn: &Connection,
+    install_conn: &Connection,
+    group: &str,
+) -> Result<Resolution> {
+    let mut resolved_packages: Vec<ResolvedPackage> = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
+    let mut resolved: HashSet<String> = HashSet::new();
+    let mut package_names_to_resolve: Vec<String> = Vec::new();
+    let mut candidates: Vec<UpdateCandidate> = Vec::new();
+
+    let mut stmt = repo_conn.prepare("SELECT name, groups FROM packages")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    for row in rows {
+        let (name, groups) = row?;
+        let groups: Vec<String> =
+            serde_saphyr::from_str(&groups).context("Failed to deserialize groups")?;
+
+        if groups.iter().any(|g| g == group) {
+            package_names_to_resolve.push(name);
+        }
+    }
+
+    let mut install_stmt = install_conn
+        .prepare("SELECT name, groups FROM installed_packages WHERE architecture = ?")?;
+    let installed_rows = install_stmt.query_map(params![ARCH], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in installed_rows {
+        let (name, groups) = row?;
+        let groups: Vec<String> =
+            serde_saphyr::from_str(&groups).context("Failed to deserialize installed groups")?;
+        if groups
+            .iter()
+            .any(|installed_group| installed_group == group)
+        {
+            package_names_to_resolve.push(name);
+        }
+    }
+
+    package_names_to_resolve.sort();
+    package_names_to_resolve.dedup();
+
+    if package_names_to_resolve.is_empty() {
+        bail!("Unknown package group `{group}`");
+    }
+
+    for name in package_names_to_resolve {
+        visit(
+            &mut stack,
+            &mut resolved,
+            &mut resolved_packages,
+            name.clone(),
+            repo_conn,
+        )?;
+    }
+
+    let mut install_stmt = install_conn
+                 .prepare(
+                     "SELECT version, install_dir FROM installed_packages WHERE name = ? AND architecture = ?",
+                 )
+                 .context("Failed to prepare database query")?;
+
+    for package in resolved_packages {
+        let parent = package.parent;
+        let mut repo_stmt = repo_conn
+                     .prepare(
+                                "SELECT version, release, sky_path, groups FROM packages WHERE name = ? AND architecture = ?",
+                            )
+                            .context("Failed to prepare database statement")?;
+
+        let Some((repo_version, repo_release, sky_path, groups)) = repo_stmt
+            .query_row(params![package.name, ARCH], |row| {
+                let version: String = row.get(0)?;
+                let release: u32 = row.get(1)?;
+                let sky_path: String = row.get(2)?;
+                let groups: String = row.get(3)?;
+                Ok((version, release, sky_path, groups))
+            })
+            .optional()?
+        else {
+            if let Some(parent) = parent {
+                return Err(anyhow!(
+                    "Dependency of package `{parent}` `{}` not found in repository",
+                    package.name
+                ));
+            }
+            return Err(anyhow!(
+                "Package `{}` from group `{}` not found in repository",
+                package.name,
+                group
+            ));
+        };
+
+        let Some((installed_version, install_dir)) = install_stmt
+            .query_row(params![package.name, ARCH], |row| {
+                let version: String = row.get(0)?;
+                let install_dir: String = row.get(1)?;
+                Ok((version, install_dir))
+            })
+            .optional()?
+        else {
+            let Some(parent) = parent else {
+                return Err(anyhow!(
+                    "Package `{}` from group `{}` is not installed",
+                    package.name,
+                    group
+                ));
+            };
+            return Err(anyhow!(
+                "New `{}` version declares `{}` as a dependency but it is not yet installed, try reinstalling `{}`",
+                parent,
+                package.name,
+                parent,
+            ));
+        };
+
+        match compare_versions(
+            &installed_version,
+            &repo_version,
+            "Failed to parse version number",
+        )? {
+            Less => candidates.push(UpdateCandidate {
+                name: package.name,
+                version: repo_version,
+                release: repo_release,
+                install_dir,
+                sky_path,
+                groups: serde_saphyr::from_str(&groups).context("Failed to parse groups")?,
+            }),
+            Equal => {}
+            Greater => {
+                return Err(downgrade_error(
+                    &package.name,
+                    &installed_version,
+                    &repo_version,
+                ));
+            }
+        }
+    }
+
+    Ok(Resolution {
+        candidates,
         error: None,
     })
 }

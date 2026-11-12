@@ -91,6 +91,8 @@ The current verifier checks metadata identity and signature but does not
 explicitly reject `format` values other than `1`. Producers must still write
 `1`.
 
+`groups` is intentionally not included in the metadata because atlas reads it from the database.
+
 ## Payload rules
 
 `payload.tar.zst` contains the complete staged `$pkgdir` tree. Paths are relative

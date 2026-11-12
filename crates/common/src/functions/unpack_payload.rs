@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::{Cursor, Read},
-    path::PathBuf,
+    path::Path,
 };
 
 use anyhow::{Context, Result};
@@ -18,7 +18,7 @@ use zstd::Decoder;
 ///
 /// Returns an error if opening or reading the archive, decompression, or payload
 /// extraction fails.
-pub fn unpack_payload(path: &PathBuf, destination: &TempDir) -> Result<()> {
+pub fn unpack_payload<P: AsRef<Path>>(path: P, destination: &TempDir) -> Result<()> {
     let tar_gz = File::open(path).context("Failed to open sky file")?;
     let tar = Decoder::new(tar_gz).context("Failed to decompress the sky file")?;
     let mut archive = Archive::new(tar);

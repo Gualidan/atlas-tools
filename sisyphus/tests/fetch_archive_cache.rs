@@ -67,6 +67,7 @@ fn package(url: &str, sha256: &str) -> Package {
         },
         makedeps: vec![],
         deps: vec![],
+        groups: vec![],
         prepare: None,
         build: None,
         check: None,

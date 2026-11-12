@@ -34,7 +34,7 @@ fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
 
     for (name, version, release, sky_path) in packages {
         conn.execute(
-            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO packages (name, version, release, architecture, sky_path, recipe_sha256, built_at, builder, deps, makedeps, groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 *name,
                 *version,
@@ -44,6 +44,7 @@ fn seed_repo_db(path: &Path, packages: &[(&str, &str, u32, &str)]) {
                 "deadbeef",
                 "2026-01-01T00:00:00Z",
                 "tester",
+                "[]",
                 "[]",
                 "[]"
             ],

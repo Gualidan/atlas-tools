@@ -77,8 +77,8 @@ fn seed_installed(config: &RuntimeConfig, name: &str, reason: &str) -> Result<()
     fs::write(dir.join("sentinel"), b"original")?;
     conn.execute(
         "INSERT INTO installed_packages
-         (name, version, release, architecture, sky_path, install_dir, install_reason)
-         VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?)",
+         (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+         VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?, '[]')",
         params![name, ARCH.to_string(), root.to_str().unwrap(), reason],
     )?;
     conn.execute(
@@ -196,7 +196,7 @@ fn install_prompt_error_lists_dependencies_and_leaves_no_installation() -> Resul
             );
             let root = tmp.path().join("root");
 
-            let err = install(&"foo".into(), &config, &root)
+            let err = install(Some("foo"), None, &config, &root)
                 .expect_err("terminal failure must stop the install before reading archives");
 
             assert_eq!(
@@ -235,7 +235,7 @@ fn install_prompt_error_preserves_existing_database_and_skips_installed_dependen
             let database_before = fs::read(&config.install_db)?;
             let root = tmp.path().join("root");
 
-            let err = install(&"foo".into(), &config, &root)
+            let err = install(Some("foo"), None, &config, &root)
                 .expect_err("installed dependencies must be resolved before confirmation");
 
             assert_eq!(
@@ -262,7 +262,7 @@ fn uninstall_prompt_error_preserves_files_and_ledger() -> Result<()> {
             let config = runtime_config(&tmp)?;
             seed_installed(&config, "foo", "explicit")?;
 
-            let err = uninstall(&config, &"foo".into(), true)
+            let err = uninstall(&config, Some("foo"), None, true)
                 .expect_err("terminal failure must stop removal");
 
             assert_eq!(
@@ -290,7 +290,7 @@ fn uninstall_prompt_lists_the_complete_plan_before_changing_any_package() -> Res
             )?;
             let before = fs::read(&config.install_db)?;
 
-            let err = uninstall(&config, &"app".into(), true)
+            let err = uninstall(&config, Some("app"), None, true)
                 .expect_err("closed stdin must stop the complete uninstall plan");
 
             assert_eq!(
@@ -323,7 +323,7 @@ fn uninstall_can_skip_its_prompt_without_global_assume_yes() -> Result<()> {
             let config = runtime_config(&tmp)?;
             seed_installed(&config, "foo", "explicit")?;
 
-            uninstall(&config, &"foo".into(), false)?;
+            uninstall(&config, Some("foo"), None, false)?;
 
             assert!(!tmp.path().join("foo").join("sentinel").exists());
             let conn = Connection::open(&config.install_db)?;
@@ -443,15 +443,22 @@ fn current_single_and_bulk_updates_skip_confirmation() -> Result<()> {
                 &config,
                 &UpdateArgs {
                     package: Some("foo".into()),
+                    group: None,
                 },
             )?;
-            update(&config, &UpdateArgs { package: None })?;
+            update(
+                &config,
+                &UpdateArgs {
+                    package: None,
+                    group: None,
+                },
+            )?;
 
             assert_installed_unchanged(&config, "foo")
         },
         |stdout| {
             assert!(
-                stdout.contains("Package foo is already up to date"),
+                stdout.contains("Package `foo` is already up to date"),
                 "{stdout}"
             );
             assert!(stdout.contains("All packages are up to date"), "{stdout}");
@@ -482,8 +489,14 @@ fn update_prompt_error_lists_only_upgrades_and_leaves_files_untouched() -> Resul
                 .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
 
             for package in [Some("foo".into()), None] {
-                let err = update(&config, &UpdateArgs { package })
-                    .expect_err("terminal failure must stop updates before staging");
+                let err = update(
+                    &config,
+                    &UpdateArgs {
+                        package,
+                        group: None,
+                    },
+                )
+                .expect_err("terminal failure must stop updates before staging");
                 assert_eq!(
                     err.to_string(),
                     "Command is running outside of a TTY try passing --yes"
@@ -552,8 +565,14 @@ fn bulk_resolution_errors_abort_before_confirmation_or_any_update() -> Result<()
                         .map(|entry| entry.map(|entry| entry.file_name()))
                         .collect::<io::Result<std::collections::BTreeSet<_>>>()?;
 
-                    let err = update(&config, &UpdateArgs { package: None })
-                        .expect_err("a resolution error must abort the whole plan");
+                    let err = update(
+                        &config,
+                        &UpdateArgs {
+                            package: None,
+                            group: None,
+                        },
+                    )
+                    .expect_err("a resolution error must abort the whole plan");
 
                     assert!(
                         format!("{err:#}").contains(expected),

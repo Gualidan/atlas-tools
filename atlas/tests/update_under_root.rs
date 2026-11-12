@@ -165,7 +165,13 @@ fn failed_later_package_update_keeps_earlier_updates_committed() -> Result<()> {
          BEGIN SELECT RAISE(ABORT, 'injected zeta database failure'); END;",
     )?;
 
-    let err = update(&workspace.config, &UpdateArgs { package: None })
+    let err = update(
+        &workspace.config,
+        &UpdateArgs {
+            package: None,
+            group: None,
+        },
+    )
         .expect_err("the later package update must fail");
     assert!(
         format!("{err:#}").contains("injected zeta database failure"),

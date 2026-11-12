@@ -24,7 +24,9 @@ use atlas::{
     uninstall::{orphans::uninstall_orphans, uninstall::uninstall},
     update::update::update,
 };
-use fixtures::{ARCH, ConfigEnv, count, generate_keypair, runtime_config, seed_repo_db, tempdir};
+use fixtures::{
+    ARCH, ConfigEnv, Workspace, count, generate_keypair, runtime_config, seed_repo_db, tempdir,
+};
 use rusqlite::{Connection, params};
 use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
 
@@ -135,8 +137,8 @@ fn answer_prompt_with_keys(
         }
         if !answered
             && output
-                .windows(b"do you wish to proceed?".len())
-                .any(|bytes| bytes == b"do you wish to proceed?")
+                .windows(b"(Y/n)".len())
+                .any(|bytes| bytes == b"(Y/n)")
         {
             terminal.write_all(keys)?;
             answered = true;
@@ -191,8 +193,8 @@ fn seed_installation(config: &RuntimeConfig, name: &str, reason: &str) -> Result
     fs::write(dir.join("sentinel"), b"original")?;
     conn.execute(
         "INSERT INTO installed_packages
-         (name, version, release, architecture, sky_path, install_dir, install_reason)
-         VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?)",
+         (name, version, release, architecture, sky_path, install_dir, install_reason, groups)
+         VALUES (?, '1.0.0', 1, ?, 'old.sky', ?, ?, '[]')",
         params![name, ARCH.to_string(), root.to_str().unwrap(), reason],
     )?;
     conn.execute(
@@ -245,11 +247,35 @@ fn declining_install_leaves_no_files_or_install_database() -> Result<()> {
             seed_repo_db(&config.repo_db, &[("foo", "1.0.0", 1, "missing.sky")]);
             let root = tmp.path().join("root");
 
-            install(&"foo".into(), &config, &root)?;
+            install(Some("foo"), None, &config, &root)?;
 
             assert!(!root.exists());
             assert!(!config.install_db.exists());
             assert!(!tmp.path().join("atlas").exists());
+            Ok(())
+        },
+    )
+}
+
+#[test]
+fn declining_group_install_leaves_install_state_unchanged() -> Result<()> {
+    answer_prompt(
+        "declining_group_install_leaves_install_state_unchanged",
+        false,
+        || {
+            let workspace = Workspace::new()?;
+            workspace.publish_in_groups("aaa", "1.0.0", 1, &[], &["group"])?;
+            workspace.publish_in_groups("zzz", "1.0.0", 1, &["aaa"], &["group"])?;
+
+            set_assume_yes(false);
+            let before = workspace.install_state_snapshot()?;
+            workspace.install_group("group")?;
+
+            assert_eq!(
+                workspace.install_state_snapshot()?,
+                before,
+                "declining the combined confirmation must not touch disk or databases"
+            );
             Ok(())
         },
     )
@@ -265,7 +291,7 @@ fn declining_uninstall_preserves_files_and_install_records() -> Result<()> {
             let config = runtime_config(&tmp)?;
             seed_installation(&config, "foo", "explicit")?;
 
-            uninstall(&config, &"foo".into(), true)?;
+            uninstall(&config, Some("foo"), None, true)?;
 
             assert_unchanged(&config, &["foo"])
         },
@@ -288,7 +314,7 @@ fn declining_uninstall_preserves_every_package_in_the_resolved_plan() -> Result<
             )?;
             let before = fs::read(&config.install_db)?;
 
-            uninstall(&config, &"app".into(), true)?;
+            uninstall(&config, Some("app"), None, true)?;
 
             assert_eq!(fs::read(&config.install_db)?, before);
             assert_unchanged(&config, &["app", "library"])
@@ -311,6 +337,7 @@ fn declining_single_update_preserves_files_and_install_records() -> Result<()> {
                 &config,
                 &UpdateArgs {
                     package: Some("foo".into()),
+                    group: None,
                 },
             )?;
 
@@ -338,7 +365,13 @@ fn declining_bulk_update_preserves_every_candidate() -> Result<()> {
                 ],
             );
 
-            update(&config, &UpdateArgs { package: None })?;
+            update(
+                &config,
+                &UpdateArgs {
+                    package: None,
+                    group: None,
+                },
+            )?;
 
             assert_unchanged(&config, &["alpha", "zeta"])
         },

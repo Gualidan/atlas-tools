@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
-use std::{fs::File, path::PathBuf};
+use std::path::PathBuf;
 
 use tar::{Builder, Header};
 use zstd::Encoder;
 
 use crate::{
     package::db::insert_package,
-    types::{package::Package, runtime_config::RuntimeConfig},
+    types::{guard::SkyGuard, package::Package, runtime_config::RuntimeConfig},
 };
 use common::types::metadata::Metadata;
 
@@ -33,7 +33,19 @@ pub fn sky_gen(
         package.name, package.version, package.release, package.architecture
     )));
 
-    let sky_file = File::create(&output_path).context("Failed to create sky file")?;
+    let (sky_file, temp_path) = tempfile::Builder::new()
+        .prefix(".sky-")
+        .suffix(".tmp")
+        .tempfile_in(
+            output_path
+                .parent()
+                .context("Sky output path has no parent directory")?,
+        )
+        .context("Failed to create temporary sky file")?
+        .keep()
+        .context("Failed to retain temporary sky file")?;
+    let mut guard = SkyGuard::new(&temp_path);
+
     let metadata_string =
         serde_saphyr::to_string(metadata).context("Failed to serialize metadata")?;
 
@@ -83,6 +95,8 @@ pub fn sky_gen(
         .finish()
         .context("Failed to finish zstd stream")?;
 
+    drop(archive);
+
     insert_package(
         runtime_config,
         package,
@@ -90,7 +104,10 @@ pub fn sky_gen(
         metadata,
     )?;
 
-    drop(archive);
+    std::fs::rename(&temp_path, &output_path).context("Failed to publish sky file")?;
+
+    guard.disarm();
+    drop(guard);
 
     Ok(output_path)
 }
