@@ -370,7 +370,7 @@ impl Workspace {
     }
 
     pub fn uninstall(&self, name: &str) -> Result<UninstallReport> {
-        uninstall(&self.config, &name.to_string(), false)
+        uninstall(&self.config, Some(name), None, false)
     }
 
     pub fn update(&self, name: &str) -> Result<()> {

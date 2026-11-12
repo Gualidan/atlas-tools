@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use common::types::package::{Architectures, PackageIdentity};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -40,7 +40,9 @@ pub struct UninstallReport {
 /// installed row.
 ///
 /// # Errors
-/// This function might error because of a failure during the resolution
+/// Returns an error if the requested package is not installed, a dependency has no
+/// installed row, a database operation fails, an architecture is unsupported, or
+/// the dependency graph contains a cycle.
 pub fn packages_to_uninstall(
     conn: &Connection,
     name: String,
@@ -55,11 +57,69 @@ pub fn packages_to_uninstall(
         &mut statuses,
         &mut stack,
         &mut packages_to_uninstall,
-        name,
+        name.clone(),
         true,
+        &[name],
     )?;
 
     skip_external_dependents(conn, &mut packages_to_uninstall, &mut skipped)?;
+
+    Ok((packages_to_uninstall, UninstallReport { skipped }))
+}
+
+/// Resolves all packages in `group` and their non-explicit dependencies for removal.
+///
+/// Packages in the group are looked up in the repository database. Explicit
+/// dependencies stay installed and stop the traversal. Packages with dependents
+/// outside the planned removal set, and their planned dependencies, are skipped.
+/// Does not remove files or change database records.
+///
+/// # Errors
+/// Returns an error if no packages belong to `group`, group metadata cannot be
+/// deserialized, a database operation fails, a dependency has no installed row,
+/// an architecture is unsupported, or the dependency graph contains a cycle.
+pub fn resolve_group(
+    repo_conn: &Connection,
+    group: &str,
+) -> Result<(Vec<(PackageIdentity, String)>, UninstallReport)> {
+    let mut package_names_to_resolve: Vec<String> = Vec::new();
+    let mut packages_to_uninstall: Vec<(PackageIdentity, String)> = Vec::new();
+    let mut statuses: HashMap<String, VisitStatus> = HashMap::new();
+    let mut stack: Vec<String> = Vec::new();
+    let mut skipped: Vec<SkippedPackage> = Vec::new();
+
+    let mut stmt = repo_conn.prepare("SELECT name, groups FROM installed_packages")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    for row in rows {
+        let (name, groups) = row?;
+        let groups: Vec<String> =
+            serde_saphyr::from_str(&groups).context("Failed to deserialize groups")?;
+
+        if groups.iter().any(|g| *g == group) {
+            package_names_to_resolve.push(name);
+        }
+    }
+
+    if package_names_to_resolve.is_empty() {
+        bail!("No package found in group {group}")
+    }
+
+    for package in &package_names_to_resolve {
+        visit(
+            repo_conn,
+            &mut statuses,
+            &mut stack,
+            &mut packages_to_uninstall,
+            package.clone(),
+            true,
+            &package_names_to_resolve,
+        )?;
+    }
+
+    skip_external_dependents(repo_conn, &mut packages_to_uninstall, &mut skipped)?;
 
     Ok((packages_to_uninstall, UninstallReport { skipped }))
 }
@@ -75,6 +135,7 @@ fn visit(
     packages_to_uninstall: &mut Vec<(PackageIdentity, String)>,
     name: String,
     is_root: bool,
+    group_roots: &[String],
 ) -> Result<()> {
     match statuses.get(&name) {
         Some(VisitStatus::Visited) => return Ok(()),
@@ -99,7 +160,9 @@ fn visit(
         ));
     };
 
-    if !is_root && InstallReason::from(install_reason) == InstallReason::Explicit {
+    if !group_roots.contains(&name)
+        && InstallReason::from(install_reason) == InstallReason::Explicit
+    {
         statuses.insert(name, VisitStatus::Visited);
         return Ok(());
     }
@@ -115,6 +178,7 @@ fn visit(
             packages_to_uninstall,
             dependency,
             false,
+            group_roots,
         )?;
     }
 

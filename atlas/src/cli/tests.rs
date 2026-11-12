@@ -32,7 +32,7 @@ fn both_yes_flags_work_before_and_after_every_mutating_subcommand() {
                 assert!(cli.assume_yes, "{args:?}");
                 match cli.commands {
                     Commands::Install(args) => assert_eq!(args.package.as_deref(), Some("foo")),
-                    Commands::Uninstall(args) => assert_eq!(args.package, "foo"),
+                    Commands::Uninstall(args) => assert_eq!(args.package.as_deref(), Some("foo")),
                     Commands::Update(args) => assert_eq!(args.package.as_deref(), Some("foo")),
                     Commands::Clean(_) => {}
                     Commands::Verify(_) => panic!("unexpected verify command: {args:?}"),
@@ -119,6 +119,19 @@ fn install_parses_a_package_positional_or_a_group_flag() {
         let cli = Cli::try_parse_from(["atlas", "install", flag, "tools"]).unwrap();
         let Commands::Install(args) = cli.commands else {
             panic!("expected install command");
+        };
+        assert!(args.package.is_none());
+        assert_eq!(args.group.as_deref(), Some("tools"));
+    }
+}
+
+// Approved case 1: uninstall accepts -g/--group without a package positional.
+#[test]
+fn uninstall_parses_a_group_flag_without_a_package_positional() {
+    for flag in ["--group", "-g"] {
+        let cli = Cli::try_parse_from(["atlas", "uninstall", flag, "tools"]).unwrap();
+        let Commands::Uninstall(args) = cli.commands else {
+            panic!("expected uninstall command");
         };
         assert!(args.package.is_none());
         assert_eq!(args.group.as_deref(), Some("tools"));

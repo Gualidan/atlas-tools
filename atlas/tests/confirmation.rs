@@ -262,7 +262,7 @@ fn uninstall_prompt_error_preserves_files_and_ledger() -> Result<()> {
             let config = runtime_config(&tmp)?;
             seed_installed(&config, "foo", "explicit")?;
 
-            let err = uninstall(&config, &"foo".into(), true)
+            let err = uninstall(&config, Some("foo"), None, true)
                 .expect_err("terminal failure must stop removal");
 
             assert_eq!(
@@ -290,7 +290,7 @@ fn uninstall_prompt_lists_the_complete_plan_before_changing_any_package() -> Res
             )?;
             let before = fs::read(&config.install_db)?;
 
-            let err = uninstall(&config, &"app".into(), true)
+            let err = uninstall(&config, Some("app"), None, true)
                 .expect_err("closed stdin must stop the complete uninstall plan");
 
             assert_eq!(
@@ -323,7 +323,7 @@ fn uninstall_can_skip_its_prompt_without_global_assume_yes() -> Result<()> {
             let config = runtime_config(&tmp)?;
             seed_installed(&config, "foo", "explicit")?;
 
-            uninstall(&config, &"foo".into(), false)?;
+            uninstall(&config, Some("foo"), None, false)?;
 
             assert!(!tmp.path().join("foo").join("sentinel").exists());
             let conn = Connection::open(&config.install_db)?;

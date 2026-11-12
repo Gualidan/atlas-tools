@@ -291,7 +291,7 @@ fn declining_uninstall_preserves_files_and_install_records() -> Result<()> {
             let config = runtime_config(&tmp)?;
             seed_installation(&config, "foo", "explicit")?;
 
-            uninstall(&config, &"foo".into(), true)?;
+            uninstall(&config, Some("foo"), None, true)?;
 
             assert_unchanged(&config, &["foo"])
         },
@@ -314,7 +314,7 @@ fn declining_uninstall_preserves_every_package_in_the_resolved_plan() -> Result<
             )?;
             let before = fs::read(&config.install_db)?;
 
-            uninstall(&config, &"app".into(), true)?;
+            uninstall(&config, Some("app"), None, true)?;
 
             assert_eq!(fs::read(&config.install_db)?, before);
             assert_unchanged(&config, &["app", "library"])

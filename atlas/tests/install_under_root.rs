@@ -358,7 +358,7 @@ fn installed_state_is_independent_between_target_roots() -> Result<()> {
         "1.0.0"
     );
 
-    uninstall(&config_one, &"app".to_string(), false)?;
+    uninstall(&config_one, Some("app"), None, false)?;
     assert!(!root_one.join("usr/bin/tool").exists());
     assert_eq!(fs::read(root_two.join("usr/bin/tool"))?, b"version one");
     assert_eq!(

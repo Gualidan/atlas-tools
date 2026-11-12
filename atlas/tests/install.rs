@@ -702,7 +702,7 @@ fn uninstall_after_co_install_leaves_the_neighbor_intact() -> Result<()> {
     install(Some("A"), None, &config, &root).expect("installing A should succeed");
     install(Some("B"), None, &config, &root).expect("installing B should succeed");
 
-    uninstall(&config, &"A".to_string(), false).expect("uninstalling A should succeed");
+    uninstall(&config, Some("A"), None, false).expect("uninstalling A should succeed");
 
     let conn = Connection::open(&config.install_db)?;
     assert_eq!(

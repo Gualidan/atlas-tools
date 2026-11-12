@@ -64,7 +64,11 @@ pub struct VerifyArgs {
 #[derive(Args)]
 pub struct UninstallArgs {
     /// The package to uninstall
-    pub package: String,
+    pub package: Option<String>,
+
+    #[arg(long = "group", short = 'g')]
+    /// The group to uninstall
+    pub group: Option<String>,
 }
 
 #[derive(Args)]
@@ -72,6 +76,7 @@ pub struct UpdateArgs {
     /// A package to update
     pub package: Option<String>,
 
+    #[arg(long = "group", short = 'g')]
     /// A group to update
     pub group: Option<String>,
 }
@@ -118,7 +123,12 @@ pub fn run() -> Result<()> {
             let runtime_config =
                 RuntimeConfig::build().context("Failed to build runtime config")?;
 
-            uninstall(&runtime_config, &args.package, true)?;
+            uninstall(
+                &runtime_config,
+                args.package.as_deref(),
+                args.group.as_deref(),
+                true,
+            )?;
         }
         Commands::Update(args) => {
             let runtime_config =
