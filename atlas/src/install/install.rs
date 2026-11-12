@@ -217,7 +217,7 @@ pub fn install_one<P: AsRef<Path>>(
         &metadata,
         package_id,
         groups,
-        install_dir.as_ref().to_str().unwrap(),
+        install_dir.as_ref().to_string_lossy().as_ref(),
         sky_path.to_str().unwrap(),
         install_reason,
         &created_dirs,
