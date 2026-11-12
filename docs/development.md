@@ -79,6 +79,7 @@ Place new tests in the matching target:
 | Install | `atlas/tests/install*.rs` |
 | Update | `atlas/tests/update*.rs` |
 | Uninstall | `atlas/tests/uninstall*.rs` |
+| Package groups | `atlas/tests/install_group.rs`, `atlas/tests/update_group.rs`, `sisyphus/tests/package_groups.rs` |
 | Verification | `atlas/tests/verify.rs` |
 | State machine | `atlas/tests/package_state.rs` |
 | Prompts | `atlas/tests/confirmation*.rs` |
@@ -103,6 +104,11 @@ For a recipe change, expect edits in:
 3. `sisyphus/src/package/metadata.rs` — metadata fields,
 4. `common` if the metadata contract changes,
 5. `docs/recipe-format.md`.
+
+Group labels are deliberately not metadata: they are written to the repository
+row by `sisyphus/src/package/db.rs` and read by Atlas from the repository or
+install database. A change to group behavior also needs
+`docs/package-groups.md`.
 
 ## Changing a database
 

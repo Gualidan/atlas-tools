@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS installed_packages (
     release INTEGER NOT NULL,
     architecture TEXT NOT NULL,
     sky_path TEXT NOT NULL,
+    groups TEXT NOT NULL,
     install_dir TEXT NOT NULL,
     installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     install_reason TEXT NOT NULL,
@@ -52,6 +53,11 @@ CREATE TABLE IF NOT EXISTS installed_packages (
 `install_reason` is either `explicit` (requested by the user) or `dependency`
 (installed automatically). The primary key allows one installed version per
 package and architecture.
+
+`groups` is a serialized YAML list of the package's group labels at install or
+update time. It is a snapshot of repository membership, not a live view. Package
+uninstall does not use it. Group uninstall does. Group update treats it as one of
+two membership sources. See [package-groups.md](package-groups.md).
 
 ### `installed_packages_update_log`
 
@@ -140,6 +146,19 @@ dependencies for the host architecture, then:
 Staging must share a filesystem with the target root because Atlas uses atomic
 rename/exchange operations.
 
+### Group install
+
+`atlas install --group <group>` resolves every repository package whose group
+list contains the exact label, plus their missing runtime dependencies, into one
+dependency-first plan. Group members are treated as explicit roots even when
+another member depends on them. They are reinstalled if already present;
+dependencies that are merely installed are skipped. The combined plan is
+confirmed once and then installed package by package.
+
+The install database stores the repository group list for every package in the
+plan, including dependencies. A failed later package does not undo packages
+already installed by the same group operation.
+
 ### Conflict rules
 
 Before mutating destinations, Atlas checks every non-directory manifest path:
@@ -207,6 +226,20 @@ staged away. Empty owned directories may remain.
 Bulk updates stop at the first failure. Updates applied before the failure remain
 applied.
 
+### Group update
+
+`atlas update --group <group>` selects the union of repository membership for the
+group and installed packages whose recorded `groups` contain it. It resolves the
+members and their repository-declared dependencies with the same version rules as
+named and bulk updates. A group member missing from the install database, a
+missing repository dependency, or a downgrade rejects the plan before prompting.
+
+For each package that is actually updated, the installed `groups` column is
+replaced with the repository's current list. Packages already at the repository
+version are skipped, so their recorded membership is not refreshed. A dependency
+updated because a group member needs it keeps its `install_reason` and receives
+its current repository membership.
+
 ## Uninstall
 
 `atlas uninstall <name>`:
@@ -229,6 +262,21 @@ Filesystem removal and database deletion are not one transaction. If removal
 fails after some paths are deleted, the command returns an error and the
 database rows remain. A later uninstall skips the already-missing paths.
 
+### Group uninstall
+
+`atlas uninstall --group <group>` reads membership from `installed_packages`, not
+from the repository. Every installed row whose recorded `groups` contain the
+label is a removal root, regardless of its recorded `install_reason`. The rest of
+the plan follows the same rules as package uninstall:
+
+- non-explicit dependencies join the plan,
+- explicit dependencies stop traversal and stay installed,
+- packages required from outside the plan, and their planned dependencies, are
+  skipped and printed.
+
+This means a package that left the group in the repository can still be removed
+by group until it is updated and its recorded membership is refreshed.
+
 ## Clean
 
 `atlas clean` removes orphaned packages for the host architecture.
@@ -245,10 +293,14 @@ further prompts. An empty orphan list succeeds without prompting.
 
 ## Architecture behavior
 
-- `install` resolves and installs for the host architecture.
+- `install` resolves and installs packages for the host architecture. Group
+  discovery scans all repository rows for the label, then resolves each selected
+  package for the host architecture.
 - `update` looks up repository entries for the host architecture, even when an
-  installed row records a different architecture.
-- `uninstall` looks up by name without an architecture filter.
+  installed row records a different architecture. Group update's installed
+  membership scan is filtered to the host architecture.
+- `uninstall` looks up by name without an architecture filter. Group uninstall
+  scans all installed rows for the recorded label.
 - `clean` selects orphans for the host architecture.
 
 The code has an `arm` variant used by tests; the documented v1 target is
@@ -258,7 +310,9 @@ The code has an `arm` variant used by tests; the documented v1 target is
 
 - The database file and schema are created on demand.
 - There are no migrations. Schema changes require explicit handling for existing
-  install databases.
+  install databases. In particular, a database created before group support has
+  no `installed_packages.groups` column; `CREATE TABLE IF NOT EXISTS` will not add
+  it, so group-aware queries fail against the old file.
 - Foreign keys are enabled by the install/update/uninstall write paths.
 - `installed_at` is set on insert and preserved across updates.
 
@@ -266,7 +320,7 @@ The code has an `arm` variant used by tests; the documented v1 target is
 
 ```bash
 sqlite3 ~/.local/share/atlas/installed.db \
-  "SELECT name, version, architecture, install_reason, install_dir FROM installed_packages;"
+  "SELECT name, version, architecture, install_reason, groups, install_dir FROM installed_packages;"
 
 sqlite3 ~/.local/share/atlas/installed.db \
   "SELECT package_name, dependency_name FROM package_dependencies ORDER BY package_name;"

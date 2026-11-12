@@ -44,6 +44,9 @@ makedeps:
 deps:
   - glibc
 
+groups:
+  - desktop
+
 prepare: |
   cd "$srcdir/hello-2.12.1"
 
@@ -73,6 +76,7 @@ package: |
 | `source` | yes | object | Source with `url` and `sha256`. See [Source entries](#source-entries). |
 | `makedeps` | no | list of strings | Build-time dependencies. Defaults to `[]`. |
 | `deps` | no | list of strings | Runtime dependencies embedded in the resulting `.sky` metadata. Defaults to `[]`. |
+| `groups` | no | list of strings | Group labels this package belongs to. Stored in the repository database, not in `.sky` metadata. Defaults to `[]`. |
 | `prepare` | no | multiline string | Preparation script. Omitted means no preparation phase. |
 | `build` | no | multiline string | Compilation script. Omitted means no build phase. |
 | `check` | no | multiline string | Test script. Omitted means no test phase. |
@@ -154,6 +158,28 @@ Runtime dependencies.
 
 Version constraints are intentionally absent in version 1.
 
+### `groups`
+
+Optional labels that let Atlas operate on a set of packages at once. Defaults to
+`[]`.
+
+- Group names use the same grammar as package names:
+  `[a-z0-9][a-z0-9+._-]*`.
+- The list must not contain duplicates, and a package may not list its own name
+  as a group.
+- Labels do not need to be declared anywhere else; a group exists implicitly as
+  long as at least one repository row uses it.
+- A group is not a dependency. Group labels do not affect the build plan,
+  `deps`, `makedeps`, or the resulting `.sky` metadata.
+- Membership is written to the repository database's `groups` column for the
+  package's `(name, architecture)` row. Republishing replaces that row and
+  therefore replaces the package's complete membership list.
+- Atlas records the membership in its install database at install time and uses
+  that snapshot for group uninstall operations.
+
+See [package-groups.md](package-groups.md) for install, update, and uninstall
+semantics.
+
 ### Phases
 
 `prepare`, `build`, and `check` are optional. `package` is required.
@@ -197,7 +223,8 @@ artifacts, networking, and filesystem details.
 ## Dependency rules
 
 Dependency names use the same grammar as `name`. Version constraints, optional
-dependencies, and alternative providers are not part of version 1.
+dependencies, and alternative providers are not part of version 1. Group labels
+are not dependency names and are never resolved as dependencies.
 
 The resolver:
 
@@ -212,6 +239,8 @@ Current parser behavior:
 
 - Duplicate entries are tolerated. `makedeps` are sorted and deduplicated before
   traversal.
+- `groups` is the exception: duplicate group labels are rejected during recipe
+  validation, and a missing `groups` key defaults to an empty list.
 - Unknown top-level fields are currently ignored by the YAML deserializer.
   They are not part of the v1 contract and may be rejected by a later version.
 - `release: 0` is currently accepted because there is no explicit zero check.
@@ -240,7 +269,9 @@ Version 1 intentionally does not define:
 - build options or feature flags,
 - Git sources,
 - cross-compilation,
-- non-`x86_64` targets as supported targets.
+- non-`x86_64` targets as supported targets,
+- nested groups or group dependencies,
+- signed group membership.
 
 Such features require a schema-version increment or a backwards-compatible
 extension with explicit validation rules.

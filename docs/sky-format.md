@@ -91,7 +91,11 @@ The current verifier checks metadata identity and signature but does not
 explicitly reject `format` values other than `1`. Producers must still write
 `1`.
 
-`groups` is intentionally not included in the metadata because atlas reads it from the database.
+`groups` is intentionally absent from `metadata.yaml`. Group membership is
+per-package repository state stored in the `groups` column of the repository
+database, and Atlas records a copy in its install database. It is therefore not
+covered by the package signature. A validly signed package can be republished
+with different group membership without changing the `.sky` bytes.
 
 ## Payload rules
 
@@ -220,7 +224,8 @@ one must be supplied; a single positional argument fills `PACKAGE`. See
 
 - It does not enforce `metadata.format == 1`.
 - It does not check manifest sort order.
-- It does not authenticate the repository database or its `sky_path` values.
+- It does not authenticate the repository database, its `sky_path` values, or
+  package group membership.
 - It does not resolve symlink targets for escape during standalone `verify`;
   install-time commit performs that check.
 - It does not verify build reproducibility or the truth of `source`/`build`
@@ -248,6 +253,7 @@ Version 1 has:
 - one trusted-key model (a single configured public key),
 - no package deltas,
 - no rollback archives,
+- no package group metadata,
 - no repository index format,
 - no remote transport.
 

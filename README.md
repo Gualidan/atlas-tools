@@ -5,7 +5,8 @@
 
 Atlas Tools is a Rust workspace implementing a source-based package management
 system. **Sisyphus** builds signed `.sky` packages from declarative recipes, and
-**Atlas** installs, verifies, updates, and removes them.
+**Atlas** installs, verifies, updates, and removes them. Recipes can also tag
+packages with group labels, so Atlas can operate on a set of packages at once.
 
 There is no remote repository or mirror yet. Both tools work against a local
 SQLite repository database populated by Sisyphus.
@@ -42,6 +43,9 @@ so format changes usually touch both binaries.
   filesystem root without moving the install database.
 - **Shared dependency handling** — uninstall keeps packages still required by
   retained packages; `clean` removes packages that are no longer reachable.
+- **Package groups** — recipes tag packages with group labels, and Atlas can
+  install, update, and uninstall by group. Membership is stored in the
+  repository and install databases; it is not part of signed `.sky` metadata.
 - **Local repository** — a SQLite database stores one publishable row per
   `(name, architecture)` and points Atlas at each `.sky` artifact.
 
@@ -101,6 +105,9 @@ makedeps:
 deps:
   - glibc
 
+groups:
+  - desktop
+
 prepare: |
   cd "$srcdir/hello-2.12.1"
 
@@ -128,6 +135,7 @@ package: |
 | `source` | yes | Object with `url` (HTTP/S) and lowercase 64-character `sha256`. |
 | `makedeps` | no | Build-time dependencies resolved and installed in the build root. Defaults to `[]`. |
 | `deps` | no | Runtime dependencies embedded in `.sky` metadata and checked by Atlas. Defaults to `[]`. |
+| `groups` | no | Group labels this package belongs to. Membership is stored in the repository database, not `.sky` metadata. Defaults to `[]`. |
 | `prepare` | no | Preparation script. |
 | `build` | no | Compilation script. |
 | `check` | no | Test script. |
@@ -166,6 +174,38 @@ signature.ed25519
   `SHA256(metadata.yaml) || SHA256(payload.tar.zst) || SHA256(files)`.
 
 See [`docs/sky-format.md`](docs/sky-format.md) for the complete format.
+
+### Package groups
+
+A package group is a label, not a package. Recipes list group labels in
+`groups`; Sisyphus stores the membership in the repository database, and Atlas
+records it when it installs the package.
+
+```yaml
+groups:
+  - desktop
+```
+
+- Group names use the same grammar as package names
+  (`[a-z0-9][a-z0-9+._-]*`). Duplicate labels and a package's own name are
+  rejected.
+- Membership is scoped to `(name, architecture)` and replaced whenever the
+  package is republished. It is not stored in `.sky` metadata and is not covered
+  by the package signature.
+- A group is not a dependency. `deps` and `makedeps` remain the only dependency
+  edges.
+- `atlas install --group desktop` resolves every member plus its missing runtime
+  dependencies and installs them in dependency-first order. Group members are
+  recorded as explicit installs.
+- `atlas update --group desktop` selects packages that are in the group in the
+  repository or in the installed state, then updates them and their newer
+  dependencies with the same version rules as named updates.
+- `atlas uninstall --group desktop` removes members recorded in the install
+  database and their non-explicit dependencies. Packages still required from
+  outside the removal set are kept.
+
+Group operations are mutually exclusive with naming a single package. See
+[`docs/package-groups.md`](docs/package-groups.md) for the full behavior.
 
 ## Getting started
 
@@ -237,6 +277,11 @@ cargo run --bin atlas -- verify hello
 cargo run --bin atlas -- update hello
 cargo run --bin atlas -- update
 
+# Install, update, or remove a package group
+cargo run --bin atlas -- install --group desktop
+cargo run --bin atlas -- update --group desktop
+cargo run --bin atlas -- uninstall --group desktop
+
 # Remove a package (dependencies still required by other packages are kept)
 cargo run --bin atlas -- uninstall hello
 
@@ -266,9 +311,12 @@ Both binaries accept the global `--yes` / `-y` flag. Confirmation prompts use
 | Command | Description |
 | --- | --- |
 | `atlas install <name> [--root <dir>]` | Install a package and missing runtime dependencies. Defaults to `/`. |
+| `atlas install --group <group> [--root <dir>]` | Install every member of a group and their missing runtime dependencies. |
 | `atlas verify <name>` | Verify signature, metadata identity, archive paths, and manifest/payload agreement without installing. |
 | `atlas update [<name>]` | Upgrade one package or all installed packages to newer semantic versions. Equal versions are skipped; downgrades are rejected. |
+| `atlas update --group <group>` | Upgrade the installed members of a group and their newer dependencies. |
 | `atlas uninstall <name>` | Remove a package, keeping shared dependencies that are still required. |
+| `atlas uninstall --group <group>` | Remove the installed members of a group and their non-explicit dependencies. |
 | `atlas clean` | Remove orphaned packages that are not reachable from explicitly installed packages. |
 
 ## Runtime state

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS packages (
     builder TEXT NOT NULL,
     deps TEXT NOT NULL,
     makedeps TEXT NOT NULL,
+    groups TEXT NOT NULL,
     UNIQUE (name, architecture)
 );
 ```
@@ -57,12 +58,18 @@ CREATE TABLE IF NOT EXISTS packages (
 | `builder` | Builder identity string. |
 | `deps` | Runtime dependencies as a serialized YAML list. |
 | `makedeps` | Build dependencies as a serialized YAML list. |
+| `groups` | Package group labels as a serialized YAML list. |
 
-`deps` and `makedeps` are YAML strings, not JSON. Atlas parses `deps` with the
-YAML deserializer when resolving install order.
+`deps`, `makedeps`, and `groups` are YAML strings, not JSON. Atlas parses `deps`
+when resolving install order and `groups` when selecting packages by group.
+
+Group membership is scoped to the row's `(name, architecture)`. It is not part of
+the `.sky` artifact and is not covered by the package signature.
 
 There is no migration system. Schema changes need explicit handling for existing
-databases.
+databases. A repository database created before group support has no `groups`
+column, and the current `CREATE TABLE IF NOT EXISTS` schema creation does not add
+it.
 
 ## Publishing
 
@@ -80,6 +87,8 @@ Consequences:
   version or release.
 - Publishing a newer version replaces the row pointer; the previous `.sky` file
   remains on disk but is no longer referenced.
+- Publishing also replaces the package's group membership for that architecture.
+  Omitting a group from the new recipe removes it from the repository.
 - The database does not track multiple versions of the same package for one
   architecture.
 - If writing the `.sky` succeeds and the database insert fails, an unreferenced
@@ -105,6 +114,22 @@ Resolution uses the repository's `deps` column, **not** the `.sky` metadata.
 Tests deliberately publish rows whose dependencies disagree with the artifact to
 ensure Atlas does not trust metadata for this decision.
 
+### Group install
+
+`atlas install --group <group>`:
+
+1. Scans repository rows for exact membership in the requested group.
+2. Resolves every member plus its missing runtime dependencies.
+3. Produces one dependency-first plan with each package once.
+4. Rejects the plan before installing anything if a member, dependency, or cycle
+   is invalid.
+5. Installs group members as `explicit`; already-installed dependencies are
+   skipped.
+
+Group installation uses repository membership and writes the resulting groups to
+the install database along with each package record. See
+[package-groups.md](package-groups.md).
+
 ### Verify
 
 `atlas verify <name>` looks up the host-architecture row and verifies the
@@ -125,6 +150,11 @@ SemVer:
 
 If a new version declares a dependency that is not installed, the update fails
 with a message advising a reinstall of the parent package.
+
+Group updates select the union of current repository membership and installed
+membership recorded for the host architecture. They then use the same version
+rules and dependency resolution as named updates. Membership is refreshed only
+for packages that are actually updated.
 
 ### Build skipping
 
@@ -148,7 +178,10 @@ It is keyed by URL and stores the expected digest, file path, and fetch time. Se
 
 - No remote repository, mirror, index signature, or transport.
 - No multiple versions per `(name, architecture)`.
-- No repository-level metadata signing.
+- No repository-level metadata signing. Group membership is unsigned local
+  database state.
+- No separate group table or group index; membership is a YAML list on each
+  package row.
 - No garbage collection for unreferenced artifacts.
 - No transaction spanning the artifact file write and the database insert.
 - No migration support for schema changes.

@@ -38,7 +38,7 @@ The package manager CLI and library.
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | CLI | `atlas/src/cli/` | Argument parsing, global `--yes`, confirmation prompts. |
-| Resolution | `atlas/src/install/resolve.rs`, `atlas/src/update/resolve.rs`, `atlas/src/uninstall/resolve.rs` | Dependency and update planning. |
+| Resolution | `atlas/src/install/resolve.rs`, `atlas/src/update/resolve.rs`, `atlas/src/uninstall/resolve.rs` | Dependency, group, and update planning. |
 | Verification | `atlas/src/verify/` | Archive entry checks, payload checks, manifest checks, signature verification. |
 | Install state | `atlas/src/types/package_state.rs`, `atlas/src/install/db.rs` | Verify → stage → commit state machine and install records. |
 | Rollback | `atlas/src/types/guards.rs` | Restore files if the database commit fails. |
@@ -96,7 +96,9 @@ Format changes usually require edits in both binaries.
 7. **Build** each planned package, then the root package, in Bubblewrap.
 8. **Package**: generate the payload, manifest, metadata, and signature; write
    `<name>-<version>-<release>-<architecture>.sky`.
-9. **Publish**: replace the repository row for `(name, architecture)`.
+9. **Publish**: replace the repository row for `(name, architecture)`, including
+   the package's `groups` membership list. Group labels are not written into the
+   `.sky` metadata.
 
 A failure at any step aborts the command. Temporary build directories are
 cleaned up by `tempfile`. A failed build does not publish a repository row; a
@@ -122,10 +124,16 @@ failed database insert after writing the artifact can leave an unreferenced
    7. record the install in the install database,
    8. roll back the filesystem exchange if recording fails.
 
+`atlas install --group <group>` instead resolves every repository package whose
+group list contains the label, plus its missing dependencies, into one combined
+plan. Group members are explicit roots; shared dependencies are installed once.
+
 `update` follows the same verify/stage/commit path, then removes owned paths
-that are no longer present in the new payload. `uninstall` removes owned paths
-and then deletes database records; it does not restore files if removal fails
-partway through.
+that are no longer present in the new payload. Group updates select the union of
+repository membership and install-state membership, then resolve dependencies
+with the same version rules. `uninstall` removes owned paths and then deletes
+database records; it does not restore files if removal fails partway through.
+Group uninstall uses the membership snapshot stored in the install database.
 
 ## Key invariants
 
@@ -136,6 +144,12 @@ partway through.
   from `.sky` metadata. Tests deliberately make the two sources disagree.
 - **Package identity is exact**: name, version, release, and architecture must
   match the repository row during install.
+- **Package group membership is database state, not package content.** It lives
+  in `packages.groups` and `installed_packages.groups` as YAML lists, is absent
+  from `.sky` metadata, and is not covered by the signature.
+- **A group is not a dependency.** `deps` and `makedeps` remain the only edges;
+  group members are installed as explicit roots, and a package that is both a
+  member and a dependency is installed once.
 - **`/var/lib/atlas` is reserved.** Payloads may not write there.
 - **Owned files are tracked per package and architecture** in `owned_files`.
   Directories are claimed only when the install created them or they were
@@ -165,6 +179,8 @@ root, `SUDO_USER` must identify the target user.
 - No remote repository, mirror, or transport protocol.
 - No version constraints, optional dependencies, split packages, patches, or
   package deltas.
+- No nested groups, group dependencies, group objects, or signed group
+  membership.
 - Recipe schema 1 documents `x86_64`; the architecture enum also accepts `arm`
   for tests.
 - No reproducible-build guarantee. `built_at` is informational.

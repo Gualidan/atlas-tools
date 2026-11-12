@@ -37,20 +37,26 @@ Commands:
 ### `atlas install`
 
 ```text
-atlas install <PACKAGE> [--root <DIR>]
+atlas install [PACKAGE] [--group <GROUP>] [--root <DIR>]
 ```
 
-Installs a package and its missing runtime dependencies for the host
-architecture.
+Installs a package or a package group and their missing runtime dependencies for
+the host architecture.
 
-- `<PACKAGE>` is required.
+- Exactly one of `<PACKAGE>` or `--group <GROUP>` (`-g`) is required.
 - `--root <DIR>` selects the target root. The default is `/`.
 - The install database stays at `~/.local/share/atlas/installed.db`; it does not
   move under the target root.
 - Already-installed dependencies are skipped; the requested package is
   reinstalled.
+- Group members are resolved together with their dependencies into one
+  dependency-first plan. Every member is recorded as an explicit install and is
+  reinstalled if already present. A package that is both a group member and a
+  dependency is installed once as explicit.
 - The command prints the dependency-ordered package list and asks for
   confirmation unless `--yes` is active.
+- A group plan is fully resolved before the prompt; a missing member, missing
+  dependency, or cycle rejects it before anything is installed.
 - Each package must pass signature, metadata, archive, and manifest validation.
 - Requires the Sisyphus config with a public key path.
 
@@ -59,6 +65,8 @@ Examples:
 ```bash
 atlas install hello
 atlas install hello --root /tmp/test-root
+atlas install --group desktop
+atlas install -g desktop --root /tmp/test-root
 atlas -y install hello
 ```
 
@@ -93,22 +101,29 @@ sky-path verification is available through the library API
 ### `atlas update`
 
 ```text
-atlas update [PACKAGE]
+atlas update [PACKAGE] [--group <GROUP>]
 ```
 
-Updates one installed package, or every installed package when `PACKAGE` is
-omitted.
+Updates one installed package, every package in a group, or every installed
+package when neither `PACKAGE` nor `--group` is given.
 
+- `PACKAGE` and `--group <GROUP>` (`-g`) are mutually exclusive.
 - Versions are compared with SemVer.
 - A newer repository version is an update.
 - An equal version is a no-op, even if release numbers differ.
 - A lower repository version is a downgrade error.
 - Named updates include the named package's repository dependencies.
-- Bulk updates resolve all packages first and abort before prompting if
+- Group updates select the union of current repository membership and installed
+  membership recorded for the host architecture, then include their repository
+  dependencies.
+- Group members missing from the install database, missing repository
+  dependencies, and downgrades reject the whole plan before prompting.
+- Bulk and group updates resolve all packages first and abort before prompting if
   resolution reports an error.
 - The package list is shown and confirmation is requested unless `--yes` is
   active.
-- An empty update set succeeds without prompting.
+- An empty update set succeeds without prompting. A group update with no newer
+  members also succeeds without a dedicated "up to date" message.
 - Requires the Sisyphus config when there are candidates to verify and apply.
 
 Examples:
@@ -116,18 +131,25 @@ Examples:
 ```bash
 atlas update
 atlas update hello
+atlas update --group desktop
+atlas update -g desktop
 atlas -y update
 ```
 
 ### `atlas uninstall`
 
 ```text
-atlas uninstall <PACKAGE>
+atlas uninstall [PACKAGE] [--group <GROUP>]
 ```
 
-Removes an installed package and its non-explicit dependencies.
+Removes an installed package or group and their non-explicit dependencies.
 
+- Exactly one of `<PACKAGE>` or `--group <GROUP>` (`-g`) is required.
 - Explicitly installed dependencies remain installed and stop traversal.
+- Group uninstall selects installed packages whose recorded membership contains
+  the label and treats every member as a removal root, regardless of its recorded
+  install reason. It uses the install database's membership snapshot, not the
+  repository's current membership.
 - Packages required by packages outside the removal set are skipped and listed
   with the external required-by package.
 - Owned files and symlinks are removed; owned directories are removed only when
@@ -137,6 +159,14 @@ Removes an installed package and its non-explicit dependencies.
 - Does not require the Sisyphus config.
 - Filesystem removal is not transactional: a partial failure can leave some
   paths deleted and database rows in place.
+
+Examples:
+
+```bash
+atlas uninstall hello
+atlas uninstall --group desktop
+atlas uninstall -g desktop
+```
 
 ### `atlas clean`
 
@@ -270,12 +300,19 @@ cargo run --bin atlas -- install hello
 cargo run --bin atlas -- update hello
 cargo run --bin atlas -- uninstall hello
 cargo run --bin atlas -- clean
+
+# 7. Manage a group
+cargo run --bin atlas -- install --group desktop
+cargo run --bin atlas -- update --group desktop
+cargo run --bin atlas -- uninstall --group desktop
 ```
 
 ## Current CLI limitations
 
 - No package version selection; the repository has one row per
   `(name, architecture)`.
+- Package groups are a single label per selection; there are no nested groups or
+  group dependencies.
 - No remote repository or download command.
 - No dry-run mode.
 - `verify` accepts two optional positionals but only one may be supplied; see

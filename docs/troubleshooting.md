@@ -27,6 +27,9 @@ This page maps common symptoms to likely causes and fixes.
 | `Failed to validate recipe` / invalid name | Name grammar violated. | Use `[a-z0-9][a-z0-9+._-]*`. |
 | `Only schema version 1 is supported` | `schema` is missing, `0`, or greater than `1`. | Set `schema: 1`. |
 | `Package is not allowed to list itself as a dependency` | `deps` or `makedeps` contains the package name. | Remove the self-entry. |
+| `Group name <label> is invalid refer to the package naming documentation` | A `groups` entry violates the package-name grammar. | Use `[a-z0-9][a-z0-9+._-]*`. |
+| `Group list must not contain duplicate entries` | The same label appears twice in `groups`. | Remove the duplicate. |
+| `Package is not allowed to list itself as a group` | `groups` contains the package's own name. | Remove the self-entry. |
 | `dependency `<name>` was not found at ...` | Missing dependency recipe or wrong repository layout. | Add `<recipe-repo>/<dep>/sky.yaml`. |
 | `Circular dependency detected` / `dependency cycle` | The dependency graph contains a cycle. | Break the cycle in the recipes. |
 | `bash: command not found` inside a phase | The sandbox `/usr` is built only from dependency artifacts. | Add `makedeps` that provide the shell and required tools. |
@@ -39,6 +42,16 @@ This page maps common symptoms to likely causes and fixes.
 | --- | --- | --- |
 | `Package <name> not found` | No repository row for that name and host architecture. | Build/publish the package; check the `architecture` field. |
 | `Package <name> not found in installed packages` | `update`/`uninstall` targets a package that is not installed. | Install it first or check the name. |
+| `Specify a package or group name to install.` | `atlas install` was called without a package or `--group`. | Pass exactly one of them. |
+| `Specify a package or group name to install, not both.` | `atlas install` received both a package and `--group`. | Pass exactly one of them. |
+| `Unknow package group <group>` | No repository package belongs to the requested group. Note the current spelling of the install error. | Check the label and publish a package with that `groups` entry. |
+| `Unknown package group <group>` | A group update found no members in the repository or install state. | Check the label and the installed membership. |
+| `Package <name> from group <group> is not installed` | A package currently in the group is missing from the install database. | Install the group first, or reinstall the missing member. |
+| `No package found in group <group>` | A group uninstall found no installed package with that recorded membership. | Check the installed groups with the query in [install-state.md](install-state.md). |
+| `Specify either a package or group to update, not both` | `atlas update` received both a package and `--group`. | Pass exactly one; omit both to update everything. |
+| `You should specify either a package or group to uninstall, not both` | `atlas uninstall` received both a package and `--group`. | Pass exactly one. |
+| `You should specify a package or group to uninstall` | `atlas uninstall` received neither selection. | Pass a package or `--group`. |
+| `no such column: groups` | A repository or install database predates group support. | Back up the database, then `ALTER TABLE packages ADD COLUMN groups TEXT NOT NULL DEFAULT '[]'` in `repo.db`, or `ALTER TABLE installed_packages ADD COLUMN groups TEXT NOT NULL DEFAULT '[]'` in `installed.db`; alternatively recreate the database. |
 | `Failed to verify sky file signature` | Artifact signed by a different key than the configured public key. | Use the matching config/keypair; republish if needed. |
 | `metadata does not match the expected package` | Repository row and artifact identity disagree. | Republish the correct artifact or fix the row. |
 | `Dependency `<dep>` of package `<parent>` not found` | Repository `deps` references a package with no row for that architecture. | Publish the dependency for the same architecture. |
@@ -67,6 +80,7 @@ This page maps common symptoms to likely causes and fixes.
 | --- | --- |
 | `Package <name> is already up to date` | Named update found no newer version. |
 | `All packages are up to date` | Bulk update found no candidates. |
+| No output from `atlas update --group <group>` | Group update found no newer members; it has no dedicated "up to date" message. |
 | `No orphaned packages to remove` | `clean` found nothing to remove. |
 | `Transaction aborted` | The user declined a confirmation prompt. |
 | `Skipping build.` | `sisyphus build --skip-build` was used; the stub does not run the pipeline. |

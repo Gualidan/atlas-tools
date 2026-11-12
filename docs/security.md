@@ -15,7 +15,8 @@ There are three separate trust decisions:
 2. **Package authenticity** — Sisyphus signs the package; Atlas verifies the
    signature with a configured public key.
 3. **Local state trust** — Atlas trusts its local repository and install
-   databases. Neither database is signed.
+   databases. Neither database is signed, and package group membership is part
+   of that unsigned local state.
 
 The distribution model is currently single-key and local:
 
@@ -61,6 +62,11 @@ Atlas additionally checks that the metadata identity matches the repository row
 when verifying by package name. That check prevents a validly signed package for
 one identity from being installed under another identity in the local
 repository.
+
+Package groups are **not** signed. Group membership is stored in the repository
+database's `groups` column and copied into the install database. A validly signed
+`.sky` package can be moved between groups by editing repository state alone; the
+artifact bytes and signature do not change.
 
 ## Source integrity
 
@@ -160,6 +166,8 @@ target root is not chrooted.
 - The repository database is unsigned. A local attacker who can edit it can
   change which artifact path Atlas opens, although the artifact still needs a
   valid signature.
+- Group membership is unsigned and unauthenticated. Editing the repository or
+  install database can change which packages a group operation selects.
 - `sky_path` is not constrained to the repository directory.
 - The source cache and install database are not signed.
 - Uninstall removes owned paths without a rollback log.
