@@ -319,12 +319,8 @@ Contributions are welcome:
 1. Fork the repository.
 2. Create a feature branch.
 3. Add or update tests for your change. I recommend using the
-   `tdd-test-writer` skill; install it with:
-
-   ```sh
-   npx skills add https://github.com/Gualidan/skills --skill tdd-test-writer
-   ```
-Use it to describe the change you want to make it'll generate a test design and instruction for you for further info on how to use it check out the Github repository [here](https://github.com/Gualidan/skills).
+   `tdd-test-writer` skill; it is already included in this repo.
+   For further info on how to use it see the [README File](Skills-README.md).
 
 4. Keep commits atomic and use Conventional Commit messages. I recommend the `atomic-commits` skill; install it with:
 
