@@ -23,27 +23,6 @@ opencode-skills/
 └── opencode.example.json             # reference MCP config for the Obsidian MCP server
 ```
 
-## Install
-
-Copy the pieces into your project (or into `~/.config/opencode/` for global availability):
-
-| What | Project (recommended) | Global |
-| --- | --- | --- |
-| Skills | `.opencode/skills/<skill-id>/SKILL.md` | `~/.config/opencode/skills/<skill-id>/SKILL.md` |
-| Subagent | `.opencode/agents/tdd-test-writer.md` | `~/.config/opencode/agents/tdd-test-writer.md` |
-| Commands | `.opencode/commands/<name>.md` | `~/.config/opencode/commands/<name>.md` |
-
-For example, from this folder:
-
-```bash
-mkdir -p .opencode
-cp -r skills/tdd-test-writer skills/delegation-router .opencode/skills/
-cp -r agents .opencode/
-cp -r commands .opencode/
-```
-
-OpenCode also discovers compatibility locations (`.claude/skills`, `.agents/skills`) and hot-reloads changes, so you can edit the skill mid-session. Full discovery table: https://opencode.ai/docs/skills
-
 ## Obsidian MCP
 
 The skill expects an Obsidian MCP server already configured (as you have now) and calls it without an approval gate. Keep your existing entry; `opencode.example.json` is only a reference shape for `opencode.json`:
