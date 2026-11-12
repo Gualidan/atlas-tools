@@ -1,4 +1,7 @@
-use crate::pipeline::{build::run_build, checksum::run_checksum, keygen::run_keygen};
+use crate::{
+    cli::confirmation::set_assume_yes,
+    pipeline::{build::run_build, checksum::run_checksum, keygen::run_keygen},
+};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
@@ -59,6 +62,7 @@ struct ChecksumArgs {
 /// Returns an error if a selected command fails.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
+    set_assume_yes(cli.assume_yes);
 
     match &cli.command {
         Commands::Build(args) => {
