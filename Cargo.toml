@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["atlas", "crates/common","sisyphus"]
+members = ["atlas", "crates/common", "crates/sandbox-install", "sisyphus"]
 
 [workspace.package]
 edition = "2024"
