@@ -297,7 +297,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "config",
- "reqwest",
  "ring",
  "rusqlite",
  "serde",
@@ -305,7 +304,6 @@ dependencies = [
  "tar",
  "tempfile",
  "uzers",
- "which",
  "whoami",
  "zstd",
 ]
