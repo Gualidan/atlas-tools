@@ -742,9 +742,7 @@ pub fn groups_for(
     name: &str,
     architecture: Architectures,
 ) -> Result<Vec<String>> {
-    Ok(package_row(config, name, architecture)?
-        .map(|row| row.groups)
-        .unwrap_or_default())
+    Ok(package_row(config, name, architecture)?.map_or_default(|row| row.groups))
 }
 
 /// The decoded runtime dependencies for one `(name, architecture)`.
@@ -757,9 +755,7 @@ pub fn deps_for(
     name: &str,
     architecture: Architectures,
 ) -> Result<Vec<String>> {
-    Ok(package_row(config, name, architecture)?
-        .map(|row| row.deps)
-        .unwrap_or_default())
+    Ok(package_row(config, name, architecture)?.map_or_default(|row| row.deps))
 }
 
 /// The decoded build dependencies for one `(name, architecture)`.
@@ -772,9 +768,7 @@ pub fn makedeps_for(
     name: &str,
     architecture: Architectures,
 ) -> Result<Vec<String>> {
-    Ok(package_row(config, name, architecture)?
-        .map(|row| row.makedeps)
-        .unwrap_or_default())
+    Ok(package_row(config, name, architecture)?.map_or_default(|row| row.makedeps))
 }
 
 /// Asserts exact group membership for one `(name, architecture)`.
