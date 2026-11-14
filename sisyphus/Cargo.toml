@@ -19,6 +19,7 @@ tar.workspace = true
 zstd.workspace = true
 ring.workspace = true
 common.workspace = true
+sandbox-install = { path = "../crates/sandbox-install" }
 rusqlite.workspace = true
 anyhow.workspace = true
 url = "2.5.8"

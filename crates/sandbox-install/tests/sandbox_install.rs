@@ -46,7 +46,7 @@ fn group_files_land_under_install_root() -> Result<()> {
     Ok(())
 }
 
-/// 2. The dependency closure installs before the group members. A group
+/// Case 2: the dependency closure installs before the group members. A group
 /// member that fails verification must not prevent — or undo — the
 /// installation of the dependency closure that resolves before it.
 ///
@@ -82,7 +82,7 @@ fn dependency_closure_installs_before_group_members() -> Result<()> {
     Ok(())
 }
 
-/// 3. Non-interactive: the call succeeds outside a TTY with assume-yes
+/// Case 3: non-interactive — the call succeeds outside a TTY with assume-yes
 /// initially off (no prompt is attempted), and restores the caller's
 /// assume-yes value on success.
 #[test]
@@ -104,8 +104,8 @@ fn non_interactive_without_tty_and_restores_assume_yes() -> Result<()> {
     Ok(())
 }
 
-/// 4. The host install DB (the one `RuntimeConfig::build` derives from the
-/// user's data directory) is never opened for writing: if it exists its
+/// Case 4: the host install DB (the one `RuntimeConfig::build` derives from
+/// the user's data directory) is never opened for writing: if it exists its
 /// bytes are unchanged, and if it does not exist it is not created.
 #[test]
 fn host_install_db_is_never_touched() -> Result<()> {
@@ -137,8 +137,8 @@ fn host_install_db_is_never_touched() -> Result<()> {
     Ok(())
 }
 
-/// 5. Unknown group → error naming the group, and assume-yes restored on the
-/// error path too.
+/// Case 5: unknown group → error naming the group, and assume-yes restored on
+/// the error path too.
 #[test]
 fn unknown_group_names_the_group() -> Result<()> {
     let fixture = Fixture::new()?;
