@@ -32,6 +32,16 @@ use zstd::Encoder;
 
 pub const ARCH: Architectures = Architectures::X86_64;
 
+/// A repository seed row: `(name, version, release, sky_path, deps, groups)`.
+type SeedRow<'a> = (
+    &'a str,
+    &'a str,
+    u32,
+    &'a str,
+    &'a [&'a str],
+    &'a [&'a str],
+);
+
 /// Self-contained per-test environment: a temp directory holding the repo
 /// database, the published `.sky` files, the signing config, and an empty
 /// target root. The process-wide lock serializes tests because
@@ -166,7 +176,7 @@ impl Fixture {
     /// Seeds repository rows with runtime dependency and group lists exactly
     /// the way Sisyphus publishes them: serialized with `serde_saphyr`, never
     /// hand-written YAML.
-    fn seed_repo_db(&self, packages: &[(&str, &str, u32, &str, &[&str], &[&str])]) {
+    fn seed_repo_db(&self, packages: &[SeedRow<'_>]) {
         let mut conn = Connection::open(self.repo_db()).unwrap();
         create_packages_table(&mut conn).unwrap();
 
@@ -204,8 +214,8 @@ impl Fixture {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            assert_eq!(stored_deps, deps, "{} repository deps", name);
-            assert_eq!(stored_groups, groups, "{} repository groups", name);
+            assert_eq!(stored_deps, deps, "{name} repository deps");
+            assert_eq!(stored_groups, groups, "{name} repository groups");
         }
     }
 }
