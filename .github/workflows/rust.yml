@@ -28,5 +28,10 @@ jobs:
             pkg-config \
             libarchive-dev
 
+      - uses: taiki-e/install-action@nextest
+
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo nextest run --verbose
+
+      - name: Run doctests
+        run: cargo test --doc --verbose
