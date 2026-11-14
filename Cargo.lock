@@ -1902,6 +1902,7 @@ dependencies = [
  "reqwest",
  "ring",
  "rusqlite",
+ "sandbox-install",
  "serde",
  "serde-saphyr",
  "tar",

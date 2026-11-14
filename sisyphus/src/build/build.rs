@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use common::functions::unpack_payload::unpack_payload;
+use sandbox_install::install_group_into_root;
 use tempfile::{Builder, TempDir};
 
 use crate::build::dependencies::BuildPlan;
@@ -11,6 +12,8 @@ use crate::types::bubblewrap::Bubblewrap;
 use crate::types::package::Package;
 use crate::types::runtime_config::RuntimeConfig;
 use crate::types::sandbox::Sandbox;
+
+const BASE_DEVEL: &str = "base-devel";
 
 /// Builds the requested package and any dependencies not already available as artifacts.
 ///
@@ -35,7 +38,7 @@ pub fn build(
         artifacts.push(artifact);
     }
 
-    let pkgdir = build_package(package, srcdir, &artifacts)
+    let pkgdir = build_package(&runtime_config.repo_db_path, package, srcdir, &artifacts)
         .with_context(|| format!("Failed to build package `{}`", package.name))?;
     Ok(pkgdir)
 }
@@ -51,7 +54,12 @@ pub fn build(
 ///
 /// Returns an error if temporary directories cannot be created, artifacts cannot
 /// be unpacked, or a sandboxed phase fails.
-pub fn build_package(package: &Package, srcdir: &Path, artifacts: &[PathBuf]) -> Result<TempDir> {
+pub fn build_package(
+    repo_db: &Path,
+    package: &Package,
+    srcdir: &Path,
+    artifacts: &[PathBuf],
+) -> Result<TempDir> {
     let builddir = Builder::new()
         .prefix("sisyphus_builddir")
         .tempdir()
@@ -69,7 +77,8 @@ pub fn build_package(package: &Package, srcdir: &Path, artifacts: &[PathBuf]) ->
     let pkgdir_path = pkgdir.path().to_path_buf();
     let usr_root_path = usr_root.path().to_path_buf();
 
-    extract_artifacts(artifacts, &usr_root)?;
+    assemble_sandbox_usr(artifacts, repo_db, &usr_root)
+        .context("Failed to assemble sandbox /usr")?;
 
     let bwp = Bubblewrap {
         name: package.name.clone(),
@@ -111,5 +120,25 @@ pub fn extract_artifacts(artifacts: &[PathBuf], temp_root: &TempDir) -> Result<(
     for artifact in artifacts {
         unpack_payload(artifact, temp_root).context("Failed to unpack payload")?;
     }
+    Ok(())
+}
+
+/// Assembles a sandbox `/usr` root by extracting the provided package artifacts
+/// and installing the `base-devel` group from the repository database.
+///
+/// # Errors
+///
+/// Returns an error if artifacts cannot be extracted or the `base-devel` group
+/// cannot be installed into the root.
+pub fn assemble_sandbox_usr<P: AsRef<Path>>(
+    artifacts: &[PathBuf],
+    repo_db: P,
+    usr_root: &TempDir,
+) -> Result<()> {
+    extract_artifacts(artifacts, usr_root).context("Failed to extract artifacts")?;
+
+    install_group_into_root(BASE_DEVEL, repo_db.as_ref(), usr_root.path())
+        .context("Failed to install group into root")?;
+
     Ok(())
 }

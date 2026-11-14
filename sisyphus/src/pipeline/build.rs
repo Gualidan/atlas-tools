@@ -115,8 +115,13 @@ pub fn run_planned_build(
     let (_destination, source_root) = extract(fetched).context("Failed to extract package")?;
 
     // Phase 3: Build
-    let pkgdir = build_package(&package, &source_root, artifacts)
-        .with_context(|| format!("Failed to build package `{}`", package.name))?;
+    let pkgdir = build_package(
+        &runtime_config.repo_db_path,
+        &package,
+        &source_root,
+        artifacts,
+    )
+    .with_context(|| format!("Failed to build package `{}`", package.name))?;
 
     // Phase 4: Package generation
     package_gen(
