@@ -33,6 +33,12 @@ pub fn set_assume_yes(assume_yes: bool) {
     ASSUME_YES.store(assume_yes, Ordering::Relaxed);
 }
 
+/// Returns the current assume-yes setting, so callers that temporarily enable
+/// it can restore the previous value afterwards.
+pub fn assume_yes() -> bool {
+    ASSUME_YES.load(Ordering::Relaxed)
+}
+
 /// Displays the package list and asks whether to proceed with the action.
 /// An empty package list and an enabled assume-yes setting are accepted without
 /// prompting. A cancellation or interruption returns `Ok(false)`.
