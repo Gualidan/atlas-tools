@@ -137,6 +137,7 @@ pub fn assemble_sandbox_usr<P: AsRef<Path>>(
 ) -> Result<()> {
     extract_artifacts(artifacts, usr_root).context("Failed to extract artifacts")?;
 
+    // Should be fine since makedepes that are part of the base-devel group will not be allowed
     install_group_into_root(BASE_DEVEL, repo_db.as_ref(), usr_root.path())
         .context("Failed to install group into root")?;
 
